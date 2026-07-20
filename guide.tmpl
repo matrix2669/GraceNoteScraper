@@ -15,6 +15,21 @@
     {{- if .SubTitle }}
     <sub-title lang="{{ .Lang }}">{{ .SubTitle }}</sub-title>
     {{- end }}
+    {{- with .TMDBCredits }}
+    <credits>
+      {{- range . }}
+      {{- if eq .Role "director" }}
+      <director>{{ .Name }}</director>
+      {{- else if eq .Role "actor" }}
+      <actor>{{ .Name }}</actor>
+      {{- else if eq .Role "writer" }}
+      <writer>{{ .Name }}</writer>
+      {{- else }}
+      <producer>{{ .Name }}</producer>
+      {{- end }}
+      {{- end }}
+    </credits>
+    {{- end }}
     <desc lang="{{ .Lang }}">{{ .Description }}</desc>
     <length units="{{ .LengthUnits }}">{{ .Length }}</length>
     {{- if .Language }}
@@ -29,6 +44,9 @@
     {{- range .Images }}
     <image type="{{ .Type }}" size="{{ .Size }}" orient="{{ .Orient }}" system="{{ .System }}">{{ .URL }}</image>
     {{- end }}
+    {{- range .TMDBImages }}
+    <image type="{{ .Type }}" size="{{ .Size }}" orient="{{ .Orient }}" system="{{ .System }}">{{ .URL }}</image>
+    {{- end }}
     <url>{{ .URL }}</url>
     {{- if .Country }}
     <country>{{ .Country }}</country>
@@ -36,8 +54,17 @@
     {{- range .EpisodeNumbers }}
     <episode-num system="{{ .System }}">{{ .EpisodeNumber }}</episode-num>
     {{- end }}
+    {{- range .TMDBEpisodeNumbers }}
+    <episode-num system="{{ .System }}">{{ .EpisodeNumber }}</episode-num>
+    {{- end }}
     {{- range .Categories }}
     <category lang="{{ .Lang }}">{{ .Name }}</category>
+    {{- end }}
+    {{- range .TMDBCategories }}
+    <category lang="{{ .Lang }}">{{ .Name }}</category>
+    {{- end }}
+    {{- range .TMDBKeywords }}
+    <keyword>{{ . }}</keyword>
     {{- end }}
     {{- if .New }}
     <new />
@@ -53,11 +80,15 @@
     {{- end }}
     {{- if .Rating }}
     <rating{{ if .RatingSystem }} system="{{ .RatingSystem }}"{{ end }}><value>{{ .Rating }}</value></rating>
+    {{- else with .TMDBRating }}
+    <rating system="{{ .System }}"><value>{{ .Value }}</value></rating>
     {{- end }}
     {{- if .StarRating }}
     <star-rating><value>{{ .StarRating }}</value></star-rating>
     {{- end }}
-    {{- if .Date }}
+    {{- if .TMDBDate }}
+    <date>{{ .TMDBDate }}</date>
+    {{- else if .Date }}
     <date>{{ .Date }}</date>
     {{- end }}
   </programme>
