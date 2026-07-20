@@ -5,8 +5,8 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 go build -o /gracenotescraper .
 
-FROM scratch
-COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
-COPY --from=build /gracenotescraper /gracenotescraper
+FROM alpine:3.22
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=build /gracenotescraper /usr/local/bin/gracenotescraper
 WORKDIR /data
-ENTRYPOINT ["/gracenotescraper"]
+ENTRYPOINT ["/usr/local/bin/gracenotescraper"]
