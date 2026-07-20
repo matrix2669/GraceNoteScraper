@@ -80,8 +80,10 @@
     {{- end }}
     {{- if .Rating }}
     <rating{{ if .RatingSystem }} system="{{ .RatingSystem }}"{{ end }}><value>{{ .Rating }}</value></rating>
-    {{- else with .TMDBRating }}
+    {{- else }}
+      {{- with .TMDBRating }}
     <rating system="{{ .System }}"><value>{{ .Value }}</value></rating>
+      {{- end }}
     {{- end }}
     {{- if .StarRating }}
     <star-rating><value>{{ .StarRating }}</value></star-rating>
