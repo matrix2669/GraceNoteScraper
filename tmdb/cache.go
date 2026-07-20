@@ -10,14 +10,31 @@ import (
 
 const cacheTTL = 7 * 24 * time.Hour
 
+type Credit struct {
+	Name string `json:"name"`
+	Role string `json:"role,omitempty"`
+}
+
 type CacheEntry struct {
-	ImageURL     string  `json:"image_url"`
-	Rating       float64 `json:"rating,omitempty"`
-	Year         string  `json:"year,omitempty"`
-	Overview     string  `json:"overview,omitempty"`
-	TMDBID       int     `json:"tmdb_id,omitempty"`
-	OrigLanguage string  `json:"orig_language,omitempty"`
-	FetchedAt    int64   `json:"fetched_at"`
+	ImageURL      string   `json:"image_url"`
+	BackdropURL   string   `json:"backdrop_url,omitempty"`
+	Rating        float64  `json:"rating,omitempty"`
+	VoteCount     int      `json:"vote_count,omitempty"`
+	Year          string   `json:"year,omitempty"`
+	ReleaseDate   string   `json:"release_date,omitempty"`
+	Overview      string   `json:"overview,omitempty"`
+	TMDBID        int      `json:"tmdb_id,omitempty"`
+	IMDbID        string   `json:"imdb_id,omitempty"`
+	TVDBID        int      `json:"tvdb_id,omitempty"`
+	OrigLanguage  string   `json:"orig_language,omitempty"`
+	Genres        []string `json:"genres,omitempty"`
+	Keywords      []string `json:"keywords,omitempty"`
+	Runtime       int      `json:"runtime,omitempty"`
+	Certification string   `json:"certification,omitempty"`
+	Credits        []Credit `json:"credits,omitempty"`
+	MatchedTitle   string   `json:"matched_title,omitempty"`
+	MatchScore     int      `json:"match_score,omitempty"`
+	FetchedAt      int64    `json:"fetched_at"`
 }
 
 type Cache struct {
@@ -59,7 +76,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	return entry, true
 }
 
-// Stores a lookup result. An empty entry is valid (negative cache).
+// Set stores a lookup result. An empty entry is valid and acts as a negative cache.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
