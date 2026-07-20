@@ -23,21 +23,36 @@
     {{- if .OrigLanguage }}
     <orig-language>{{ .OrigLanguage }}</orig-language>
     {{- end }}
+    {{- if .HasTMDBCredits }}
+    {{- with .TMDBCredits }}
+    <credits>
+      {{- range .Directors }}
+      <director>{{ . }}</director>
+      {{- end }}
+      {{- range .Actors }}
+      <actor>{{ . }}</actor>
+      {{- end }}
+    </credits>
+    {{- end }}
+    {{- end }}
     {{- if .IconSrc }}
     <icon src="{{ .IconSrc }}"/>
     {{- end }}
-    {{- range .Images }}
+    {{- range .EnrichedImages }}
     <image type="{{ .Type }}" size="{{ .Size }}" orient="{{ .Orient }}" system="{{ .System }}">{{ .URL }}</image>
     {{- end }}
     <url>{{ .URL }}</url>
     {{- if .Country }}
     <country>{{ .Country }}</country>
     {{- end }}
-    {{- range .EpisodeNumbers }}
+    {{- range .EnrichedEpisodeNumbers }}
     <episode-num system="{{ .System }}">{{ .EpisodeNumber }}</episode-num>
     {{- end }}
-    {{- range .Categories }}
+    {{- range .EnrichedCategories }}
     <category lang="{{ .Lang }}">{{ .Name }}</category>
+    {{- end }}
+    {{- range .TMDBKeywords }}
+    <keyword lang="{{ $.Lang }}">{{ . }}</keyword>
     {{- end }}
     {{- if .New }}
     <new />
@@ -51,14 +66,14 @@
     {{- range .Subtitles }}
     <subtitles type="{{ .Type }}" />
     {{- end }}
-    {{- if .Rating }}
-    <rating{{ if .RatingSystem }} system="{{ .RatingSystem }}"{{ end }}><value>{{ .Rating }}</value></rating>
+    {{- if .EffectiveRating }}
+    <rating{{ if .EffectiveRatingSystem }} system="{{ .EffectiveRatingSystem }}"{{ end }}><value>{{ .EffectiveRating }}</value></rating>
     {{- end }}
     {{- if .StarRating }}
     <star-rating><value>{{ .StarRating }}</value></star-rating>
     {{- end }}
-    {{- if .Date }}
-    <date>{{ .Date }}</date>
+    {{- if .EffectiveDate }}
+    <date>{{ .EffectiveDate }}</date>
     {{- end }}
   </programme>
 {{- end }}
