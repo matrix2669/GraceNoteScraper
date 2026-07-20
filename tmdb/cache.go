@@ -10,6 +10,11 @@ import (
 
 const cacheTTL = 7 * 24 * time.Hour
 
+type Credit struct {
+	Name string `json:"name"`
+	Role string `json:"role,omitempty"`
+}
+
 type CacheEntry struct {
 	ImageURL      string   `json:"image_url"`
 	BackdropURL   string   `json:"backdrop_url,omitempty"`
@@ -26,11 +31,10 @@ type CacheEntry struct {
 	Keywords      []string `json:"keywords,omitempty"`
 	Runtime       int      `json:"runtime,omitempty"`
 	Certification string   `json:"certification,omitempty"`
-	Director      string   `json:"director,omitempty"`
-	Cast          []string `json:"cast,omitempty"`
-	MatchedTitle  string   `json:"matched_title,omitempty"`
-	MatchScore    int      `json:"match_score,omitempty"`
-	FetchedAt     int64    `json:"fetched_at"`
+	Credits        []Credit `json:"credits,omitempty"`
+	MatchedTitle   string   `json:"matched_title,omitempty"`
+	MatchScore     int      `json:"match_score,omitempty"`
+	FetchedAt      int64    `json:"fetched_at"`
 }
 
 type Cache struct {
@@ -53,13 +57,6 @@ func LoadCache(path string) *Cache {
 	if err := json.Unmarshal(data, &c.entries); err != nil {
 		log.Printf("tmdb: cache file corrupt, starting fresh: %v", err)
 		c.entries = make(map[string]CacheEntry)
-		return c
-	}
-
-	for key, entry := range c.entries {
-		if time.Since(time.Unix(entry.FetchedAt, 0)) <= cacheTTL {
-			registerEntry(key, entry)
-		}
 	}
 	return c
 }
@@ -74,21 +71,18 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	}
 	if time.Since(time.Unix(entry.FetchedAt, 0)) > cacheTTL {
 		delete(c.entries, key)
-		unregisterEntry(key)
 		return CacheEntry{}, false
 	}
-	registerEntry(key, entry)
 	return entry, true
 }
 
-// Stores a lookup result. An empty entry is valid (negative cache).
+// Set stores a lookup result. An empty entry is valid and acts as a negative cache.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	entry.FetchedAt = time.Now().Unix()
 	c.entries[key] = entry
-	registerEntry(key, entry)
 }
 
 func (c *Cache) Save() {
