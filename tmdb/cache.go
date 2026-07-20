@@ -31,10 +31,10 @@ type CacheEntry struct {
 	Keywords      []string `json:"keywords,omitempty"`
 	Runtime       int      `json:"runtime,omitempty"`
 	Certification string   `json:"certification,omitempty"`
-	Credits        []Credit `json:"credits,omitempty"`
-	MatchedTitle   string   `json:"matched_title,omitempty"`
-	MatchScore     int      `json:"match_score,omitempty"`
-	FetchedAt      int64    `json:"fetched_at"`
+	Credits       []Credit `json:"credits,omitempty"`
+	MatchedTitle  string   `json:"matched_title,omitempty"`
+	MatchScore    int      `json:"match_score,omitempty"`
+	FetchedAt     int64    `json:"fetched_at"`
 }
 
 type Cache struct {
@@ -63,26 +63,31 @@ func LoadCache(path string) *Cache {
 
 func (c *Cache) Get(key string) (CacheEntry, bool) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	entry, ok := c.entries[key]
 	if !ok {
+		c.mu.Unlock()
 		return CacheEntry{}, false
 	}
 	if time.Since(time.Unix(entry.FetchedAt, 0)) > cacheTTL {
 		delete(c.entries, key)
+		c.mu.Unlock()
 		return CacheEntry{}, false
 	}
+	c.mu.Unlock()
+
+	registerCompletedLookup(key, entry)
 	return entry, true
 }
 
 // Set stores a lookup result. An empty entry is valid and acts as a negative cache.
 func (c *Cache) Set(key string, entry CacheEntry) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	entry.FetchedAt = time.Now().Unix()
+
+	c.mu.Lock()
 	c.entries[key] = entry
+	c.mu.Unlock()
+
+	registerCompletedLookup(key, entry)
 }
 
 func (c *Cache) Save() {
