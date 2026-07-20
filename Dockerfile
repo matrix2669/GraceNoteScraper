@@ -1,12 +1,13 @@
-FROM golang:1.25-alpine AS build
+FROM golang:1.25-alpine
+
+RUN apk add --no-cache ca-certificates tzdata
+
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /gracenotescraper .
+RUN CGO_ENABLED=0 go build -o /usr/local/bin/gracenotescraper .
 
-FROM alpine:3.22
-RUN apk add --no-cache ca-certificates tzdata
-COPY --from=build /gracenotescraper /usr/local/bin/gracenotescraper
 WORKDIR /data
+EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/gracenotescraper"]
