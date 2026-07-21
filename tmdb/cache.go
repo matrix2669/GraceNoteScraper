@@ -77,6 +77,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	// channel/category titles as negative cache hits. This prevents a TMDB HTTP
 	// request without removing the programme from the generated guide.
 	if tmdbSkipReason(key) != "" {
+		recordLookupProgress(key)
 		return CacheEntry{}, true
 	}
 
@@ -94,13 +95,18 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	}
 	c.mu.Unlock()
 
+	// Successful entries and empty negative-cache entries both count as a
+	// completed title in the current scan.
+	recordLookupProgress(key)
 	registerCompletedLookup(key, entry)
 	return entry, true
 }
 
 // Set stores a lookup result. An empty entry is valid and acts as a negative
-// cache. During long scrapes the cache is flushed approximately once per minute
-// or every cacheSaveEvery completed lookups, whichever happens first.
+// cache for cacheTTL, so titles with no sufficiently close match are not queried
+// again on every scrape. During long scrapes the cache is flushed approximately
+// once per minute or every cacheSaveEvery completed lookups, whichever happens
+// first.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	entry.FetchedAt = time.Now().Unix()
 
@@ -111,6 +117,7 @@ func (c *Cache) Set(key string, entry CacheEntry) {
 	saveDue := pending >= cacheSaveEvery || time.Since(c.lastSave) >= cacheSaveInterval
 	c.mu.Unlock()
 
+	recordLookupProgress(key)
 	registerCompletedLookup(key, entry)
 
 	if saveDue {
@@ -165,6 +172,13 @@ func (c *Cache) save(force bool) {
 	entryCount := len(c.entries)
 	c.mu.Unlock()
 
+	done, total, active := lookupScanProgress()
+	if active {
+		percent := 100 * float64(done) / float64(total)
+		log.Printf("tmdb: saved cache (%d entries, %d new, %d pending); scan progress %d/%d titles (%.1f%%)",
+			entryCount, pending, remaining, done, total, percent)
+		return
+	}
 	log.Printf("tmdb: saved cache (%d entries, %d new, %d pending)", entryCount, pending, remaining)
 }
 
