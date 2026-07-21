@@ -35,7 +35,7 @@ func tmdbSkipReason(key string) string {
 	if isObviousNewsTitle(title) {
 		return "news"
 	}
-	if hasAnyTitlePhrase(title, sportsTitlePhrases) {
+	if isObviousSportsTitle(title) {
 		return "sports"
 	}
 
@@ -67,14 +67,34 @@ func isObviousNewsTitle(title string) bool {
 	return fields[0] == "news" || fields[len(fields)-1] == "news"
 }
 
+func isObviousSportsTitle(title string) bool {
+	if hasAnyTitlePhrase(title, sportsBroadcastPhrases) {
+		return true
+	}
+	if !hasAnyTitlePhrase(title, sportsTitleTerms) {
+		return false
+	}
+	if hasAnyTitlePhrase(title, sportsBroadcastCues) {
+		return true
+	}
+
+	// Short generic listings such as "IPL Cricket", "Liga ACB Basketball",
+	// and "PGA Tour Golf" are almost always event programming. Longer titles
+	// without broadcast cues remain eligible so catalog series such as
+	// "Formula 1: Drive to Survive" are not discarded.
+	return len(strings.Fields(title)) <= 4
+}
+
 var tmdbFilterExceptions = map[string]struct{}{
-	"good news":       {},
-	"great news":      {},
-	"newsradio":       {},
-	"the newsroom":    {},
-	"the newsreader":  {},
-	"sports night":    {},
-	"friday night lights": {},
+	"good news":                  {},
+	"great news":                 {},
+	"newsradio":                  {},
+	"the newsroom":               {},
+	"the newsreader":             {},
+	"sports night":               {},
+	"friday night lights":        {},
+	"formula 1 drive to survive": {},
+	"racing wives":               {},
 }
 
 var newsTitlePhrases = []string{
@@ -151,7 +171,7 @@ var fillerTitlePhrases = []string{
 	"tbd",
 }
 
-var sportsTitlePhrases = []string{
+var sportsBroadcastPhrases = []string{
 	"pregame",
 	"pre game",
 	"postgame",
@@ -167,6 +187,9 @@ var sportsTitlePhrases = []string{
 	"college basketball",
 	"college football",
 	"college track and field",
+}
+
+var sportsTitleTerms = []string{
 	"golf",
 	"basketball",
 	"football",
@@ -194,11 +217,28 @@ var sportsTitlePhrases = []string{
 	"motogp",
 	"nascar",
 	"indycar",
-	"supercars championship",
+	"supercars",
 	"motorsport",
 	"racing",
 	"lacrosse",
-	"swimming league",
+	"swimming",
 	"karate combat",
 	"strongest man",
+}
+
+var sportsBroadcastCues = []string{
+	"live",
+	"today",
+	"tonight",
+	"weekly",
+	"recap",
+	"highlights",
+	"preview",
+	"championship",
+	"tournament",
+	"classic",
+	"all access",
+	"full impact",
+	"magazine show",
+	"analysis",
 }
