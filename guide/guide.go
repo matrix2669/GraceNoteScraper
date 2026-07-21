@@ -179,9 +179,9 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 		}
 	}
 
-	// Record whether this title occurs on a channel that is eligible for TMDB.
-	// The programme itself remains unchanged and will still be rendered normally.
-	tmdb.RegisterProgramEligibility(ev.Program.Title, isMovie, channelID)
+	// Record whether this title occurs in a TMDB-eligible context. Categories
+	// affect only this programme/title lookup and never classify its channel.
+	tmdb.RegisterProgramEligibility(ev.Program.Title, isMovie, channelID, ev.Filter)
 
 	// Episode numbers
 	var episodeNumbers []EpisodeNumber
