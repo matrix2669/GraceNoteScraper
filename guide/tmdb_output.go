@@ -34,19 +34,85 @@ func (p Program) TMDBCategories() []Category {
 	if !ok {
 		return nil
 	}
+
 	seen := make(map[string]bool)
 	for _, category := range p.Categories {
-		seen[strings.ToLower(category.Name)] = true
+		seen[normalizeCategoryName(category.Name)] = true
 	}
+
 	var out []Category
+	appendCategory := func(name string) {
+		name = strings.TrimSpace(name)
+		key := normalizeCategoryName(name)
+		if name == "" || key == "" || seen[key] {
+			return
+		}
+		seen[key] = true
+		out = append(out, Category{Name: xmlEscape(name), Lang: p.Lang})
+	}
+
+	// TMDB genres are already suitable as XMLTV categories.
 	for _, genre := range entry.Genres {
-		key := strings.ToLower(genre)
-		if genre != "" && !seen[key] {
-			seen[key] = true
-			out = append(out, Category{Name: xmlEscape(genre), Lang: p.Lang})
+		appendCategory(genre)
+	}
+
+	// Channels DVR does not expose XMLTV <keyword> values, so promote only a
+	// conservative, curated subset to <category>. The original <keyword>
+	// elements are still emitted for XMLTV consumers that support them.
+	for _, keyword := range entry.Keywords {
+		if category, ok := promotedKeywordCategory(keyword); ok {
+			appendCategory(category)
 		}
 	}
+
 	return out
+}
+
+func normalizeCategoryName(value string) string {
+	return strings.Join(strings.Fields(strings.ToLower(html.UnescapeString(value))), " ")
+}
+
+func promotedKeywordCategory(keyword string) (string, bool) {
+	normalized := normalizeCategoryName(keyword)
+	category, ok := tmdbKeywordCategories[normalized]
+	return category, ok
+}
+
+var tmdbKeywordCategories = map[string]string{
+	"sitcom":                       "Sitcom",
+	"situation comedy":             "Sitcom",
+	"true crime":                   "True Crime",
+	"police":                       "Police",
+	"police investigation":         "Police",
+	"courtroom":                    "Courtroom",
+	"courtroom drama":              "Courtroom",
+	"medical":                      "Medical",
+	"medical drama":                "Medical",
+	"cooking":                      "Cooking",
+	"cooking show":                 "Cooking",
+	"travel":                       "Travel",
+	"travel show":                  "Travel",
+	"history":                      "History",
+	"historical documentary":       "History",
+	"military":                     "Military",
+	"espionage":                    "Espionage",
+	"spy":                          "Espionage",
+	"superhero":                    "Superhero",
+	"holiday":                      "Holiday",
+	"christmas":                    "Christmas",
+	"western":                      "Western",
+	"documentary":                  "Documentary",
+	"reality":                      "Reality",
+	"reality competition":          "Competition",
+	"competition":                  "Competition",
+	"home improvement":             "Home Improvement",
+	"home renovation":              "Home Improvement",
+	"automotive":                   "Automotive",
+	"cars":                         "Automotive",
+	"nature":                       "Nature",
+	"wildlife":                     "Nature",
+	"science":                      "Science",
+	"science documentary":          "Science",
 }
 
 func (p Program) TMDBKeywords() []string {
