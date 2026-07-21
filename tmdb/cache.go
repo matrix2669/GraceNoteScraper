@@ -2,13 +2,19 @@ package tmdb
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
-const cacheTTL = 7 * 24 * time.Hour
+const (
+	cacheTTL          = 7 * 24 * time.Hour
+	cacheSaveEvery    = 250
+	cacheSaveInterval = time.Minute
+)
 
 type Credit struct {
 	Name string `json:"name"`
@@ -38,15 +44,20 @@ type CacheEntry struct {
 }
 
 type Cache struct {
-	mu      sync.Mutex
-	entries map[string]CacheEntry
-	path    string
+	mu           sync.Mutex
+	saveMu       sync.Mutex
+	entries      map[string]CacheEntry
+	path         string
+	version      uint64
+	savedVersion uint64
+	lastSave     time.Time
 }
 
 func LoadCache(path string) *Cache {
 	c := &Cache{
-		entries: make(map[string]CacheEntry),
-		path:    path,
+		entries:  make(map[string]CacheEntry),
+		path:     path,
+		lastSave: time.Now(),
 	}
 
 	data, err := os.ReadFile(path)
@@ -62,9 +73,9 @@ func LoadCache(path string) *Cache {
 }
 
 func (c *Cache) Get(key string) (CacheEntry, bool) {
-	// Treat obvious news, shopping, religious, sports, and filler titles as
-	// negative cache hits. This prevents any TMDB HTTP request while leaving
-	// movies and normal catalog series untouched.
+	// Treat obvious news, shopping, religious, sports, filler, and excluded
+	// channel/category titles as negative cache hits. This prevents a TMDB HTTP
+	// request without removing the programme from the generated guide.
 	if tmdbSkipReason(key) != "" {
 		return CacheEntry{}, true
 	}
@@ -77,6 +88,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	}
 	if time.Since(time.Unix(entry.FetchedAt, 0)) > cacheTTL {
 		delete(c.entries, key)
+		c.version++
 		c.mu.Unlock()
 		return CacheEntry{}, false
 	}
@@ -86,27 +98,109 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	return entry, true
 }
 
-// Set stores a lookup result. An empty entry is valid and acts as a negative cache.
+// Set stores a lookup result. An empty entry is valid and acts as a negative
+// cache. During long scrapes the cache is flushed approximately once per minute
+// or every cacheSaveEvery completed lookups, whichever happens first.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	entry.FetchedAt = time.Now().Unix()
 
 	c.mu.Lock()
 	c.entries[key] = entry
+	c.version++
+	pending := c.version - c.savedVersion
+	saveDue := pending >= cacheSaveEvery || time.Since(c.lastSave) >= cacheSaveInterval
 	c.mu.Unlock()
 
 	registerCompletedLookup(key, entry)
+
+	if saveDue {
+		c.save(false)
+	}
 }
 
+// Save flushes all unsaved cache changes. It remains safe to call during or at
+// the end of a scrape because writes use a snapshot and atomic rename.
 func (c *Cache) Save() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.save(true)
+}
 
-	data, err := json.MarshalIndent(c.entries, "", "  ")
+func (c *Cache) save(force bool) {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+
+	c.mu.Lock()
+	version := c.version
+	pending := version - c.savedVersion
+	if pending == 0 {
+		c.mu.Unlock()
+		return
+	}
+	if !force && pending < cacheSaveEvery && time.Since(c.lastSave) < cacheSaveInterval {
+		c.mu.Unlock()
+		return
+	}
+
+	snapshot := make(map[string]CacheEntry, len(c.entries))
+	for key, entry := range c.entries {
+		snapshot[key] = entry
+	}
+	c.mu.Unlock()
+
+	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
 		log.Printf("tmdb: failed to marshal cache: %v", err)
 		return
 	}
-	if err := os.WriteFile(c.path, data, 0644); err != nil {
+	if err := writeFileAtomic(c.path, data, 0644); err != nil {
 		log.Printf("tmdb: failed to write cache file: %v", err)
+		return
 	}
+
+	c.mu.Lock()
+	if version > c.savedVersion {
+		c.savedVersion = version
+	}
+	c.lastSave = time.Now()
+	remaining := c.version - c.savedVersion
+	entryCount := len(c.entries)
+	c.mu.Unlock()
+
+	log.Printf("tmdb: saved cache (%d entries, %d new, %d pending)", entryCount, pending, remaining)
+}
+
+func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
+	dir := filepath.Dir(path)
+	base := filepath.Base(path)
+
+	tmp, err := os.CreateTemp(dir, "."+base+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create temporary cache file: %w", err)
+	}
+	tmpName := tmp.Name()
+	removeTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if removeTemp {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	if _, err := tmp.Write(data); err != nil {
+		return fmt.Errorf("write temporary cache file: %w", err)
+	}
+	if err := tmp.Chmod(mode); err != nil {
+		return fmt.Errorf("set temporary cache permissions: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("sync temporary cache file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary cache file: %w", err)
+	}
+	if err := os.Rename(tmpName, path); err != nil {
+		return fmt.Errorf("replace cache file: %w", err)
+	}
+
+	removeTemp = false
+	return nil
 }
