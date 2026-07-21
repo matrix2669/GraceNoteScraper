@@ -15,11 +15,14 @@ type programEligibility struct {
 
 var channelEligibilityRegistry = struct {
 	sync.RWMutex
-	channels map[string]string
-	programs map[string]programEligibility
+	channels    map[string]string
+	programs    map[string]programEligibility
+	scanned     map[string]struct{}
+	scanStarted bool
 }{
 	channels: make(map[string]string),
 	programs: make(map[string]programEligibility),
+	scanned:  make(map[string]struct{}),
 }
 
 // RegisterChannelEligibility records whether a channel should remain in the
@@ -29,6 +32,17 @@ func RegisterChannelEligibility(channelID, callSign, affiliate, channelNo string
 	reason := channelExclusionReason(callSign, affiliate, channelNo)
 
 	channelEligibilityRegistry.Lock()
+	// The first channel observed after a completed lookup pass begins a new
+	// scrape. Reset only the in-memory eligibility/progress state; guide and
+	// persistent TMDB cache data are untouched.
+	if channelEligibilityRegistry.scanStarted &&
+		len(channelEligibilityRegistry.programs) > 0 &&
+		len(channelEligibilityRegistry.scanned) >= len(channelEligibilityRegistry.programs) {
+		channelEligibilityRegistry.channels = make(map[string]string)
+		channelEligibilityRegistry.programs = make(map[string]programEligibility)
+		channelEligibilityRegistry.scanned = make(map[string]struct{})
+		channelEligibilityRegistry.scanStarted = false
+	}
 	previous := channelEligibilityRegistry.channels[channelID]
 	channelEligibilityRegistry.channels[channelID] = reason
 	channelEligibilityRegistry.Unlock()
@@ -76,6 +90,25 @@ func programChannelSkipReason(key string) string {
 		return ""
 	}
 	return state.reason
+}
+
+// recordLookupProgress marks one unique title key as processed. Cache hits,
+// negative-cache hits, deterministic skips, successful matches, and failed
+// matches all count toward the same scan total.
+func recordLookupProgress(key string) {
+	channelEligibilityRegistry.Lock()
+	channelEligibilityRegistry.scanStarted = true
+	channelEligibilityRegistry.scanned[key] = struct{}{}
+	channelEligibilityRegistry.Unlock()
+}
+
+func lookupScanProgress() (done, total int, active bool) {
+	channelEligibilityRegistry.RLock()
+	done = len(channelEligibilityRegistry.scanned)
+	total = len(channelEligibilityRegistry.programs)
+	active = channelEligibilityRegistry.scanStarted && total > 0
+	channelEligibilityRegistry.RUnlock()
+	return
 }
 
 func programCategoryExclusionReason(categories []string) string {
@@ -252,5 +285,7 @@ func resetChannelEligibilityRegistryForTest() {
 	channelEligibilityRegistry.Lock()
 	channelEligibilityRegistry.channels = make(map[string]string)
 	channelEligibilityRegistry.programs = make(map[string]programEligibility)
+	channelEligibilityRegistry.scanned = make(map[string]struct{})
+	channelEligibilityRegistry.scanStarted = false
 	channelEligibilityRegistry.Unlock()
 }
