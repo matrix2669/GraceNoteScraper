@@ -23,7 +23,8 @@ var channelEligibilityRegistry = struct {
 }
 
 // RegisterChannelEligibility records whether a channel should remain in the
-// guide but be excluded from TMDB enrichment.
+// guide but be excluded from TMDB enrichment. Channel classification uses only
+// channel metadata and never inspects programme titles or categories.
 func RegisterChannelEligibility(channelID, callSign, affiliate, channelNo string) {
 	reason := channelExclusionReason(callSign, affiliate, channelNo)
 
@@ -38,15 +39,24 @@ func RegisterChannelEligibility(channelID, callSign, affiliate, channelNo string
 	}
 }
 
-// RegisterProgramEligibility records whether a title occurs on an enrichment-
-// eligible channel. A title is skipped only when every observed occurrence is
-// on an excluded channel; an occurrence on any normal channel keeps it eligible.
-func RegisterProgramEligibility(title string, isMovie bool, channelID string) {
+// RegisterProgramEligibility records whether a title occurs in an eligible
+// context. Programme categories affect only that programme/title lookup and are
+// never used to classify its channel. A title remains eligible when it appears
+// at least once on a normal channel with a normal category.
+func RegisterProgramEligibility(title string, isMovie bool, channelID string, categories []string) {
 	key := cacheKey(title, isMovie)
 
 	channelEligibilityRegistry.Lock()
 	state := channelEligibilityRegistry.programs[key]
-	if reason := channelEligibilityRegistry.channels[channelID]; reason != "" {
+
+	reason := ""
+	if channelReason := channelEligibilityRegistry.channels[channelID]; channelReason != "" {
+		reason = "channel-" + channelReason
+	} else if categoryReason := programCategoryExclusionReason(categories); categoryReason != "" {
+		reason = "category-" + categoryReason
+	}
+
+	if reason != "" {
 		state.excludedSeen = true
 		if state.reason == "" {
 			state.reason = reason
@@ -65,7 +75,29 @@ func programChannelSkipReason(key string) string {
 	if !ok || state.eligibleSeen || !state.excludedSeen {
 		return ""
 	}
-	return "channel-" + state.reason
+	return state.reason
+}
+
+func programCategoryExclusionReason(categories []string) string {
+	excluded := configuredProgramCategories()
+	for _, raw := range categories {
+		category := strings.ToLower(strings.TrimSpace(raw))
+		category = strings.TrimPrefix(category, "filter-")
+		category = normalizeChannelText(category)
+		if category == "" {
+			continue
+		}
+		if excluded[category] {
+			return category
+		}
+		if excluded["faith"] && (category == "religion" || category == "religious") {
+			return "faith"
+		}
+		if excluded["local"] && (category == "local access" || category == "public access") {
+			return "local"
+		}
+	}
+	return ""
 }
 
 func channelExclusionReason(callSign, affiliate, channelNo string) string {
@@ -108,6 +140,21 @@ func configuredChannelGroups() map[string]bool {
 		}
 	}
 	return groups
+}
+
+func configuredProgramCategories() map[string]bool {
+	value, exists := os.LookupEnv("TMDB_EXCLUDE_PROGRAM_CATEGORIES")
+	if !exists {
+		value = "local,faith"
+	}
+	categories := make(map[string]bool)
+	for _, category := range strings.Split(value, ",") {
+		category = normalizeChannelText(category)
+		if category != "" {
+			categories[category] = true
+		}
+	}
+	return categories
 }
 
 func configuredCustomChannelPatterns() []string {
