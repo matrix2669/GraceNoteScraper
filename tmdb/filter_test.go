@@ -39,6 +39,8 @@ func TestTMDBSkipReasonKeepsCatalogTitles(t *testing.T) {
 		"The Newsroom",
 		"Sports Night",
 		"Friday Night Lights",
+		"Formula 1: Drive to Survive",
+		"Racing Wives",
 		"Law & Order: Special Victims Unit",
 	}
 
