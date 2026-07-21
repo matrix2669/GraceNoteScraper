@@ -62,6 +62,13 @@ func LoadCache(path string) *Cache {
 }
 
 func (c *Cache) Get(key string) (CacheEntry, bool) {
+	// Treat obvious news, shopping, religious, sports, and filler titles as
+	// negative cache hits. This prevents any TMDB HTTP request while leaving
+	// movies and normal catalog series untouched.
+	if tmdbSkipReason(key) != "" {
+		return CacheEntry{}, true
+	}
+
 	c.mu.Lock()
 	entry, ok := c.entries[key]
 	if !ok {
