@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -97,6 +98,10 @@ func formatXMLTVTime(iso string) string {
 
 // converts a JSON channel to a template Channel struct.
 func ConvertChannel(ch web.JSONChannel) Channel {
+	// Register whether this channel remains in the guide but should be excluded
+	// from TMDB enrichment. This does not alter the returned channel or events.
+	tmdb.RegisterChannelEligibility(ch.ChannelID, ch.CallSign, ch.AffiliateName, ch.ChannelNo)
+
 	// Build icon URL: strip leading slashes, strip query params, prepend http://
 	iconURL := ""
 	if ch.Thumbnail != "" {
@@ -165,10 +170,18 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 
 	// Categories from filter array (strip "filter-" prefix)
 	var categories []Category
+	isMovie := false
 	for _, f := range ev.Filter {
 		name := strings.TrimPrefix(f, "filter-")
 		categories = append(categories, Category{Name: name, Lang: lang})
+		if name == "movie" {
+			isMovie = true
+		}
 	}
+
+	// Record whether this title occurs on a channel that is eligible for TMDB.
+	// The programme itself remains unchanged and will still be rendered normally.
+	tmdb.RegisterProgramEligibility(ev.Program.Title, isMovie, channelID)
 
 	// Episode numbers
 	var episodeNumbers []EpisodeNumber
