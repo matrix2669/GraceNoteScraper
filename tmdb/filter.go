@@ -6,9 +6,14 @@ import "strings"
 // movie/series catalog titles. Returning a reason causes the lookup to be
 // treated as a negative cache hit without making an HTTP request to TMDB.
 //
-// Movies are deliberately never filtered: a film may legitimately contain
-// words such as news, church, football, or jewelry in its title.
+// Movies are deliberately never filtered by title: a film may legitimately
+// contain words such as news, church, football, or jewelry in its title.
+// Channel-level exclusions apply to both movies and TV programmes.
 func tmdbSkipReason(key string) string {
+	if reason := programChannelSkipReason(key); reason != "" {
+		return reason
+	}
+
 	if !strings.HasPrefix(key, "tv:") {
 		return ""
 	}
