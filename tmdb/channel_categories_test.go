@@ -14,6 +14,9 @@ func TestClassifyChannelProgramCategories(t *testing.T) {
 	}{
 		{name: "cnn hd", callSign: "CNNHD", want: []string{"News"}},
 		{name: "fox news", callSign: "FNCHD", want: []string{"News"}},
+		{name: "fox business", callSign: "FBNHD", want: []string{"News"}},
+		{name: "bloomberg", callSign: "BLOOMHD", want: []string{"News"}},
+		{name: "ms now", callSign: "MSNOW", want: []string{"News"}},
 		{name: "newsmax", callSign: "NEWSMXH", want: []string{"News"}},
 		{name: "newsnation hd", callSign: "NEWSNTN", affiliate: "Independent", want: []string{"News"}},
 		{name: "newsnation sd", callSign: "NWSNTSD", affiliate: "Independent", want: []string{"News"}},
