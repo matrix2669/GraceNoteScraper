@@ -231,15 +231,16 @@ func loadFallbackGrid(path string, unixTime int64) (*GridResponse, error) {
 	eventsByChannel := make(map[string][]JSONEvent)
 	eventCount := 0
 	for _, program := range cached.Guide.Programs {
-		start, err := parseXMLTVTime(program.Start)
-		if err != nil || start.Before(windowStart) || !start.Before(windowEnd) {
+		start, startErr := parseXMLTVTime(program.Start)
+		stop, stopErr := parseXMLTVTime(program.Stop)
+		if startErr != nil || stopErr != nil || !start.Before(windowEnd) || !stop.After(windowStart) {
 			continue
 		}
 		eventsByChannel[program.Channel] = append(eventsByChannel[program.Channel], cachedProgramToEvent(program))
 		eventCount++
 	}
 	if eventCount == 0 {
-		return nil, fmt.Errorf("guide cache contains no programmes starting in %s to %s",
+		return nil, fmt.Errorf("guide cache contains no programmes overlapping %s to %s",
 			windowStart.Format(time.RFC3339), windowEnd.Format(time.RFC3339))
 	}
 
@@ -329,7 +330,7 @@ func cachedProgramToEvent(program cachedProgram) JSONEvent {
 	var filters []string
 	for _, category := range program.Categories {
 		name := strings.ToLower(strings.TrimSpace(html.UnescapeString(category.Name)))
-		if name == "" {
+		if name == "" || name == "series" {
 			continue
 		}
 		filter := "filter-" + name
