@@ -23,8 +23,16 @@ func RegisterChannelProgramCategories(channelID, callSign, affiliate, channelNo 
 	channelProgramCategoryRegistry.Unlock()
 
 	if len(categories) > 0 {
-		name := strings.TrimSpace(firstNonEmpty(affiliate, callSign, channelID))
-		log.Printf("Guide: channel %s %s adds programme category %s", channelNo, name, strings.Join(categories, ", "))
+		label := strings.TrimSpace(callSign)
+		if label == "" {
+			label = strings.TrimSpace(affiliate)
+		} else if affiliate = strings.TrimSpace(affiliate); affiliate != "" && !strings.EqualFold(label, affiliate) {
+			label += " (" + affiliate + ")"
+		}
+		if label == "" {
+			label = channelID
+		}
+		log.Printf("Guide: channel %s %s adds programme category %s", channelNo, label, strings.Join(categories, ", "))
 	}
 }
 
@@ -93,6 +101,7 @@ func isDedicatedNewsChannel(callSign, affiliate string) bool {
 	if hasChannelCallSignPrefix(callSign,
 		"cnn", "cnbc", "newsmx", "newsntn", "nwsnt", "cspan",
 		"bbcwdn", "bbcna", "bbcnews", "n12", "i24ne",
+		"msnow", "fbn", "bloom",
 	) {
 		return true
 	}
@@ -108,9 +117,13 @@ func isDedicatedNewsChannel(callSign, affiliate string) bool {
 		"cnbc",
 		"cnbc world",
 		"fox news channel",
+		"fox business network",
 		"news 12",
 		"newsmax",
 		"newsnation",
+		"ms now",
+		"msnbc",
+		"bloomberg television",
 		"c span",
 		"bbc world news",
 		"bbc news",
