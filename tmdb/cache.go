@@ -78,6 +78,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	// request without removing the programme from the generated guide.
 	if tmdbSkipReason(key) != "" {
 		recordLookupProgress(key)
+		c.flushCompletedScan()
 		return CacheEntry{}, true
 	}
 
@@ -99,6 +100,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 	// completed title in the current scan.
 	recordLookupProgress(key)
 	registerCompletedLookup(key, entry)
+	c.flushCompletedScan()
 	return entry, true
 }
 
@@ -106,7 +108,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 // cache for cacheTTL, so titles with no sufficiently close match are not queried
 // again on every scrape. During long scrapes the cache is flushed approximately
 // once per minute or every cacheSaveEvery completed lookups, whichever happens
-// first.
+// first. The final title in every scan also forces a flush.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	entry.FetchedAt = time.Now().Unix()
 
@@ -120,9 +122,24 @@ func (c *Cache) Set(key string, entry CacheEntry) {
 	recordLookupProgress(key)
 	registerCompletedLookup(key, entry)
 
+	if c.flushCompletedScan() {
+		return
+	}
 	if saveDue {
 		c.save(false)
 	}
+}
+
+// flushCompletedScan performs a final forced save as soon as every registered
+// unique title has been processed. It returns true when the scan was complete,
+// even if there were no pending cache changes to write.
+func (c *Cache) flushCompletedScan() bool {
+	done, total, active := lookupScanProgress()
+	if !active || done < total {
+		return false
+	}
+	c.save(true)
+	return true
 }
 
 // Save flushes all unsaved cache changes. It remains safe to call during or at
