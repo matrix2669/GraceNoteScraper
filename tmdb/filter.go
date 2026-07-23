@@ -50,7 +50,8 @@ func tmdbSkipReason(key string) string {
 func hasAnyTitlePhrase(title string, phrases []string) bool {
 	padded := " " + title + " "
 	for _, phrase := range phrases {
-		if strings.Contains(padded, " "+phrase+" ") {
+		phrase = normalizeTitle(phrase)
+		if phrase != "" && strings.Contains(padded, " "+phrase+" ") {
 			return true
 		}
 	}
