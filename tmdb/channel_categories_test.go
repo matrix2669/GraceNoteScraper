@@ -24,6 +24,8 @@ func TestClassifyChannelProgramCategories(t *testing.T) {
 		{name: "bbc world news", callSign: "BBCWDNA", want: []string{"News"}},
 		{name: "bbc news hd", callSign: "BBCNAHD", want: []string{"News"}},
 		{name: "c span", callSign: "CSPANHD", want: []string{"News"}},
+		{name: "c span 2 abbreviated", callSign: "CSPN2HD", want: []string{"News"}},
+		{name: "c span 3 abbreviated", callSign: "CSPN3HD", want: []string{"News"}},
 		{name: "i24 news", callSign: "I24NEHD", want: []string{"News"}},
 		{name: "ytn", callSign: "YTN", want: []string{"News"}},
 		{name: "espn", callSign: "ESPNHD", want: []string{"Sports"}},
