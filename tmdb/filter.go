@@ -79,15 +79,12 @@ func isObviousSportsTitle(title string) bool {
 	if !hasAnyTitlePhrase(title, sportsTitleTerms) {
 		return false
 	}
-	if hasAnyTitlePhrase(title, sportsBroadcastCues) {
-		return true
-	}
 
-	// Short generic listings such as "IPL Cricket", "Liga ACB Basketball",
-	// and "PGA Tour Golf" are almost always event programming. Longer titles
-	// without broadcast cues remain eligible so catalog series such as
-	// "Formula 1: Drive to Survive" are not discarded.
-	return len(strings.Fields(title)) <= 4
+	// A sport name by itself is not sufficient. This keeps catalog series such
+	// as "Basketball Wives" and "Racing Wives" eligible. Generic events must
+	// also contain a strong broadcast cue such as live, highlights, qualifier,
+	// championship, tournament, preview, or analysis.
+	return hasAnyTitlePhrase(title, sportsBroadcastCues)
 }
 
 var tmdbFilterExceptions = map[string]struct{}{
@@ -100,6 +97,7 @@ var tmdbFilterExceptions = map[string]struct{}{
 	"friday night lights":        {},
 	"formula 1 drive to survive": {},
 	"racing wives":               {},
+	"basketball wives":           {},
 }
 
 var newsTitlePhrases = []string{
@@ -130,6 +128,11 @@ var shoppingTitlePhrases = []string{
 	"jtv",
 	"jewelry",
 	"jewels",
+	"gem collectors",
+	"gemstone",
+	"opal hunter",
+	"fine art auction",
+	"auction live",
 	"skincare",
 	"mattresses",
 	"free shipping",
@@ -146,20 +149,28 @@ var shoppingTitlePhrases = []string{
 var religiousTitlePhrases = []string{
 	"religious programming",
 	"church service",
+	"church of our lord",
 	"holy mass",
 	"sunday mass",
 	"daily mass",
+	"santa messa",
 	"with pastor",
 	"with bishop",
+	"with prophet",
 	"bible study",
 	"biblical truth",
+	"sabbath school",
 	"gospel service",
+	"gospel outreach",
 	"catholic mass",
 	"active catholics",
+	"christians and jews",
+	"3abn",
+	"jesus 4 asia",
 	"gurudwara",
 	"rosary",
 	"coronilla",
-	"ministry",
+	"ministries",
 	"worship service",
 	"sadhguru",
 }
@@ -188,10 +199,31 @@ var sportsBroadcastPhrases = []string{
 	"qualifiers",
 	"training camp",
 	"classic games",
+	"pga tour golf",
+	"pga korn ferry tour golf",
+	"korn ferry tour golf",
+	"major league table tennis",
+	"nrl women's premiership",
+	"wnba on ion",
+	"nhra drag racing",
+	"nhra racing",
+	"ufl football",
 	"college golf",
 	"college basketball",
 	"college football",
+	"college baseball",
+	"college softball",
+	"college hockey",
+	"college soccer",
+	"college volleyball",
+	"college lacrosse",
+	"college wrestling",
+	"college swimming",
+	"college swimming and diving",
 	"college track and field",
+	"high school football",
+	"high school basketball",
+	"kickboxing",
 }
 
 var sportsTitleTerms = []string{
@@ -199,12 +231,17 @@ var sportsTitleTerms = []string{
 	"basketball",
 	"football",
 	"baseball",
+	"softball",
 	"hockey",
 	"soccer",
 	"cricket",
 	"tennis",
+	"table tennis",
+	"volleyball",
+	"rugby",
 	"wrestling",
 	"boxing",
+	"kickboxing",
 	"mixed martial arts",
 	"mma",
 	"ufc",
@@ -222,11 +259,14 @@ var sportsTitleTerms = []string{
 	"motogp",
 	"nascar",
 	"indycar",
+	"nhra",
 	"supercars",
 	"motorsport",
 	"racing",
+	"drag racing",
 	"lacrosse",
 	"swimming",
+	"track and field",
 	"karate combat",
 	"strongest man",
 }
@@ -241,6 +281,7 @@ var sportsBroadcastCues = []string{
 	"preview",
 	"championship",
 	"tournament",
+	"premiership",
 	"classic",
 	"all access",
 	"full impact",
