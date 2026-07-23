@@ -99,7 +99,7 @@ func isDedicatedSportsChannel(callSign, affiliate string) bool {
 
 func isDedicatedNewsChannel(callSign, affiliate string) bool {
 	if hasChannelCallSignPrefix(callSign,
-		"cnn", "cnbc", "newsmx", "newsntn", "nwsnt", "cspan",
+		"cnn", "cnbc", "newsmx", "newsntn", "nwsnt", "cspan", "cspn",
 		"bbcwdn", "bbcna", "bbcnews", "n12", "i24ne",
 		"msnow", "fbn", "bloom",
 	) {
