@@ -48,7 +48,7 @@ func TestGetDataByTimeRetriesTransientFailure(t *testing.T) {
 	}
 }
 
-func TestLoadFallbackGridReturnsOnlyRequestedWindow(t *testing.T) {
+func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "guide_cache.json")
 	windowStart := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC)
 
@@ -63,6 +63,14 @@ func TestLoadFallbackGridReturnsOnlyRequestedWindow(t *testing.T) {
 			}},
 			Programs: []cachedProgram{
 				{
+					Start:       "20260725053000 +0000",
+					Stop:        "20260725063000 +0000",
+					Channel:     "10139",
+					Title:       "Overlapping Business",
+					Description: "Started before the failed window.",
+					Length:      "60",
+				},
+				{
 					Start:       "20260725070000 +0000",
 					Stop:        "20260725080000 +0000",
 					Channel:     "10139",
@@ -71,7 +79,7 @@ func TestLoadFallbackGridReturnsOnlyRequestedWindow(t *testing.T) {
 					Length:      "60",
 					IconSrc:     "http://localhost:8080/img?url=http%3A%2F%2Fzap2it.tmsimg.com%2Fassets%2Fp12345_b_v10_aa.jpg",
 					URL:         "https://tvlistings.gracenote.com/overview.html?programSeriesId=SH12345678&amp;tmsId=EP123456780001",
-					Categories:  []cachedCategory{{Name: "news"}},
+					Categories:  []cachedCategory{{Name: "news"}, {Name: "Series"}},
 					New:         true,
 				},
 				{
@@ -97,10 +105,14 @@ func TestLoadFallbackGridReturnsOnlyRequestedWindow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("loadFallbackGrid: %v", err)
 	}
-	if len(grid.Channels) != 1 || len(grid.Channels[0].Events) != 1 {
+	if len(grid.Channels) != 1 || len(grid.Channels[0].Events) != 2 {
 		t.Fatalf("fallback grid sizes = %d channels, %d events", len(grid.Channels), len(grid.Channels[0].Events))
 	}
-	event := grid.Channels[0].Events[0]
+	if grid.Channels[0].Events[0].Program.Title != "Overlapping Business" {
+		t.Fatalf("overlapping event was not retained: %q", grid.Channels[0].Events[0].Program.Title)
+	}
+
+	event := grid.Channels[0].Events[1]
 	if event.Program.Title != "Morning Business" {
 		t.Fatalf("event title = %q", event.Program.Title)
 	}
