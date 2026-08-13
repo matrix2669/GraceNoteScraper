@@ -18,6 +18,10 @@ func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
 	return f(req)
 }
 
+func testGuideSource() GuideSource {
+	return GuideSource{Country: "USA", ZipCode: "11743", Headend: "NY67791", LineupID: "NY67791-X", Device: "X", Language: "en"}
+}
+
 func TestGetDataByTimeRetriesTransientFailure(t *testing.T) {
 	originalDelays := gridRetryDelays
 	gridRetryDelays = []time.Duration{0, 0, 0}
@@ -51,45 +55,16 @@ func TestGetDataByTimeRetriesTransientFailure(t *testing.T) {
 func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "guide_cache.json")
 	windowStart := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC)
-
+	source := testGuideSource()
 	fixture := cachedGuideFile{
 		SavedAt: windowStart.Add(-24 * time.Hour),
+		Source:  source,
 		Guide: cachedTVGuide{
-			Channels: []cachedChannel{{
-				ID:        "10139",
-				CallSign:  "CNBC",
-				ChannelNo: "102",
-				IconURL:   "http://localhost:8080/img?url=https%3A%2F%2Fexample.com%2Fcnbc.png",
-			}},
+			Channels: []cachedChannel{{ID: "10139", CallSign: "CNBC", ChannelNo: "102", IconURL: "http://localhost:8080/img?url=https%3A%2F%2Fexample.com%2Fcnbc.png"}},
 			Programs: []cachedProgram{
-				{
-					Start:       "20260725053000 +0000",
-					Stop:        "20260725063000 +0000",
-					Channel:     "10139",
-					Title:       "Overlapping Business",
-					Description: "Started before the failed window.",
-					Length:      "60",
-				},
-				{
-					Start:       "20260725070000 +0000",
-					Stop:        "20260725080000 +0000",
-					Channel:     "10139",
-					Title:       "Morning Business",
-					Description: "Business news.",
-					Length:      "60",
-					IconSrc:     "http://localhost:8080/img?url=http%3A%2F%2Fzap2it.tmsimg.com%2Fassets%2Fp12345_b_v10_aa.jpg",
-					URL:         "https://tvlistings.gracenote.com/overview.html?programSeriesId=SH12345678&amp;tmsId=EP123456780001",
-					Categories:  []cachedCategory{{Name: "news"}, {Name: "Series"}},
-					New:         true,
-				},
-				{
-					Start:       "20260725130000 +0000",
-					Stop:        "20260725140000 +0000",
-					Channel:     "10139",
-					Title:       "Outside Window",
-					Description: "Should not be returned.",
-					Length:      "60",
-				},
+				{Start: "20260725053000 +0000", Stop: "20260725063000 +0000", Channel: "10139", Title: "Overlapping Business", Description: "Started before the failed window.", Length: "60"},
+				{Start: "20260725070000 +0000", Stop: "20260725080000 +0000", Channel: "10139", Title: "Morning Business", Description: "Business news.", Length: "60", IconSrc: "http://localhost:8080/img?url=http%3A%2F%2Fzap2it.tmsimg.com%2Fassets%2Fp12345_b_v10_aa.jpg", URL: "https://tvlistings.gracenote.com/overview.html?programSeriesId=SH12345678&amp;tmsId=EP123456780001", Categories: []cachedCategory{{Name: "news"}, {Name: "Series"}}, New: true},
+				{Start: "20260725130000 +0000", Stop: "20260725140000 +0000", Channel: "10139", Title: "Outside Window", Description: "Should not be returned.", Length: "60"},
 			},
 		},
 	}
@@ -101,7 +76,7 @@ func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testin
 		t.Fatalf("write fixture: %v", err)
 	}
 
-	grid, err := loadFallbackGrid(path, windowStart.Unix())
+	grid, err := loadFallbackGrid(path, windowStart.Unix(), source)
 	if err != nil {
 		t.Fatalf("loadFallbackGrid: %v", err)
 	}
@@ -111,7 +86,6 @@ func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testin
 	if grid.Channels[0].Events[0].Program.Title != "Overlapping Business" {
 		t.Fatalf("overlapping event was not retained: %q", grid.Channels[0].Events[0].Program.Title)
 	}
-
 	event := grid.Channels[0].Events[1]
 	if event.Program.Title != "Morning Business" {
 		t.Fatalf("event title = %q", event.Program.Title)
@@ -127,5 +101,23 @@ func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testin
 	}
 	if len(event.Flag) != 1 || event.Flag[0] != "New" {
 		t.Fatalf("flags = %v", event.Flag)
+	}
+}
+
+func TestLoadFallbackGridRejectsDifferentGuideSource(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "guide_cache.json")
+	windowStart := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC)
+	source := testGuideSource()
+	data, err := json.Marshal(cachedGuideFile{SavedAt: windowStart.Add(-24 * time.Hour), Source: source})
+	if err != nil {
+		t.Fatalf("marshal fixture: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	other := source
+	other.LineupID = "OTHER-LINEUP"
+	if _, err := loadFallbackGrid(path, windowStart.Unix(), other); err == nil || !strings.Contains(err.Error(), "source mismatch") {
+		t.Fatalf("expected source mismatch error, got %v", err)
 	}
 }
