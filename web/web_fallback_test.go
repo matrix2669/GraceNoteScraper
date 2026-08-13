@@ -1,12 +1,10 @@
 package web
 
 import (
-	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +12,20 @@ import (
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
-	return f(req)
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+func useTempGridCache(t *testing.T) {
+	original := gridCacheRoot
+	gridCacheRoot = t.TempDir()
+	t.Cleanup(func() { gridCacheRoot = original })
+}
+
+func testPreferences() Preferences {
+	return Preferences{Country: "USA", ZipCode: "11743", Headend: "NY67791", LineupId: "NY67791-X", Device: "X", Language: "en"}
 }
 
 func TestGetDataByTimeRetriesTransientFailure(t *testing.T) {
+	useTempGridCache(t)
 	originalDelays := gridRetryDelays
 	gridRetryDelays = []time.Duration{0, 0, 0}
 	defer func() { gridRetryDelays = originalDelays }()
@@ -33,99 +40,105 @@ func TestGetDataByTimeRetriesTransientFailure(t *testing.T) {
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Status:     "200 OK",
-				Body:       io.NopCloser(strings.NewReader(`{"channels":[]}`)),
+				Body:       io.NopCloser(strings.NewReader("{\"channels\":[]}")),
 				Header:     make(http.Header),
 			}, nil
 		})},
-		pref: Preferences{Country: "USA", ZipCode: "11743", Headend: "NY67791", LineupId: "NY67791-X", Device: "X", Language: "en"},
+		pref: testPreferences(),
 	}
 
-	if _, err := client.GetDataByTime(time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()); err != nil {
-		t.Fatalf("GetDataByTime returned error after successful retry: %v", err)
+	gridTime := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()
+	if _, err := client.GetDataByTime(gridTime); err != nil {
+		t.Fatalf("GetDataByTime: %v", err)
 	}
 	if attempts != 3 {
 		t.Fatalf("attempts = %d, want 3", attempts)
 	}
+	if _, _, err := loadGridCache(gridTime, client.Source()); err != nil {
+		t.Fatalf("cache missing: %v", err)
+	}
 }
 
-func TestLoadFallbackGridReturnsOnlyProgramsOverlappingRequestedWindow(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "guide_cache.json")
-	windowStart := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC)
+func TestGetDataByTimeFallsBackToCachedRawGrid(t *testing.T) {
+	useTempGridCache(t)
+	originalDelays := gridRetryDelays
+	gridRetryDelays = []time.Duration{0, 0, 0}
+	defer func() { gridRetryDelays = originalDelays }()
 
-	fixture := cachedGuideFile{
-		SavedAt: windowStart.Add(-24 * time.Hour),
-		Guide: cachedTVGuide{
-			Channels: []cachedChannel{{
-				ID:        "10139",
-				CallSign:  "CNBC",
-				ChannelNo: "102",
-				IconURL:   "http://localhost:8080/img?url=https%3A%2F%2Fexample.com%2Fcnbc.png",
-			}},
-			Programs: []cachedProgram{
-				{
-					Start:       "20260725053000 +0000",
-					Stop:        "20260725063000 +0000",
-					Channel:     "10139",
-					Title:       "Overlapping Business",
-					Description: "Started before the failed window.",
-					Length:      "60",
-				},
-				{
-					Start:       "20260725070000 +0000",
-					Stop:        "20260725080000 +0000",
-					Channel:     "10139",
-					Title:       "Morning Business",
-					Description: "Business news.",
-					Length:      "60",
-					IconSrc:     "http://localhost:8080/img?url=http%3A%2F%2Fzap2it.tmsimg.com%2Fassets%2Fp12345_b_v10_aa.jpg",
-					URL:         "https://tvlistings.gracenote.com/overview.html?programSeriesId=SH12345678&amp;tmsId=EP123456780001",
-					Categories:  []cachedCategory{{Name: "news"}, {Name: "Series"}},
-					New:         true,
-				},
-				{
-					Start:       "20260725130000 +0000",
-					Stop:        "20260725140000 +0000",
-					Channel:     "10139",
-					Title:       "Outside Window",
-					Description: "Should not be returned.",
-					Length:      "60",
-				},
-			},
-		},
+	prefs := testPreferences()
+	gridTime := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()
+	cached := &GridResponse{Channels: []JSONChannel{{
+		ChannelID: "10139",
+		ChannelNo: "102",
+		CallSign:  "CNBC",
+		Events: []JSONEvent{{
+			StartTime: "2026-07-25T07:00:00Z",
+			EndTime:   "2026-07-25T08:00:00Z",
+			Program:   JSONProgram{ID: "EP123", Title: "Morning Business"},
+		}},
+	}}}
+	if err := saveGridCache(gridTime, prefs.Source(), cached); err != nil {
+		t.Fatalf("saveGridCache: %v", err)
 	}
-	data, err := json.Marshal(fixture)
+
+	attempts := 0
+	client := &Client{
+		Client: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			attempts++
+			return nil, errors.New("upstream unavailable")
+		})},
+		pref: prefs,
+	}
+
+	grid, err := client.GetDataByTime(gridTime)
 	if err != nil {
-		t.Fatalf("marshal fixture: %v", err)
+		t.Fatalf("fallback failed: %v", err)
 	}
-	if err := os.WriteFile(path, data, 0644); err != nil {
-		t.Fatalf("write fixture: %v", err)
+	if attempts != gridMaxAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, gridMaxAttempts)
 	}
+	if len(grid.Channels) != 1 || grid.Channels[0].Events[0].Program.Title != "Morning Business" {
+		t.Fatalf("unexpected cached grid: %#v", grid)
+	}
+}
 
-	grid, err := loadFallbackGrid(path, windowStart.Unix())
-	if err != nil {
-		t.Fatalf("loadFallbackGrid: %v", err)
-	}
-	if len(grid.Channels) != 1 || len(grid.Channels[0].Events) != 2 {
-		t.Fatalf("fallback grid sizes = %d channels, %d events", len(grid.Channels), len(grid.Channels[0].Events))
-	}
-	if grid.Channels[0].Events[0].Program.Title != "Overlapping Business" {
-		t.Fatalf("overlapping event was not retained: %q", grid.Channels[0].Events[0].Program.Title)
-	}
+func TestGridCacheIsScopedByGuideSource(t *testing.T) {
+	useTempGridCache(t)
+	gridTime := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()
+	source := testPreferences().Source()
+	other := source
+	other.LineupID = "OTHER-LINEUP"
 
-	event := grid.Channels[0].Events[1]
-	if event.Program.Title != "Morning Business" {
-		t.Fatalf("event title = %q", event.Program.Title)
+	if gridCachePath(source, gridTime) == gridCachePath(other, gridTime) {
+		t.Fatal("different lineups share cache path")
 	}
-	if event.Thumbnail != "p12345_b_v10_aa" {
-		t.Fatalf("thumbnail ID = %q", event.Thumbnail)
+	if err := saveGridCache(gridTime, source, &GridResponse{}); err != nil {
+		t.Fatalf("saveGridCache: %v", err)
 	}
-	if event.SeriesID != "SH12345678" || event.Program.ID != "EP123456780001" {
-		t.Fatalf("program IDs = %q / %q", event.SeriesID, event.Program.ID)
+	if _, _, err := loadGridCache(gridTime, other); err == nil {
+		t.Fatal("different lineup reused cached grid")
 	}
-	if len(event.Filter) != 1 || event.Filter[0] != "filter-news" {
-		t.Fatalf("filters = %v", event.Filter)
+}
+
+func TestPruneGridCacheRemovesExpiredSlots(t *testing.T) {
+	useTempGridCache(t)
+	source := testPreferences().Source()
+	oldTime := time.Now().UTC().Add(-72 * time.Hour).Unix()
+	newTime := time.Now().UTC().Add(24 * time.Hour).Unix()
+
+	if err := saveGridCache(oldTime, source, &GridResponse{}); err != nil {
+		t.Fatalf("save old grid: %v", err)
 	}
-	if len(event.Flag) != 1 || event.Flag[0] != "New" {
-		t.Fatalf("flags = %v", event.Flag)
+	if err := saveGridCache(newTime, source, &GridResponse{}); err != nil {
+		t.Fatalf("save new grid: %v", err)
+	}
+	if err := pruneGridCache(source, time.Now().UTC().Add(-48*time.Hour)); err != nil {
+		t.Fatalf("pruneGridCache: %v", err)
+	}
+	if _, err := os.Stat(gridCachePath(source, oldTime)); !os.IsNotExist(err) {
+		t.Fatalf("old grid not pruned: %v", err)
+	}
+	if _, err := os.Stat(gridCachePath(source, newTime)); err != nil {
+		t.Fatalf("new grid incorrectly pruned: %v", err)
 	}
 }
