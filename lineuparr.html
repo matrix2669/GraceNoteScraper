@@ -95,6 +95,46 @@
     .source-state.good { color: var(--accent); }
     .source-state.bad { color: var(--danger); }
 
+    .alias-panel { margin-bottom: 18px; padding: 24px 21px; }
+    .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
+    .alias-header p { max-width: 760px; margin: 9px 0 0; color: var(--muted); line-height: 1.55; }
+    .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
+    .metric { min-height: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,17,14,.48); }
+    .metric-value { font-size: 24px; font-weight: 820; letter-spacing: -.03em; }
+    .metric-label { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .scan-progress { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(7,17,14,.38); }
+    .progress-copy { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 13px; }
+    .progress-copy strong { color: var(--text); }
+    .progress-track { overflow: hidden; height: 8px; margin-top: 12px; border-radius: 999px; background: rgba(255,255,255,.07); }
+    .progress-bar { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--accent-strong),var(--accent)); transition: width .25s ease; }
+    .alias-message { display: none; margin-top: 13px; padding: 11px 12px; border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 12px; }
+    .alias-message.show { display: block; }
+    .alias-message.error { color: var(--danger); background: rgba(255,95,87,.08); }
+    .alias-message.success { color: var(--accent); background: rgba(124,230,166,.08); }
+    .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+    button.secondary { border: 1px solid var(--line); background: transparent; color: var(--text); }
+    button.secondary:hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
+    button.danger { color: var(--danger); }
+    .batch-section { margin-top: 24px; }
+    .batch-section h3 { margin: 0 0 11px; font-size: 14px; }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .market-details { margin: 18px 0 0; }
+    .market-details summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+    .market-list { display: grid; gap: 7px; margin-top: 12px; }
+    .market-row { display: grid; grid-template-columns: 48px minmax(180px,1fr) 72px 96px auto; gap: 10px; align-items: center; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 12px; }
+    .market-name { color: var(--text); font-weight: 660; }
+    .status-pill { justify-self: start; padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); }
+    .status-pill.complete { color: var(--accent); background: rgba(124,230,166,.08); }
+    .status-pill.error { color: var(--danger); background: rgba(255,95,87,.08); }
+    .status-pill.running { color: var(--warning); }
+    .market-refresh { min-height: 34px; padding: 0 10px; font-size: 11px; }
+    .market-provenance { margin: 14px 2px 0; color: #789087; font-size: 11px; line-height: 1.5; }
+
     .builder-panel { overflow: hidden; }
     .toolbar { flex-wrap: wrap; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); }
     .field { display: grid; gap: 6px; min-width: 150px; }
@@ -148,6 +188,7 @@
       .hero { grid-template-columns: 1fr; }
       .provider-pill { max-width: none; }
       .stats { grid-template-columns: repeat(3, 1fr); }
+      .metric-grid { grid-template-columns: repeat(3, 1fr); }
       .channel-main { flex-wrap: wrap; }
       .channel-copy { flex-basis: calc(100% - 120px); }
       .channel-actions { flex: 1 1 100%; margin-left: 103px; }
@@ -160,6 +201,7 @@
       .nav { flex-wrap: wrap; justify-content: flex-end; }
       .hero { gap: 20px; }
       .stats { grid-template-columns: repeat(2, 1fr); }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
       .toolbar { align-items: stretch; }
       .field { flex: 1 1 100%; }
       .actions { width: 100%; margin-left: 0; }
@@ -171,6 +213,8 @@
       details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
       .source-message { white-space: normal; }
+      .market-row { grid-template-columns: 40px 1fr auto; }
+      .market-zip { display: none; }
     }
   </style>
 </head>
@@ -213,6 +257,45 @@
       <div class="sources" id="sources"></div>
     </section>
 
+    <section class="panel alias-panel" id="alias-panel">
+      <div class="alias-header">
+        <p class="eyebrow">Alias discovery</p>
+        <h2>Build a reusable station-name index</h2>
+        <p>Scan ranked television markets in groups of 25. Exact Gracenote station IDs, event callsigns, official provider sources, and reviewed network renames can contribute attributable aliases to this Lineuparr draft.</p>
+      </div>
+      <div class="metric-grid" aria-live="polite">
+        <div class="metric"><div class="metric-value" id="markets-metric">—</div><div class="metric-label">Markets completed</div></div>
+        <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
+        <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
+        <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
+        <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
+      </div>
+      <div class="scan-progress">
+        <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
+        <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
+        <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
+        <div class="action-row">
+          <button id="continue-scan" type="button">Scan next 25 markets</button>
+          <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
+          <button class="secondary danger" id="rebuild-index" type="button">Rebuild index</button>
+        </div>
+      </div>
+      <section class="batch-section">
+        <h3>Marginal yield by batch</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Markets</th><th>New lineups</th><th>New stations</th><th>Names on known IDs</th><th>Callsign aliases</th><th>Affiliate names</th><th>Cosmetic only</th><th>Current lineup</th><th>Conflicts</th><th>Errors</th></tr></thead>
+            <tbody id="batch-rows"><tr><td colspan="10">No market batches have run yet.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+      <details class="market-details">
+        <summary id="market-list-summary">View curated market ZIP list</summary>
+        <div class="market-list" id="market-list"></div>
+      </details>
+      <p class="market-provenance" id="market-provenance"></p>
+    </section>
+
     <section class="panel builder-panel">
       <div class="toolbar" id="toolbar" hidden>
         <div class="field search">
@@ -253,11 +336,21 @@
       includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
       included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
-      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved')
+      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'),
+      marketsMetric: document.getElementById('markets-metric'), lineupsMetric: document.getElementById('lineups-metric'),
+      stationsMetric: document.getElementById('stations-metric'), aliasesMetric: document.getElementById('aliases-metric'),
+      currentAliasesMetric: document.getElementById('current-aliases-metric'), scanStatus: document.getElementById('scan-status'),
+      scanProgressCount: document.getElementById('scan-progress-count'), scanProgressBar: document.getElementById('scan-progress-bar'),
+      marketMessage: document.getElementById('market-message'), continueScan: document.getElementById('continue-scan'),
+      stopScan: document.getElementById('stop-scan'), rebuildIndex: document.getElementById('rebuild-index'),
+      batchRows: document.getElementById('batch-rows'), marketList: document.getElementById('market-list'),
+      marketListSummary: document.getElementById('market-list-summary'), marketProvenance: document.getElementById('market-provenance')
     };
 
     let draft = null;
     let saving = false;
+    let marketPoll = null;
+    let marketWasRunning = false;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -269,6 +362,120 @@
       if (!response.ok) throw new Error((await response.text()).trim() || `Request failed (${response.status})`);
       const type = response.headers.get('content-type') || '';
       return type.includes('application/json') ? response.json() : null;
+    }
+
+    function setMarketMessage(text, kind = '') {
+      els.marketMessage.textContent = text || '';
+      els.marketMessage.className = `alias-message${text ? ' show' : ''}${kind ? ` ${kind}` : ''}`;
+    }
+
+    function marketStatusLabel(status) {
+      if (status === 'complete') return 'Complete';
+      if (status === 'running') return 'Scanning';
+      if (status === 'error') return 'Needs retry';
+      return 'Pending';
+    }
+
+    function renderAliasIndex(data) {
+      const summary = data.summary;
+      const catalog = data.catalog;
+      const job = data.job;
+      const completed = summary.completedMarkets || 0;
+      const total = catalog.marketCount || 0;
+      const overallPercent = total ? Math.round(completed * 100 / total) : 0;
+      const batchPercent = job.running && job.totalCount ? Math.round(job.completedCount * 100 / job.totalCount) : overallPercent;
+
+      els.marketsMetric.textContent = `${completed} / ${total}`;
+      els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
+      els.stationsMetric.textContent = (summary.stations || 0).toLocaleString();
+      els.aliasesMetric.textContent = (summary.meaningfulAliases || 0).toLocaleString();
+      els.currentAliasesMetric.textContent = summary.currentLineupStations ? (summary.currentLineupAliases || 0).toLocaleString() : '—';
+      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : `${overallPercent}% overall`;
+      els.scanProgressBar.style.width = `${batchPercent}%`;
+
+      if (job.running) {
+        els.scanStatus.textContent = `Scanning #${job.currentRank || '—'} ${job.currentMarket || 'next market'}`;
+      } else if (completed === total && total > 0) {
+        els.scanStatus.textContent = 'All curated markets have been processed';
+      } else if (summary.errorMarkets) {
+        els.scanStatus.textContent = `${summary.errorMarkets} market${summary.errorMarkets === 1 ? '' : 's'} will be retried before continuing`;
+      } else {
+        els.scanStatus.textContent = completed ? 'Ready for the next 25-market checkpoint' : 'Ready to scan the first 25 markets';
+      }
+
+      els.continueScan.disabled = job.running || (completed === total && !summary.errorMarkets);
+      els.continueScan.textContent = completed ? 'Scan next 25 markets' : 'Scan first 25 markets';
+      els.stopScan.hidden = !job.running;
+      els.rebuildIndex.disabled = job.running;
+      if (job.lastError && !job.running) setMarketMessage(job.lastError, 'error');
+      else if (!job.running && !marketWasRunning) setMarketMessage('');
+
+      els.batchRows.replaceChildren();
+      const batches = (data.batches || []).slice().reverse().slice(0, 8);
+      if (!batches.length) {
+        const row = document.createElement('tr');
+        const cell = document.createElement('td'); cell.colSpan = 10; cell.textContent = 'No market batches have run yet.';
+        row.append(cell); els.batchRows.append(row);
+      }
+      for (const batch of batches) {
+        const row = document.createElement('tr');
+        for (const value of [batch.fromRank + '–' + batch.toRank, batch.newLineups, batch.newStations, batch.newNamesOnKnownStations, batch.newCallSignAliases, batch.newAffiliateNames, batch.cosmeticVariants, batch.currentLineupAliases, batch.conflicts, batch.errors]) {
+          const cell = document.createElement('td'); cell.textContent = String(value || 0); row.append(cell);
+        }
+        els.batchRows.append(row);
+      }
+
+      els.marketList.replaceChildren();
+      for (const market of data.markets || []) {
+        const row = document.createElement('div'); row.className = 'market-row';
+        const rank = document.createElement('span'); rank.textContent = `#${market.rank}`;
+        const name = document.createElement('span'); name.className = 'market-name'; name.textContent = market.name;
+        const zip = document.createElement('span'); zip.className = 'market-zip'; zip.textContent = market.postalCode;
+        const status = document.createElement('span'); status.className = `status-pill ${market.status}`; status.textContent = marketStatusLabel(market.status);
+        const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'secondary market-refresh'; refresh.textContent = 'Refresh'; refresh.disabled = job.running;
+        refresh.addEventListener('click', () => startAliasScan('refresh', [market.rank]));
+        row.append(rank, name, zip, status, refresh); els.marketList.append(row);
+      }
+      els.marketListSummary.textContent = `View curated market ZIP list (${total})`;
+      els.marketProvenance.textContent = `${catalog.selectionMethod} Ranking snapshot: ${catalog.asOf}.`;
+
+      if (job.running && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
+      if (!job.running && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
+      if (marketWasRunning && !job.running) {
+        setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
+        reloadDraft().catch(error => showMessage(error.message, true));
+      }
+      marketWasRunning = job.running;
+    }
+
+    async function loadAliasIndex() {
+      try {
+        renderAliasIndex(await api('/api/lineuparr/alias-index'));
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to load alias discovery.', 'error');
+        els.scanStatus.textContent = 'Alias discovery unavailable';
+      }
+    }
+
+    async function startAliasScan(action, ranks = []) {
+      els.continueScan.disabled = true;
+      els.rebuildIndex.disabled = true;
+      setMarketMessage(action === 'refresh' ? 'Refreshing the selected market…' : 'Starting the alias scan…');
+      try {
+        await api('/api/lineuparr/alias-index/run', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({action, batchSize: action === 'refresh' ? 1 : 25, ranks})
+        });
+        setMarketMessage('Scan started. Progress is saved after every lineup.', 'success');
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to start the alias scan.', 'error');
+      }
+      await loadAliasIndex();
+    }
+
+    async function reloadDraft() {
+      draft = await api('/api/lineuparr/draft');
+      renderAll();
     }
 
     async function loadDraft() {
@@ -461,6 +668,18 @@
     els.includedFilter.addEventListener('change', renderChannels);
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
+    els.continueScan.addEventListener('click', () => startAliasScan('continue'));
+    els.stopScan.addEventListener('click', async () => {
+      try {
+        await api('/api/lineuparr/alias-index/stop', {method:'POST'});
+        setMarketMessage('Stop requested. Completed checkpoints remain saved.');
+        await loadAliasIndex();
+      } catch (error) { setMarketMessage(error.message, 'error'); }
+    });
+    els.rebuildIndex.addEventListener('click', () => {
+      if (confirm('Rebuild the alias index from the beginning? The current index will be kept as a .bak file.')) startAliasScan('rebuild');
+    });
+    loadAliasIndex();
     loadDraft();
   </script>
 </body>

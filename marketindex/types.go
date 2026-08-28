@@ -3,7 +3,7 @@ package marketindex
 import "errors"
 
 const (
-	CurrentIndexVersion = 1
+	CurrentIndexVersion = 2
 	DefaultBatchSize    = 25
 	MaxBatchSize        = 25
 )
@@ -22,12 +22,13 @@ const (
 
 const (
 	NameCallSign          = "callSign"
+	NameEventCallSign     = "eventCallSign"
 	NameAffiliateName     = "affiliateName"
 	NameAffiliateCallSign = "affiliateCallSign"
 )
 
-// Index is the durable, resumable station-name catalog. Programme events are
-// deliberately excluded.
+// Index is the durable, resumable station-name catalog. Programme payloads are
+// not persisted; only station identity evidence such as event callsigns is kept.
 type Index struct {
 	SchemaVersion int                      `json:"schemaVersion"`
 	SeedDigest    string                   `json:"seedDigest"`
@@ -93,10 +94,18 @@ type StationName struct {
 	Value           string   `json:"value"`
 	Normalized      string   `json:"normalized"`
 	Kind            string   `json:"kind"`
+	ObservedAs      []string `json:"observedAs,omitempty"`
 	Variants        []string `json:"variants,omitempty"`
 	LineupKeys      []string `json:"lineupKeys"`
 	FirstMarketRank int      `json:"firstMarketRank"`
 	Conflict        bool     `json:"conflict,omitempty"`
+}
+
+type AliasCandidate struct {
+	StationID  string   `json:"stationId"`
+	Value      string   `json:"value"`
+	Kind       string   `json:"kind"`
+	LineupKeys []string `json:"lineupKeys"`
 }
 
 type BatchReport struct {

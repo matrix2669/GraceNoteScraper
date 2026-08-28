@@ -12,19 +12,28 @@ type LineupContext struct {
 	PostalCode        string
 	ProviderName      string
 	LineupID          string
+	AdditionalSources []SourceStatus
 }
 
 // InputChannel is one provider lineup position. Multiple positions may point
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key            string
-	StationID      string
-	PlacementID    string
-	Number         string
-	CallSign       string
-	Affiliate      string
-	EventCallSigns []string
+	Key             string
+	StationID       string
+	PlacementID     string
+	Number          string
+	CallSign        string
+	Affiliate       string
+	EventCallSigns  []string
+	PreferredName   *AttributedAlias
+	ExternalAliases []AttributedAlias
+}
+
+type AttributedAlias struct {
+	Value  string
+	Source string
+	Method string
 }
 
 type AliasEvidence struct {

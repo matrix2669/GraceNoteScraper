@@ -4,7 +4,6 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -13,7 +12,6 @@ import (
 	"strings"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -27,7 +25,6 @@ type providerFinder interface {
 type setupServer struct {
 	store           *appconfig.Store
 	providers       providerFinder
-	marketIndex     *marketindex.Service
 	onProviderSaved func(changed bool)
 }
 
@@ -186,79 +183,6 @@ func (s *setupServer) handleProvider(w http.ResponseWriter, r *http.Request) {
 		"scrapeQueued": true,
 		"provider":     savedConfig.Gracenote,
 	})
-}
-
-func (s *setupServer) handleMarketIndex(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	writeSetupJSON(w, http.StatusOK, s.marketIndex.Snapshot())
-}
-
-func (s *setupServer) handleMarketIndexRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	if !requireJSON(w, r) {
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	var request marketindex.RunRequest
-	if err := decoder.Decode(&request); err != nil {
-		http.Error(w, "Invalid market-index request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		http.Error(w, "Invalid market-index request: request must contain one JSON object", http.StatusBadRequest)
-		return
-	}
-	job, err := s.marketIndex.Start(request)
-	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, marketindex.ErrAlreadyRunning) || errors.Is(err, marketindex.ErrNoWork) {
-			status = http.StatusConflict
-		}
-		http.Error(w, err.Error(), status)
-		return
-	}
-	writeSetupJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
-}
-
-func (s *setupServer) handleMarketIndexStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	writeSetupJSON(w, http.StatusOK, map[string]bool{"stopping": s.marketIndex.Stop()})
-}
-
-func requireJSON(w http.ResponseWriter, r *http.Request) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" {
-		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return false
-	}
-	return true
 }
 
 func providerTypeOrder(providerType string) int {

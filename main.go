@@ -27,8 +27,8 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
 	"github.com/daniel-widrick/GraceNoteScraper/util"
@@ -1165,11 +1165,12 @@ func main() {
 			queueScrape(scrapeTrigger)
 		},
 	}
+	var marketService *marketindex.Service
 	marketCatalog, marketCatalogErr := marketindex.LoadSeeds(util.GetEnv("MARKET_ZIPS_PATH", ""))
 	if marketCatalogErr != nil {
 		log.Printf("Market index is unavailable: %v", marketCatalogErr)
 	} else {
-		marketService, err := marketindex.NewService(marketindex.ServiceConfig{
+		service, serviceErr := marketindex.NewService(marketindex.ServiceConfig{
 			Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
 			Catalog:         marketCatalog,
 			Providers:       setupHandlers.providers,
@@ -1178,14 +1179,14 @@ func main() {
 			ProviderDelay:   500 * time.Millisecond,
 			GridDelay:       5 * time.Second,
 		})
-		if err != nil {
-			log.Printf("Market index is unavailable: %v", err)
+		if serviceErr != nil {
+			log.Printf("Market index is unavailable: %v", serviceErr)
 		} else {
-			setupHandlers.marketIndex = marketService
+			marketService = service
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
 	}
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder}
+	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1202,15 +1203,15 @@ func main() {
 	mux.HandleFunc("/api/setup/config", setupHandlers.handleConfig)
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
-	mux.HandleFunc("/api/setup/market-index", setupHandlers.handleMarketIndex)
-	mux.HandleFunc("/api/setup/market-index/run", setupHandlers.handleMarketIndexRun)
-	mux.HandleFunc("/api/setup/market-index/stop", setupHandlers.handleMarketIndexStop)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
+	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
+	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
+	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)
@@ -1237,8 +1238,8 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 	log.Println("Shutting down...")
-	if setupHandlers.marketIndex != nil {
-		setupHandlers.marketIndex.Stop()
+	if marketService != nil {
+		marketService.Stop()
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

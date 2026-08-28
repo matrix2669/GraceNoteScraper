@@ -83,7 +83,7 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 		safeCallSigns := 0
 		for _, name := range station.Names {
 			switch name.Kind {
-			case NameCallSign:
+			case NameCallSign, NameEventCallSign:
 				if name.Conflict {
 					conflictingNames[name.Normalized] = true
 					continue
@@ -102,6 +102,35 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 	}
 	summary.Conflicts = len(conflictingNames)
 	return summary
+}
+
+func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCandidate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string][]AliasCandidate)
+	seen := make(map[string]bool)
+	for _, stationID := range stationIDs {
+		if seen[stationID] {
+			continue
+		}
+		seen[stationID] = true
+		station := s.index.Stations[stationID]
+		if station == nil {
+			continue
+		}
+		for _, name := range station.Names {
+			if !isCallSignKind(name.Kind) || name.Conflict {
+				continue
+			}
+			result[stationID] = append(result[stationID], AliasCandidate{
+				StationID: stationID, Value: name.Value, Kind: name.Kind, LineupKeys: append([]string(nil), name.LineupKeys...),
+			})
+		}
+		sort.SliceStable(result[stationID], func(i, j int) bool {
+			return result[stationID][i].Value < result[stationID][j].Value
+		})
+	}
+	return result
 }
 
 // SortedStationIDs is useful to downstream consumers that need deterministic

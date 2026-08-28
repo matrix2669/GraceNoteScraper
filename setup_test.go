@@ -141,7 +141,7 @@ func TestSetupPageIsEmbedded(t *testing.T) {
 	}
 }
 
-func TestSetupMarketIndexFlow(t *testing.T) {
+func TestLineuparrAliasIndexFlow(t *testing.T) {
 	catalog, err := marketindex.LoadSeeds("")
 	if err != nil {
 		t.Fatalf("LoadSeeds() error = %v", err)
@@ -156,11 +156,11 @@ func TestSetupMarketIndexFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
 	}
-	server := &setupServer{marketIndex: service}
+	server := &lineuparrServer{marketIndex: service}
 
-	request := httptest.NewRequest(http.MethodGet, "/api/setup/market-index", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/alias-index", nil)
 	recorder := httptest.NewRecorder()
-	server.handleMarketIndex(recorder, request)
+	server.handleAliasIndex(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("market index status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -172,10 +172,10 @@ func TestSetupMarketIndexFlow(t *testing.T) {
 		t.Fatalf("initial snapshot = %+v", snapshot.Summary)
 	}
 
-	request = httptest.NewRequest(http.MethodPost, "/api/setup/market-index/run", strings.NewReader(`{"action":"continue","batchSize":1}`))
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias-index/run", strings.NewReader(`{"action":"continue","batchSize":1}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleMarketIndexRun(recorder, request)
+	server.handleAliasIndexRun(recorder, request)
 	if recorder.Code != http.StatusAccepted {
 		t.Fatalf("market run status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
