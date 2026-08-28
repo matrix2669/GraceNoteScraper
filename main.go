@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -1342,18 +1343,24 @@ func xmlEscape(s string) string {
 
 // replaces broken Gracenote thumbnail URLs with TMDB
 // poster images, star ratings, dates, and descriptions.
+type tmdbTitleKey struct {
+	title   string
+	isMovie bool
+}
+
+type tmdbLookupResult struct {
+	key   tmdbTitleKey
+	entry tmdb.CacheEntry
+}
+
 func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, progress ...func(completed, total int)) {
 	if client == nil {
 		return
 	}
 
 	// Phase 1: collect unique {title, isMovie} pairs
-	type titleKey struct {
-		title   string
-		isMovie bool
-	}
-	seen := make(map[titleKey]bool)
-	var unique []titleKey
+	seen := make(map[tmdbTitleKey]bool)
+	var unique []tmdbTitleKey
 
 	for _, p := range programs {
 		title := strings.ToLower(html.UnescapeString(p.Title))
@@ -1364,7 +1371,7 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 				break
 			}
 		}
-		k := titleKey{title: title, isMovie: isMovie}
+		k := tmdbTitleKey{title: title, isMovie: isMovie}
 		if !seen[k] {
 			seen[k] = true
 			unique = append(unique, k)
@@ -1379,15 +1386,9 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 	}
 
 	// Phase 2: lookup each unique title
-	results := make(map[titleKey]tmdb.CacheEntry)
-	for index, k := range unique {
-		results[k] = client.Lookup(k.title, k.isMovie)
-		for _, update := range progress {
-			if update != nil {
-				update(index+1, len(unique))
-			}
-		}
-	}
+	workerCount := tmdbWorkerCount()
+	log.Printf("TMDB: using %d lookup workers with the shared request limiter", workerCount)
+	results := lookupTMDBTitles(unique, workerCount, client.Lookup, progress...)
 
 	// Phase 3: apply results back to programs
 	enriched := 0
@@ -1400,7 +1401,7 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 				break
 			}
 		}
-		entry := results[titleKey{title: title, isMovie: isMovie}]
+		entry := results[tmdbTitleKey{title: title, isMovie: isMovie}]
 		if entry.TMDBID == 0 && entry.ImageURL == "" && entry.Rating == 0 {
 			continue
 		}
@@ -1440,6 +1441,64 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 	}
 
 	log.Printf("TMDB: enriched %d/%d programs", enriched, len(programs))
+}
+
+func tmdbWorkerCount() int {
+	workers, err := strconv.Atoi(strings.TrimSpace(os.Getenv("TMDB_WORKERS")))
+	if err != nil || workers < 1 {
+		return 4
+	}
+	if workers > 16 {
+		return 16
+	}
+	return workers
+}
+
+func lookupTMDBTitles(keys []tmdbTitleKey, workerCount int, lookup func(string, bool) tmdb.CacheEntry, progress ...func(completed, total int)) map[tmdbTitleKey]tmdb.CacheEntry {
+	if workerCount < 1 {
+		workerCount = 1
+	}
+	if workerCount > len(keys) {
+		workerCount = len(keys)
+	}
+	results := make(map[tmdbTitleKey]tmdb.CacheEntry, len(keys))
+	if workerCount == 0 {
+		return results
+	}
+	jobs := make(chan tmdbTitleKey, len(keys))
+	completed := make(chan tmdbLookupResult, len(keys))
+	var workers sync.WaitGroup
+	for worker := 0; worker < workerCount; worker++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for key := range jobs {
+				completed <- tmdbLookupResult{key: key, entry: lookup(key.title, key.isMovie)}
+			}
+		}()
+	}
+	for _, key := range keys {
+		jobs <- key
+	}
+	close(jobs)
+	go func() {
+		workers.Wait()
+		close(completed)
+	}()
+	count := 0
+	for result := range completed {
+		results[result.key] = result.entry
+		count++
+		for _, update := range progress {
+			if update != nil {
+				update(count, len(keys))
+			}
+		}
+		if count%50 == 0 || count == len(keys) {
+			log.Printf("TMDB: scan progress %d/%d", count, len(keys))
+		}
+	}
+	return results
 }
 
 // fixDeadImageURLs rewrites program image URLs pointing to the defunct
