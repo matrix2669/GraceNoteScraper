@@ -15,21 +15,48 @@ import (
 
 const CurrentConfigVersion = 1
 
+const (
+	AuthPassword = "password"
+	AuthAPIKey   = "api-key"
+)
+
 type Config struct {
-	Version  int    `json:"version"`
-	BaseURL  string `json:"baseUrl"`
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Version    int    `json:"version"`
+	BaseURL    string `json:"baseUrl"`
+	AuthMethod string `json:"authMethod,omitempty"`
+	Username   string `json:"username,omitempty"`
+	Password   string `json:"password,omitempty"`
+	APIKey     string `json:"apiKey,omitempty"`
 }
 
 func (c Config) Normalized() (Config, error) {
 	c.Version = CurrentConfigVersion
 	c.BaseURL = strings.TrimRight(strings.TrimSpace(c.BaseURL), "/")
+	c.AuthMethod = strings.ToLower(strings.TrimSpace(c.AuthMethod))
 	c.Username = strings.TrimSpace(c.Username)
-	if c.BaseURL == "" || c.Username == "" || c.Password == "" {
-		return Config{}, errors.New("Dispatcharr URL, username, and password are required")
+	c.APIKey = strings.TrimSpace(c.APIKey)
+	if c.AuthMethod == "" {
+		c.AuthMethod = AuthPassword
 	}
-	if len(c.BaseURL) > 2048 || len(c.Username) > 256 || len(c.Password) > 4096 {
+	if c.BaseURL == "" {
+		return Config{}, errors.New("Dispatcharr URL is required")
+	}
+	switch c.AuthMethod {
+	case AuthPassword:
+		if c.Username == "" || c.Password == "" {
+			return Config{}, errors.New("Dispatcharr username and password are required")
+		}
+		c.APIKey = ""
+	case AuthAPIKey:
+		if c.APIKey == "" {
+			return Config{}, errors.New("Dispatcharr API key is required")
+		}
+		c.Username = ""
+		c.Password = ""
+	default:
+		return Config{}, errors.New("Dispatcharr authentication method must be password or API key")
+	}
+	if len(c.BaseURL) > 2048 || len(c.Username) > 256 || len(c.Password) > 4096 || len(c.APIKey) > 4096 {
 		return Config{}, errors.New("Dispatcharr connection settings are too long")
 	}
 	parsed, err := url.Parse(c.BaseURL)
@@ -48,7 +75,11 @@ func (c Config) Normalized() (Config, error) {
 func (c Config) Fingerprint() string {
 	parsed, _ := url.Parse(c.BaseURL)
 	origin := strings.ToLower(parsed.Scheme + "://" + parsed.Host)
-	sum := sha256.Sum256([]byte(origin + parsed.EscapedPath() + "\x00" + c.Username))
+	identity := c.Username
+	if c.AuthMethod == AuthAPIKey {
+		identity = AuthAPIKey
+	}
+	sum := sha256.Sum256([]byte(origin + parsed.EscapedPath() + "\x00" + c.AuthMethod + "\x00" + identity))
 	return hex.EncodeToString(sum[:])
 }
 

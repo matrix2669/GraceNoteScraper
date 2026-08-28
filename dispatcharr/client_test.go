@@ -144,6 +144,22 @@ func TestClientSessionDoesNotCrossPasswordChanges(t *testing.T) {
 	}
 }
 
+func TestClientUsesAPIKeyWithoutJWTLogin(t *testing.T) {
+	httpClient := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/api/accounts/token/" {
+			t.Fatal("API-key authentication attempted a JWT login")
+		}
+		if r.Header.Get("X-API-Key") != "api-secret" || r.Header.Get("Authorization") != "" {
+			return testResponse(r, http.StatusUnauthorized, "missing API key"), nil
+		}
+		return testResponse(r, http.StatusOK, `{"count":0,"next":null,"results":[]}`), nil
+	})}
+	config := Config{BaseURL: "https://dispatcharr.test", AuthMethod: AuthAPIKey, APIKey: "api-secret"}
+	if err := NewClient(httpClient).Test(t.Context(), config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestClientTrimsAndBoundsSafeStreamMetadata(t *testing.T) {
 	longName := strings.Repeat("x", maxStreamNameSize+1)
 	longTVGID := strings.Repeat("y", maxTVGIDSize+1)

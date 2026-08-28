@@ -129,6 +129,25 @@ func (c *Client) Streams(ctx context.Context, config Config) ([]Stream, error) {
 }
 
 func (c *Client) getAuthorizedJSON(ctx context.Context, config Config, endpoint string, target any) error {
+	if config.AuthMethod == AuthAPIKey {
+		status, data, err := c.requestWithAuth(ctx, http.MethodGet, endpoint, "", config.APIKey, nil, maxStreamResponseSize)
+		if err != nil {
+			return errors.New("Dispatcharr could not be reached")
+		}
+		if status == http.StatusUnauthorized {
+			return errors.New("Dispatcharr rejected the API key")
+		}
+		if status == http.StatusForbidden {
+			return errors.New("Dispatcharr denied API-key access from this host")
+		}
+		if status < 200 || status >= 300 {
+			return fmt.Errorf("Dispatcharr stream request failed (HTTP %d)", status)
+		}
+		if err := json.Unmarshal(data, target); err != nil {
+			return errors.New("Dispatcharr returned an unreadable stream response")
+		}
+		return nil
+	}
 	access, err := c.accessToken(ctx, config)
 	if err != nil {
 		return err
@@ -204,7 +223,11 @@ func (c *Client) renewToken(ctx context.Context, config Config) (string, error) 
 }
 
 func authFingerprint(config Config) string {
-	sum := sha256.Sum256([]byte(config.Fingerprint() + "\x00" + config.Password))
+	secret := config.Password
+	if config.AuthMethod == AuthAPIKey {
+		secret = config.APIKey
+	}
+	sum := sha256.Sum256([]byte(config.Fingerprint() + "\x00" + secret))
 	return string(sum[:])
 }
 
@@ -237,6 +260,10 @@ func validToken(value string) bool {
 }
 
 func (c *Client) request(ctx context.Context, method, endpoint, access string, body []byte, maxBytes int64) (int, []byte, error) {
+	return c.requestWithAuth(ctx, method, endpoint, access, "", body, maxBytes)
+}
+
+func (c *Client) requestWithAuth(ctx context.Context, method, endpoint, access, apiKey string, body []byte, maxBytes int64) (int, []byte, error) {
 	var reader io.Reader
 	if body != nil {
 		reader = bytes.NewReader(body)
@@ -252,6 +279,9 @@ func (c *Client) request(ctx context.Context, method, endpoint, access string, b
 	}
 	if access != "" {
 		request.Header.Set("Authorization", "Bearer "+access)
+	}
+	if apiKey != "" {
+		request.Header.Set("X-API-Key", apiKey)
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {

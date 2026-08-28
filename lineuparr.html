@@ -98,10 +98,11 @@
     .dispatch-panel { margin-bottom: 18px; padding: 20px 21px; }
     .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
     .dispatch-form {
-      display: grid; grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
+      display: grid; grid-template-columns: minmax(220px, 2fr) minmax(135px, .8fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
       gap: 10px; align-items: end; margin-top: 17px;
     }
     .dispatch-form .field { min-width: 0; }
+    .dispatch-form .api-key-field { grid-column: span 2; }
     .dispatch-connection {
       display: flex; align-items: center; justify-content: space-between; gap: 16px;
       margin-top: 15px; padding: 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px;
@@ -275,7 +276,7 @@
       <div class="dispatch-head">
         <div>
           <h2 class="panel-title">Dispatcharr M3U matching</h2>
-          <p class="panel-help">Connect with your Dispatcharr username and password, compare every active M3U stream with this lineup, then confirm or deny each proposed alias.</p>
+          <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias.</p>
         </div>
       </div>
       <form class="dispatch-form" id="dispatch-form">
@@ -284,16 +285,27 @@
           <input id="dispatch-url" type="url" placeholder="http://dispatcharr:9191" required>
         </div>
         <div class="field">
+          <label for="dispatch-auth">Authentication</label>
+          <select id="dispatch-auth">
+            <option value="password">User / password</option>
+            <option value="api-key">API key</option>
+          </select>
+        </div>
+        <div class="field" id="dispatch-user-field">
           <label for="dispatch-user">Username</label>
           <input id="dispatch-user" autocomplete="username" required>
         </div>
-        <div class="field">
+        <div class="field" id="dispatch-password-field">
           <label for="dispatch-password">Password</label>
           <input id="dispatch-password" type="password" autocomplete="current-password" placeholder="Required to connect">
         </div>
+        <div class="field api-key-field" id="dispatch-api-key-field" hidden>
+          <label for="dispatch-api-key">API key</label>
+          <input id="dispatch-api-key" type="password" autocomplete="off" placeholder="Required to connect">
+        </div>
         <button class="confirm-button" id="dispatch-save" type="submit">Save &amp; test</button>
       </form>
-      <div class="privacy-note">The scraper stores this connection in a separate owner-only file, keeps access tokens in memory, and discards stream URLs server-side. Use HTTPS unless both apps share a trusted private network.</div>
+      <div class="privacy-note">The scraper stores the selected credential in a separate owner-only file, keeps JWT access tokens in memory, and discards stream URLs server-side. Use HTTPS unless both apps share a trusted private network.</div>
       <div class="dispatch-connection" id="dispatch-connection" hidden>
         <div>
           <div class="dispatch-connected">Connected</div>
@@ -363,7 +375,9 @@
       included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
       categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'),
       dispatchForm: document.getElementById('dispatch-form'), dispatchURL: document.getElementById('dispatch-url'),
-      dispatchUser: document.getElementById('dispatch-user'), dispatchPassword: document.getElementById('dispatch-password'),
+      dispatchAuth: document.getElementById('dispatch-auth'), dispatchUserField: document.getElementById('dispatch-user-field'),
+      dispatchPasswordField: document.getElementById('dispatch-password-field'), dispatchAPIKeyField: document.getElementById('dispatch-api-key-field'),
+      dispatchUser: document.getElementById('dispatch-user'), dispatchPassword: document.getElementById('dispatch-password'), dispatchAPIKey: document.getElementById('dispatch-api-key'),
       dispatchSave: document.getElementById('dispatch-save'), dispatchConnection: document.getElementById('dispatch-connection'),
       dispatchMeta: document.getElementById('dispatch-meta'), dispatchRefresh: document.getElementById('dispatch-refresh'),
       dispatchDisconnect: document.getElementById('dispatch-disconnect'), dispatchLoading: document.getElementById('dispatch-loading'),
@@ -379,6 +393,7 @@
     let dispatchConfig = null;
     let matchReview = null;
     let dispatchBusy = false;
+    const pendingDecisions = new Set();
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -407,15 +422,33 @@
       els.dispatchConnection.hidden = !configured;
       els.matchReview.hidden = !configured || !matchReview;
       els.dispatchURL.value = dispatchConfig?.baseUrl || els.dispatchURL.value;
+      els.dispatchAuth.value = dispatchConfig?.authMethod || 'password';
       els.dispatchUser.value = dispatchConfig?.username || els.dispatchUser.value;
-      els.dispatchPassword.required = !configured;
-      els.dispatchPassword.placeholder = configured ? 'Leave blank to keep saved password' : 'Required to connect';
-      els.dispatchMeta.textContent = configured ? `${dispatchConfig.username} at ${dispatchConfig.baseUrl}` : '';
+      renderDispatchAuthFields();
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      els.dispatchPassword.required = passwordAuth && !configured;
+      els.dispatchPassword.placeholder = configured && passwordAuth ? 'Leave blank to keep saved password' : 'Required to connect';
+      els.dispatchAPIKey.required = !passwordAuth && !configured;
+      els.dispatchAPIKey.placeholder = configured && !passwordAuth ? 'Leave blank to keep saved API key' : 'Required to connect';
+      const identity = dispatchConfig?.authMethod === 'api-key' ? 'API key' : dispatchConfig?.username;
+      els.dispatchMeta.textContent = configured ? `${identity} at ${dispatchConfig.baseUrl}` : '';
       if (!configured) {
         matchReview = null;
         els.matchReview.hidden = true;
         els.dispatchLoading.replaceChildren(emptyMessage('Connect Dispatcharr when you are ready to review provider stream names.'));
       }
+    }
+
+    function renderDispatchAuthFields() {
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      const savedMethod = dispatchConfig?.authMethod || 'password';
+      const canKeepSavedSecret = !!dispatchConfig?.configured && savedMethod === els.dispatchAuth.value;
+      els.dispatchUserField.hidden = !passwordAuth;
+      els.dispatchPasswordField.hidden = !passwordAuth;
+      els.dispatchAPIKeyField.hidden = passwordAuth;
+      els.dispatchUser.required = passwordAuth;
+      els.dispatchPassword.required = passwordAuth && !canKeepSavedSecret;
+      els.dispatchAPIKey.required = !passwordAuth && !canKeepSavedSecret;
     }
 
     async function saveDispatch(event) {
@@ -428,11 +461,13 @@
       try {
         dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({baseUrl: els.dispatchURL.value, username: els.dispatchUser.value, password: els.dispatchPassword.value})
+          body: JSON.stringify({baseUrl: els.dispatchURL.value, authMethod: els.dispatchAuth.value, username: els.dispatchUser.value, password: els.dispatchPassword.value, apiKey: els.dispatchAPIKey.value})
         });
         els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
         matchReview = null;
         renderDispatchConfig();
+        els.dispatchLoading.replaceChildren();
         saved = true;
         showMessage('Dispatcharr connected. Loading active M3U streams…');
       } catch (error) {
@@ -455,6 +490,7 @@
         els.dispatchURL.value = '';
         els.dispatchUser.value = '';
         els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
         renderDispatchConfig();
         showMessage('Dispatcharr connection removed. Previously confirmed aliases remain attributable and editable.');
       } catch (error) {
@@ -508,7 +544,7 @@
     }
 
     function matchCard(candidate) {
-      const card = document.createElement('article'); card.className = 'match-card';
+      const card = document.createElement('article'); card.className = 'match-card'; card.dataset.key = candidate.key;
       const stream = document.createElement('div');
       const streamName = document.createElement('div'); streamName.className = 'match-name'; streamName.textContent = candidate.streamName;
       const streamMeta = document.createElement('div'); streamMeta.className = 'match-meta';
@@ -540,17 +576,39 @@
     }
 
     async function decideMatch(key, decision) {
-      if (dispatchBusy) return;
-      dispatchBusy = true; setDispatchControls();
+      if (pendingDecisions.has(key) || !matchReview) return;
+      const candidate = (matchReview.candidates || []).find(item => item.key === key);
+      if (!candidate) return;
+      pendingDecisions.add(key);
+      matchReview = {
+        ...matchReview,
+        candidateCount: Math.max(0, matchReview.candidateCount - 1),
+        confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
+        deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
+        candidates: (matchReview.candidates || []).filter(item => item.key !== key),
+        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.streamName, score: candidate.score}, ...(matchReview.decisions || [])]
+      };
+      renderMatchReview();
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision})
         });
-        await reloadDraft();
         showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. The next candidate can now be reviewed.');
-      } catch (error) { showMessage(error.message, true); }
-      finally { dispatchBusy = false; setDispatchControls(); }
-      await loadMatchReview();
+      } catch (error) {
+        matchReview.candidateCount++;
+        matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
+        matchReview.candidates = [candidate, ...(matchReview.candidates || [])];
+        matchReview.decisions = (matchReview.decisions || []).filter(item => item.key !== key);
+        renderMatchReview();
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(key);
+        if (pendingDecisions.size === 0) {
+          await reloadDraft();
+          await loadMatchReview();
+        }
+      }
     }
 
     async function clearDecision(key) {
@@ -568,7 +626,7 @@
     }
 
     function setDispatchControls() {
-      for (const control of [els.dispatchURL, els.dispatchUser, els.dispatchPassword, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
+      for (const control of [els.dispatchURL, els.dispatchAuth, els.dispatchUser, els.dispatchPassword, els.dispatchAPIKey, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
       for (const control of document.querySelectorAll('.match-buttons button, .decision-row button')) control.disabled = dispatchBusy;
     }
 
@@ -801,6 +859,7 @@
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     els.dispatchForm.addEventListener('submit', saveDispatch);
+    els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();
