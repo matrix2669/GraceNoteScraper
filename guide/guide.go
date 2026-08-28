@@ -11,17 +11,20 @@ import (
 )
 
 type TVGuide struct {
-	Channels []Channel
-	Programs []Program
+	Channels       []Channel
+	Programs       []Program
+	LineupChannels []Channel
 }
 
 type Channel struct {
-	ID           string
-	DisplayNames []DisplayName
-	IconURL      string
-	CallSign     string // internal, not in template
-	Affiliate    string // internal, not in template
-	ChannelNo    string // internal, not in template
+	ID             string
+	DisplayNames   []DisplayName
+	IconURL        string
+	CallSign       string   // internal, not in template
+	Affiliate      string   // internal, not in template
+	ChannelNo      string   // internal, not in template
+	PlacementID    string   // lineup position id, internal and not in template
+	EventCallSigns []string // observed event callsigns, internal and not in template
 }
 
 type DisplayName struct {
@@ -140,6 +143,17 @@ func ConvertChannel(ch web.JSONChannel) Channel {
 		}
 	}
 
+	eventCallSigns := make([]string, 0, 1)
+	seenCallSigns := make(map[string]bool)
+	for _, event := range ch.Events {
+		callSign := strings.TrimSpace(event.CallSign)
+		if callSign == "" || seenCallSigns[callSign] {
+			continue
+		}
+		seenCallSigns[callSign] = true
+		eventCallSigns = append(eventCallSigns, callSign)
+	}
+
 	return Channel{
 		ID: ch.ChannelID,
 		DisplayNames: []DisplayName{
@@ -148,10 +162,12 @@ func ConvertChannel(ch web.JSONChannel) Channel {
 			{Name: xmlEscape(ch.CallSign)},
 			{Name: xmlEscape(titleCase(ch.AffiliateName))},
 		},
-		IconURL:   iconURL,
-		CallSign:  ch.CallSign,
-		Affiliate: ch.AffiliateName,
-		ChannelNo: ch.ChannelNo,
+		IconURL:        iconURL,
+		CallSign:       ch.CallSign,
+		Affiliate:      ch.AffiliateName,
+		ChannelNo:      ch.ChannelNo,
+		PlacementID:    ch.ID,
+		EventCallSigns: eventCallSigns,
 	}
 }
 

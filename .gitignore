@@ -1,10 +1,14 @@
 *.exe
 .env
+config.json
 *.xmltv
 tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
 grid_cache/
+lineuparr_state.json
+lineuparr_source_cache/
+dispatcharr_config.json
 image_cache/
 demo.gif
 
