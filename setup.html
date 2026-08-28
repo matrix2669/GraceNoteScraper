@@ -81,6 +81,8 @@
 
     .guide-link:hover { border-color: var(--accent); color: var(--text); }
 
+    .top-links { display: flex; gap: 9px; }
+
     .hero {
       max-width: 760px;
       margin-bottom: 28px;
@@ -434,7 +436,10 @@
   <main class="shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">GN</span><span>GraceNoteScraper</span></div>
-      <a class="guide-link" id="guideLink" href="/">Open guide</a>
+      <div class="top-links">
+        <a class="guide-link" id="builderLink" href="/lineuparr">Lineuparr builder</a>
+        <a class="guide-link" id="guideLink" href="/">Open guide</a>
+      </div>
     </header>
 
     <section class="hero">
@@ -449,7 +454,10 @@
         <div class="current-name" id="currentName"></div>
         <div class="current-meta" id="currentMeta"></div>
       </div>
-      <a class="guide-link" style="display:inline-block" href="/">View guide</a>
+      <div class="top-links">
+        <a class="guide-link" style="display:inline-block" href="/lineuparr">Build Lineuparr JSON</a>
+        <a class="guide-link" style="display:inline-block" href="/">View guide</a>
+      </div>
     </section>
 
     <section class="panel">
@@ -538,6 +546,7 @@
       var currentName = document.getElementById('currentName');
       var currentMeta = document.getElementById('currentMeta');
       var guideLink = document.getElementById('guideLink');
+      var builderLink = document.getElementById('builderLink');
       var form = document.getElementById('searchForm');
       var country = document.getElementById('country');
       var postalCode = document.getElementById('postalCode');
@@ -754,6 +763,7 @@
             currentMeta.textContent = [config.location, config.postalCode, providerTypeLabel(config.providerType)].filter(Boolean).join(' · ');
             currentCard.style.display = 'flex';
             guideLink.style.display = 'inline-block';
+            builderLink.style.display = 'inline-block';
             country.value = config.country || 'USA';
             postalCode.value = config.postalCode || '';
             language = config.language || 'en-us';
@@ -905,6 +915,7 @@
             currentMeta.textContent = [data.provider.location, data.provider.postalCode, providerTypeLabel(data.provider.providerType)].filter(Boolean).join(' · ');
             currentCard.style.display = 'flex';
             guideLink.style.display = 'inline-block';
+            builderLink.style.display = 'inline-block';
             setMessage('Lineup saved. A fresh guide has been queued; the first complete build can take several minutes.', 'success');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           })

@@ -28,6 +28,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
 	"github.com/daniel-widrick/GraceNoteScraper/util"
@@ -45,19 +46,30 @@ var indexHTML []byte
 
 // GuideState holds the current guide data, safe for concurrent access.
 type GuideState struct {
-	mu    sync.RWMutex
-	guide *guide.TVGuide
+	mu                sync.RWMutex
+	guide             *guide.TVGuide
+	sourceFingerprint string
 }
 
-func (s *GuideState) Update(g *guide.TVGuide) {
+func (s *GuideState) UpdateForSource(g *guide.TVGuide, sourceFingerprint string) {
 	s.mu.Lock()
 	s.guide = g
+	s.sourceFingerprint = sourceFingerprint
 	s.mu.Unlock()
 }
 
 func (s *GuideState) Get() *guide.TVGuide {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.guide
+}
+
+func (s *GuideState) GetForSource(sourceFingerprint string) *guide.TVGuide {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.guide == nil || s.sourceFingerprint != sourceFingerprint {
+		return nil
+	}
 	return s.guide
 }
 
@@ -188,6 +200,44 @@ func channelNumberLess(a, b string) bool {
 	return a < b
 }
 
+func mergeLineupChannel(existing, observed guide.Channel) guide.Channel {
+	if existing.ID == "" {
+		existing.ID = observed.ID
+	}
+	if existing.PlacementID == "" {
+		existing.PlacementID = observed.PlacementID
+	}
+	if existing.ChannelNo == "" {
+		existing.ChannelNo = observed.ChannelNo
+	}
+	if existing.CallSign == "" {
+		existing.CallSign = observed.CallSign
+	}
+	if existing.Affiliate == "" {
+		existing.Affiliate = observed.Affiliate
+	}
+	if existing.IconURL == "" {
+		existing.IconURL = observed.IconURL
+	}
+	if len(existing.DisplayNames) == 0 {
+		existing.DisplayNames = observed.DisplayNames
+	}
+	seen := make(map[string]bool, len(existing.EventCallSigns)+len(observed.EventCallSigns))
+	merged := make([]string, 0, len(existing.EventCallSigns)+len(observed.EventCallSigns))
+	for _, values := range [][]string{existing.EventCallSigns, observed.EventCallSigns} {
+		for _, value := range values {
+			key := strings.ToLower(strings.TrimSpace(value))
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged = append(merged, strings.TrimSpace(value))
+		}
+	}
+	existing.EventCallSigns = merged
+	return existing
+}
+
 // xmltvTimeToISO converts "20250225200000 +0000" → "2025-02-25T20:00:00Z"
 func xmltvTimeToISO(xmltvTime string) string {
 	xmltvTime = strings.TrimSpace(xmltvTime)
@@ -218,6 +268,7 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	endTime := midnight.Add(14 * 24 * time.Hour)
 
 	channelMap := make(map[string]guide.Channel)
+	lineupMap := make(map[string]guide.Channel)
 	eventMap := make(map[string]bool)
 	var programs []guide.Program
 
@@ -238,8 +289,18 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		}
 
 		for _, ch := range grid.Channels {
+			converted := guide.ConvertChannel(ch)
+			lineupKey := converted.PlacementID
+			if lineupKey == "" {
+				lineupKey = strings.Join([]string{converted.ID, converted.ChannelNo, converted.CallSign}, "|")
+			}
+			if existing, exists := lineupMap[lineupKey]; exists {
+				lineupMap[lineupKey] = mergeLineupChannel(existing, converted)
+			} else {
+				lineupMap[lineupKey] = converted
+			}
 			if _, exists := channelMap[ch.ChannelID]; !exists {
-				channelMap[ch.ChannelID] = guide.ConvertChannel(ch)
+				channelMap[ch.ChannelID] = converted
 			}
 
 			for _, ev := range ch.Events {
@@ -263,6 +324,16 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	for _, ch := range channelMap {
 		channels = append(channels, ch)
 	}
+	var lineupChannels []guide.Channel
+	for _, ch := range lineupMap {
+		lineupChannels = append(lineupChannels, ch)
+	}
+	sort.Slice(lineupChannels, func(i, j int) bool {
+		if lineupChannels[i].ChannelNo != lineupChannels[j].ChannelNo {
+			return channelNumberLess(lineupChannels[i].ChannelNo, lineupChannels[j].ChannelNo)
+		}
+		return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+	})
 
 	logoClient := tvlogo.NewClient(pref.Country, "tvlogo_cache.json")
 	if logoClient != nil {
@@ -294,8 +365,9 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	}
 
 	tvGuide := &guide.TVGuide{
-		Channels: channels,
-		Programs: programs,
+		Channels:       channels,
+		Programs:       programs,
+		LineupChannels: lineupChannels,
 	}
 
 	if channelFilter != nil {
@@ -359,9 +431,13 @@ func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
 
 // ---------- Guide cache ----------
 
-const guideCachePath = "guide_cache.json"
+const (
+	guideCachePath    = "guide_cache.json"
+	guideCacheVersion = 2
+)
 
 type guideCache struct {
+	Version           int           `json:"version"`
 	SavedAt           time.Time     `json:"saved_at"`
 	SourceFingerprint string        `json:"source_fingerprint"`
 	Guide             guide.TVGuide `json:"guide"`
@@ -369,7 +445,7 @@ type guideCache struct {
 
 // saveGuideCache persists the TVGuide to a JSON file.
 func saveGuideCache(g *guide.TVGuide, sourceFingerprint string) {
-	data, err := json.Marshal(guideCache{SavedAt: time.Now(), SourceFingerprint: sourceFingerprint, Guide: *g})
+	data, err := json.Marshal(guideCache{Version: guideCacheVersion, SavedAt: time.Now(), SourceFingerprint: sourceFingerprint, Guide: *g})
 	if err != nil {
 		log.Printf("guide cache: failed to marshal: %v", err)
 		return
@@ -391,6 +467,10 @@ func loadGuideCache(maxAge time.Duration, sourceFingerprint string) (*guide.TVGu
 	var c guideCache
 	if err := json.Unmarshal(data, &c); err != nil {
 		log.Printf("guide cache: corrupt, ignoring: %v", err)
+		return nil, 0, false
+	}
+	if c.Version != guideCacheVersion || len(c.Guide.LineupChannels) == 0 {
+		log.Println("guide cache: missing full provider lineup data, ignoring cached guide")
 		return nil, 0, false
 	}
 	if c.SourceFingerprint != sourceFingerprint {
@@ -491,7 +571,7 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 				if err := persistGuideFiles(g, fingerprint); err != nil {
 					return err
 				}
-				state.Update(g)
+				state.UpdateForSource(g, fingerprint)
 				rotateFiles()
 				return nil
 			})
@@ -939,8 +1019,9 @@ func filterGuideChannels(g *guide.TVGuide, allowed map[string]bool) *guide.TVGui
 	}
 
 	return &guide.TVGuide{
-		Channels: channels,
-		Programs: programs,
+		Channels:       channels,
+		Programs:       programs,
+		LineupChannels: g.LineupChannels,
 	}
 }
 
@@ -961,6 +1042,31 @@ func main() {
 	if configErr != nil {
 		log.Printf("Configuration could not be loaded; /setup will remain available: %v", configErr)
 	}
+	lineuparrStatePath := util.GetEnv("LINEUPARR_STATE_PATH", "lineuparr_state.json")
+	lineuparrStateStore, lineuparrStateErr := lineuparrbuilder.LoadStateStore(lineuparrStatePath)
+	if lineuparrStateErr != nil {
+		log.Printf("Lineuparr builder state could not be loaded; choices will start clean: %v", lineuparrStateErr)
+	}
+	catalogSetting := strings.TrimSpace(util.GetEnv("LINEUPARR_CATALOG_URLS", ""))
+	useDefaultCatalogs := catalogSetting == "" || strings.EqualFold(catalogSetting, "default")
+	var catalogURLs []string
+	if !useDefaultCatalogs && !strings.EqualFold(catalogSetting, "off") && !strings.EqualFold(catalogSetting, "none") {
+		for _, rawURL := range strings.FieldsFunc(catalogSetting, func(r rune) bool { return r == ',' || r == '\n' }) {
+			if rawURL = strings.TrimSpace(rawURL); rawURL != "" {
+				catalogURLs = append(catalogURLs, rawURL)
+			}
+		}
+	}
+	iptvOrgURL := strings.TrimSpace(util.GetEnv("LINEUPARR_IPTV_ORG_URL", lineuparrbuilder.DefaultIPTVOrgURL))
+	if strings.EqualFold(iptvOrgURL, "off") || strings.EqualFold(iptvOrgURL, "none") {
+		iptvOrgURL = ""
+	}
+	lineuparrBuilder := lineuparrbuilder.NewService(lineuparrStateStore, lineuparrbuilder.ServiceOptions{
+		CacheDir:           util.GetEnv("LINEUPARR_CACHE_DIR", "lineuparr_source_cache"),
+		CatalogURLs:        catalogURLs,
+		UseDefaultCatalogs: useDefaultCatalogs,
+		IPTVOrgURL:         iptvOrgURL,
+	})
 
 	jellyfinURL := strings.TrimRight(util.GetEnv("JELLYFIN_URL", ""), "/")
 	jellyfinAPIKey := util.GetEnv("JELLYFIN_API_KEY", "")
@@ -1037,7 +1143,11 @@ func main() {
 	}
 
 	state := &GuideState{}
-	state.Update(g)
+	initialFingerprint := ""
+	if configured {
+		initialFingerprint = config.Fingerprint()
+	}
+	state.UpdateForSource(g, initialFingerprint)
 
 	// Signal context for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -1049,7 +1159,7 @@ func main() {
 		providers: web.NewProviderClient(),
 		onProviderSaved: func(changed bool) {
 			if changed {
-				state.Update(nil)
+				state.UpdateForSource(nil, "")
 				invalidateCurrentGuideArtifacts()
 			}
 			queueScrape(scrapeTrigger)
@@ -1075,6 +1185,7 @@ func main() {
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
 	}
+	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1094,6 +1205,12 @@ func main() {
 	mux.HandleFunc("/api/setup/market-index", setupHandlers.handleMarketIndex)
 	mux.HandleFunc("/api/setup/market-index/run", setupHandlers.handleMarketIndexRun)
 	mux.HandleFunc("/api/setup/market-index/stop", setupHandlers.handleMarketIndexStop)
+	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
+	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
+	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
+	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
+	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
+	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)
