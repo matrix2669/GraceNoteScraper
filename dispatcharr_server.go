@@ -30,6 +30,14 @@ type dispatcharrServer struct {
 	client   dispatcharrAPI
 	configMu sync.Mutex
 	cache    dispatcharrStreamCache
+	reviewMu sync.RWMutex
+	review   dispatcharrCandidateCache
+}
+
+type dispatcharrCandidateCache struct {
+	dispatcharrFingerprint string
+	lineupFingerprint      string
+	candidates             map[string]dispatcharr.Candidate
 }
 
 type dispatcharrStreamCache struct {
@@ -42,6 +50,7 @@ type dispatcharrStreamCache struct {
 type dispatcharrConfigResponse struct {
 	Configured bool   `json:"configured"`
 	BaseURL    string `json:"baseUrl,omitempty"`
+	AuthMethod string `json:"authMethod,omitempty"`
 	Username   string `json:"username,omitempty"`
 }
 
@@ -86,6 +95,7 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 		writeLineuparrJSON(w, http.StatusOK, dispatcharrConfigResponse{
 			Configured: configured,
 			BaseURL:    config.BaseURL,
+			AuthMethod: config.AuthMethod,
 			Username:   config.Username,
 		})
 	case http.MethodPost:
@@ -93,9 +103,11 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		var body struct {
-			BaseURL  string `json:"baseUrl"`
-			Username string `json:"username"`
-			Password string `json:"password"`
+			BaseURL    string `json:"baseUrl"`
+			AuthMethod string `json:"authMethod"`
+			Username   string `json:"username"`
+			Password   string `json:"password"`
+			APIKey     string `json:"apiKey"`
 		}
 		if !decodeLineuparrRequest(w, r, &body) {
 			return
@@ -103,13 +115,19 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 		s.configMu.Lock()
 		defer s.configMu.Unlock()
 		existing, configured := s.config.Get()
-		if strings.TrimSpace(body.Password) == "" && configured &&
-			strings.TrimRight(strings.TrimSpace(body.BaseURL), "/") == existing.BaseURL &&
-			strings.TrimSpace(body.Username) == existing.Username {
+		method := strings.ToLower(strings.TrimSpace(body.AuthMethod))
+		if method == "" {
+			method = dispatcharr.AuthPassword
+		}
+		sameConnection := configured && strings.TrimRight(strings.TrimSpace(body.BaseURL), "/") == existing.BaseURL && method == existing.AuthMethod
+		if method == dispatcharr.AuthPassword && strings.TrimSpace(body.Password) == "" && sameConnection && strings.TrimSpace(body.Username) == existing.Username {
 			body.Password = existing.Password
 		}
+		if method == dispatcharr.AuthAPIKey && strings.TrimSpace(body.APIKey) == "" && sameConnection {
+			body.APIKey = existing.APIKey
+		}
 		config, err := (dispatcharr.Config{
-			BaseURL: body.BaseURL, Username: body.Username, Password: body.Password,
+			BaseURL: body.BaseURL, AuthMethod: method, Username: body.Username, Password: body.Password, APIKey: body.APIKey,
 		}).Normalized()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -127,8 +145,9 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 		}
 		s.client.Reset()
 		s.cache.clear()
+		s.clearCandidateCache()
 		writeLineuparrJSON(w, http.StatusOK, dispatcharrConfigResponse{
-			Configured: true, BaseURL: config.BaseURL, Username: config.Username,
+			Configured: true, BaseURL: config.BaseURL, AuthMethod: config.AuthMethod, Username: config.Username,
 		})
 	case http.MethodDelete:
 		s.configMu.Lock()
@@ -139,6 +158,7 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 		}
 		s.client.Reset()
 		s.cache.clear()
+		s.clearCandidateCache()
 		writeLineuparrJSON(w, http.StatusOK, dispatcharrConfigResponse{Configured: false})
 	default:
 		w.Header().Set("Allow", "GET, POST, DELETE")
@@ -210,18 +230,26 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "decision must be confirmed or denied", http.StatusBadRequest)
 		return
 	}
-	build, ok := s.buildReview(w, r, false)
+	dispatchConfig, configured := s.config.Get()
+	if !configured {
+		http.Error(w, "Connect Dispatcharr before reviewing matches", http.StatusConflict)
+		return
+	}
+	lineupConfig, _, ok := s.lineup.activeInputs(w)
 	if !ok {
 		return
 	}
-	var candidate *dispatcharr.Candidate
-	for index := range build.candidates {
-		if build.candidates[index].Key == body.Key {
-			candidate = &build.candidates[index]
-			break
+	candidate, found := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+	if !found {
+		build, built := s.buildReview(w, r, false)
+		if !built {
+			return
 		}
+		dispatchConfig = build.dispatchConfig
+		lineupConfig = build.lineupConfig
+		candidate, found = s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
 	}
-	if candidate == nil {
+	if !found {
 		http.Error(w, "match candidate is no longer current", http.StatusConflict)
 		return
 	}
@@ -232,11 +260,12 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
 		StreamName: candidate.StreamName, TVGID: candidate.TVGID, Score: candidate.Score, Reason: candidate.Reason,
 	}
-	if !s.saveWhileCurrent(build.dispatchConfig, build.lineupConfig, func() error {
-		return s.lineup.builder.SetMatchDecision(build.lineupConfig.Fingerprint(), decision)
+	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
+		return s.lineup.builder.SetMatchDecision(lineupConfig.Fingerprint(), decision)
 	}, w) {
 		return
 	}
+	s.removeCachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
@@ -298,6 +327,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		history = history[:dispatcharrReviewLimit]
 	}
 	candidates := dispatcharr.MatchStreams(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
+	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), candidates)
 	visible := candidates
 	if len(visible) > dispatcharrReviewLimit {
 		visible = visible[:dispatcharrReviewLimit]
@@ -309,6 +339,40 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		},
 		candidates: candidates, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
 	}, true
+}
+
+func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
+	byKey := make(map[string]dispatcharr.Candidate, len(candidates))
+	for _, candidate := range candidates {
+		byKey[candidate.Key] = candidate
+	}
+	s.reviewMu.Lock()
+	s.review = dispatcharrCandidateCache{dispatcharrFingerprint: dispatchFingerprint, lineupFingerprint: lineupFingerprint, candidates: byKey}
+	s.reviewMu.Unlock()
+}
+
+func (s *dispatcharrServer) cachedCandidate(dispatchFingerprint, lineupFingerprint, key string) (dispatcharr.Candidate, bool) {
+	s.reviewMu.RLock()
+	defer s.reviewMu.RUnlock()
+	if s.review.dispatcharrFingerprint != dispatchFingerprint || s.review.lineupFingerprint != lineupFingerprint {
+		return dispatcharr.Candidate{}, false
+	}
+	candidate, ok := s.review.candidates[key]
+	return candidate, ok
+}
+
+func (s *dispatcharrServer) removeCachedCandidate(dispatchFingerprint, lineupFingerprint, key string) {
+	s.reviewMu.Lock()
+	defer s.reviewMu.Unlock()
+	if s.review.dispatcharrFingerprint == dispatchFingerprint && s.review.lineupFingerprint == lineupFingerprint {
+		delete(s.review.candidates, key)
+	}
+}
+
+func (s *dispatcharrServer) clearCandidateCache() {
+	s.reviewMu.Lock()
+	s.review = dispatcharrCandidateCache{}
+	s.reviewMu.Unlock()
 }
 
 func (s *dispatcharrServer) saveWhileCurrent(dispatchConfig dispatcharr.Config, lineupConfig appconfig.Config, update func() error, w http.ResponseWriter) bool {

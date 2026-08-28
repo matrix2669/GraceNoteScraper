@@ -53,3 +53,19 @@ func TestConfigFingerprintPreservesCaseSensitivePath(t *testing.T) {
 		t.Fatal("case-sensitive base paths shared a fingerprint")
 	}
 }
+
+func TestConfigSupportsExclusiveAPIKeyAuthentication(t *testing.T) {
+	config, err := (Config{
+		BaseURL: "https://dispatcharr.example.test", AuthMethod: AuthAPIKey,
+		Username: "ignored", Password: "ignored", APIKey: "api-secret",
+	}).Normalized()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.AuthMethod != AuthAPIKey || config.APIKey != "api-secret" || config.Username != "" || config.Password != "" {
+		t.Fatalf("normalized API-key config = %+v", config)
+	}
+	if _, err := (Config{BaseURL: config.BaseURL, AuthMethod: AuthAPIKey}).Normalized(); err == nil {
+		t.Fatal("empty API key was accepted")
+	}
+}

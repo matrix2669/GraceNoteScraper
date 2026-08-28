@@ -107,7 +107,7 @@ func TestDispatcharrConfigNeverReturnsPassword(t *testing.T) {
 	if fake.tested.Password != "secret" || fake.reset != 1 {
 		t.Fatalf("tested config/reset = %+v / %d", fake.tested, fake.reset)
 	}
-	if strings.Contains(recorder.Body.String(), "secret") || strings.Contains(recorder.Body.String(), "password") {
+	if strings.Contains(recorder.Body.String(), "secret") || strings.Contains(recorder.Body.String(), `"password":`) {
 		t.Fatalf("password leaked in save response: %s", recorder.Body.String())
 	}
 
@@ -119,8 +119,29 @@ func TestDispatcharrConfigNeverReturnsPassword(t *testing.T) {
 	}
 }
 
+func TestDispatcharrConfigNeverReturnsAPIKey(t *testing.T) {
+	server, fake := newDispatcharrTestServer(t, false)
+	payload := `{"baseUrl":"https://dispatcharr.test","authMethod":"api-key","apiKey":"api-secret"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/config", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleConfig(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("save API-key config response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	if fake.tested.AuthMethod != dispatcharr.AuthAPIKey || fake.tested.APIKey != "api-secret" {
+		t.Fatalf("tested config = %+v", fake.tested)
+	}
+	if strings.Contains(recorder.Body.String(), "api-secret") || strings.Contains(recorder.Body.String(), "apiKey") {
+		t.Fatalf("API key leaked in response: %s", recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), `"authMethod":"api-key"`) {
+		t.Fatalf("authentication method missing from response: %s", recorder.Body.String())
+	}
+}
+
 func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
-	server, _ := newDispatcharrTestServer(t, true)
+	server, fake := newDispatcharrTestServer(t, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
@@ -138,6 +159,8 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 		t.Fatalf("internal fingerprints leaked: %s", recorder.Body.String())
 	}
 	key := review.Candidates[0].Key
+	server.cache.clear()
+	fake.streamErr = errors.New("decision should use the cached candidate")
 
 	payload := `{"key":"` + key + `","decision":"confirmed"}`
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
