@@ -9,6 +9,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
+- Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -49,6 +50,8 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 4. Open `http://<your-host>:8080/setup`, enter your ZIP or postal code, and choose a provider lineup.
 
 5. After the first guide finishes building, point your DVR software at `http://<your-host>:8080/xmlguide.xmltv`.
+
+6. Open `http://<your-host>:8080/lineuparr` to review and export a Lineuparr-compatible JSON file for the same active lineup.
 
 Setup, guide data, caches, and images are persisted in a Docker volume. The container restarts automatically and refreshes guide data every 24 hours.
 
@@ -93,6 +96,10 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
+| `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
+| `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
+| `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
+| `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -108,6 +115,21 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 
 A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. Delete or move that file if you intentionally want to bootstrap from environment settings again.
 
+## Lineuparr JSON Builder
+
+The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
+
+Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`; exact catalog and iptv-org matches may add their attributable EPG identifiers. The builder then applies only unique exact matches from:
+
+- Matching provider and country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin). US defaults select a Verizon FiOS, DIRECTV, or DISH provider catalog when applicable and also use the combined US catalog; other currently mapped catalogs cover the UK, Canada, Australia, Spain, France, and the Netherlands.
+- The public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records.
+
+Ambiguous source identities are counted but never applied. Channels without an attributable category remain in an honest `Uncategorized` group and are highlighted for review. Program genres and Gracenote's station filters are not used as channel-category guesses.
+
+The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
+
+Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+
 ## HTTP Endpoints
 
 | Endpoint | Description |
@@ -116,6 +138,12 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 | `GET /api/setup/config` | Read the current non-secret lineup selection |
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
+| `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
+| `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
+| `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
+| `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
+| `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
+| `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |
@@ -135,6 +163,7 @@ The server includes a built-in retro-styled TV guide web UI at the root URL. If 
 
 ```
 appconfig/       Persisted non-secret provider configuration
+lineuparr/        Source-aware Lineuparr draft, state, duplicate review, and export
 main.go          Entry point, HTTP server, scraper, image proxy
 guide/           GraceNote data types and XMLTV conversion
 web/             HTTP client for GraceNote API
@@ -143,6 +172,7 @@ tvlogo/          TV logo resolver and cache
 util/            Shared helpers
 index.html       The Grid web UI (embedded at build time)
 setup.html       Provider-selection UI (embedded at build time)
+lineuparr.html   Lineuparr review/export UI (embedded at build time)
 guide.tmpl       XMLTV output template (embedded at build time)
 ```
 

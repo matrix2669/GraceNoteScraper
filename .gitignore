@@ -5,6 +5,8 @@ config.json
 tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
+lineuparr_state.json
+lineuparr_source_cache/
 image_cache/
 demo.gif
 
