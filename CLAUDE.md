@@ -38,7 +38,7 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 5. `tvlogo.Client.Resolve` replaces Gracenote channel icons with verified PNGs from `github.com/tv-logo/tv-logos`. Generates candidate URL slugs from callsign/affiliate name and HEAD-checks each (rate-limited to ~5 req/sec).
 6. `fixDeadImageURLs` rewrites `zap2it.tmsimg.com` → `tmsimg.com` for broken Gracenote image URLs.
 7. If `BASE_URL` is set, all image URLs are rewritten to route through the local `/img` proxy endpoint.
-8. `/lineuparr` builds a source-aware draft from the active lineup. `lineuparr/` derives exact Gracenote aliases, merges unique exact catalog/iptv-org identities, applies source-fingerprint-scoped user choices, suggests only quality-marked SD/HD duplicates, and emits the Lineuparr `categories` JSON shape. Remote enrichment is optional and cannot block the guide.
+8. `/lineuparr` builds a source-aware draft from the active lineup. `lineuparr/` derives exact Gracenote aliases, merges unique exact catalog/iptv-org identities, applies source-fingerprint-scoped user choices, suggests only quality-marked SD/HD duplicates, and emits the Lineuparr `categories` JSON shape. Address-gated official sources may expose Google Places autocomplete through the browser-restricted `GOOGLE_MAPS_BROWSER_API_KEY`; the selected address must match the active lineup ZIP and remains browser-only until an immediate provider-adapter request uses it. Remote enrichment is optional and cannot block the guide.
 
 **Caching layers:**
 

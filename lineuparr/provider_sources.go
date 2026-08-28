@@ -18,11 +18,12 @@ type providerSourceCatalog struct {
 }
 
 type ProviderGuideSource struct {
-	ID     string   `json:"id"`
-	Names  []string `json:"names"`
-	Label  string   `json:"label"`
-	URL    string   `json:"url"`
-	Access string   `json:"access"`
+	ID           string   `json:"id"`
+	Names        []string `json:"names"`
+	Label        string   `json:"label"`
+	URL          string   `json:"url"`
+	Access       string   `json:"access"`
+	LocationMode string   `json:"locationMode,omitempty"`
 }
 
 type providerRename struct {
@@ -43,6 +44,21 @@ func ProviderGuideSources() []ProviderGuideSource {
 	return append([]ProviderGuideSource(nil), catalog.Providers...)
 }
 
+func ProviderGuideSourceFor(providerName string) (ProviderGuideSource, bool) {
+	providerName = strings.ToLower(strings.TrimSpace(providerName))
+	if providerName == "" {
+		return ProviderGuideSource{}, false
+	}
+	for _, source := range loadProviderSourceCatalog().Providers {
+		for _, name := range source.Names {
+			if strings.Contains(providerName, strings.ToLower(name)) {
+				return source, true
+			}
+		}
+	}
+	return ProviderGuideSource{}, false
+}
+
 func ApplyProviderGuideAliases(providerName string, inputs []InputChannel) []SourceStatus {
 	catalog := loadProviderSourceCatalog()
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
@@ -52,7 +68,8 @@ func ApplyProviderGuideAliases(providerName string, inputs []InputChannel) []Sou
 			if strings.Contains(providerName, strings.ToLower(name)) {
 				statusByID[source.ID] = &SourceStatus{
 					ID: "provider-guide-" + source.ID, Label: source.Label + " official lineup", URL: source.URL,
-					Status: "registered", Message: "Maintained provider guide source (" + source.Access + "); aliases require attributable exact evidence",
+					Status: "registered", Access: source.Access, LocationMode: source.LocationMode,
+					Message: "Maintained provider guide source (" + source.Access + "); aliases require attributable exact evidence",
 				}
 				break
 			}
@@ -85,7 +102,11 @@ func ApplyProviderGuideAliases(providerName string, inputs []InputChannel) []Sou
 			}
 			status := statusByID[source.ID]
 			if status == nil {
-				status = &SourceStatus{ID: "provider-guide-" + source.ID, Label: source.Label + " official lineup", URL: source.URL, Status: "maintained", Message: "Exact renamed-network evidence from an official provider guide"}
+				status = &SourceStatus{
+					ID: "provider-guide-" + source.ID, Label: source.Label + " official lineup", URL: source.URL,
+					Status: "maintained", Access: source.Access, LocationMode: source.LocationMode,
+					Message: "Exact renamed-network evidence from an official provider guide",
+				}
 				statusByID[source.ID] = status
 			}
 			applied := false

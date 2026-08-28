@@ -1238,7 +1238,14 @@ func main() {
 		}
 	}
 	aliasQueue := newAliasJobQueue(guideStatus, marketService)
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, aliasQueue: aliasQueue}
+	lineuparrHandlers := &lineuparrServer{
+		store:                   configStore,
+		state:                   state,
+		builder:                 lineuparrBuilder,
+		marketIndex:             marketService,
+		aliasQueue:              aliasQueue,
+		googleMapsBrowserAPIKey: strings.TrimSpace(util.GetEnv("GOOGLE_MAPS_BROWSER_API_KEY", "")),
+	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
 	}
@@ -1261,6 +1268,7 @@ func main() {
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
 	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
+	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
