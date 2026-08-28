@@ -1237,7 +1237,11 @@ func main() {
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
 	}
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService}
+	aliasQueue := newAliasJobQueue(guideStatus, marketService)
+	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, aliasQueue: aliasQueue}
+	if aliasQueue != nil {
+		go aliasQueue.Run(ctx)
+	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
