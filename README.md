@@ -9,6 +9,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
+- On-demand, resumable station-alias discovery across ranked representative US markets
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -93,6 +94,8 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
+| `MARKET_INDEX_PATH` | Saved station/alias observations from on-demand market scans | `market_index.json` |
+| `MARKET_ZIPS_PATH` | Optional replacement for the embedded representative-market catalog | embedded catalog |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -108,6 +111,19 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 
 A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. Delete or move that file if you intentionally want to bootstrap from environment settings again.
 
+## Station Alias Discovery
+
+The Alias discovery section on `/setup` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
+
+- The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
+- **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
+- Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
+- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, and observed-name provenance are retained; programme events are discarded.
+- Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
+- Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
+
+The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
+
 ## HTTP Endpoints
 
 | Endpoint | Description |
@@ -116,6 +132,9 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 | `GET /api/setup/config` | Read the current non-secret lineup selection |
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
+| `GET /api/setup/market-index` | Read market-scan progress and marginal alias yield |
+| `POST /api/setup/market-index/run` | Continue, selectively refresh, or rebuild the on-demand index |
+| `POST /api/setup/market-index/stop` | Stop a running batch safely |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |
@@ -143,6 +162,7 @@ tvlogo/          TV logo resolver and cache
 util/            Shared helpers
 index.html       The Grid web UI (embedded at build time)
 setup.html       Provider-selection UI (embedded at build time)
+marketindex/     Ranked ZIP catalog, resumable scanner, alias index, and yield reporting
 guide.tmpl       XMLTV output template (embedded at build time)
 ```
 

@@ -5,6 +5,8 @@ config.json
 tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
+market_index.json
+market_index.json.bak
 image_cache/
 demo.gif
 

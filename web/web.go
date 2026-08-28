@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,12 +20,13 @@ type GridResponse struct {
 }
 
 type JSONChannel struct {
-	ChannelID     string      `json:"channelId"`
-	ChannelNo     string      `json:"channelNo"`
-	CallSign      string      `json:"callSign"`
-	AffiliateName string      `json:"affiliateName"`
-	Thumbnail     string      `json:"thumbnail"`
-	Events        []JSONEvent `json:"events"`
+	ChannelID         string      `json:"channelId"`
+	ChannelNo         string      `json:"channelNo"`
+	CallSign          string      `json:"callSign"`
+	AffiliateName     string      `json:"affiliateName"`
+	AffiliateCallSign string      `json:"affiliateCallSign"`
+	Thumbnail         string      `json:"thumbnail"`
+	Events            []JSONEvent `json:"events"`
 }
 
 type JSONEvent struct {
@@ -64,6 +66,10 @@ type Client struct {
 }
 
 func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
+	return c.GetDataByTimeContext(context.Background(), t)
+}
+
+func (c *Client) GetDataByTimeContext(ctx context.Context, t int64) (*GridResponse, error) {
 	log.Printf("headendId=%s lineupId=%s zipCode=%s", c.pref.Headend, c.pref.LineupId, c.pref.ZipCode)
 
 	params := url.Values{
@@ -83,7 +89,7 @@ func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
 	}
 	gridURL := "https://tvlistings.gracenote.com/api/grid?" + params.Encode()
 	log.Printf("Fetching: %s", gridURL)
-	req, err := http.NewRequest("GET", gridURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gridURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("GetDataByTime failed to build request: %w", err)
 	}

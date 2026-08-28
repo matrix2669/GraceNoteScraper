@@ -5,5 +5,7 @@ image_cache/
 tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
+market_index.json
+market_index.json.bak
 demo.gif
 README.md
