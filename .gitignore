@@ -9,6 +9,8 @@ grid_cache/
 lineuparr_state.json
 lineuparr_source_cache/
 dispatcharr_config.json
+market_index.json
+market_index.json.bak
 image_cache/
 demo.gif
 

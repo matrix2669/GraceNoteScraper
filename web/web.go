@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,13 +25,14 @@ type GridResponse struct {
 }
 
 type JSONChannel struct {
-	ID            string      `json:"id"`
-	ChannelID     string      `json:"channelId"`
-	ChannelNo     string      `json:"channelNo"`
-	CallSign      string      `json:"callSign"`
-	AffiliateName string      `json:"affiliateName"`
-	Thumbnail     string      `json:"thumbnail"`
-	Events        []JSONEvent `json:"events"`
+	ID                string      `json:"id"`
+	ChannelID         string      `json:"channelId"`
+	ChannelNo         string      `json:"channelNo"`
+	CallSign          string      `json:"callSign"`
+	AffiliateName     string      `json:"affiliateName"`
+	AffiliateCallSign string      `json:"affiliateCallSign"`
+	Thumbnail         string      `json:"thumbnail"`
+	Events            []JSONEvent `json:"events"`
 }
 
 type JSONEvent struct {
@@ -87,9 +89,13 @@ type Client struct {
 func (c *Client) Source() GuideSource { return c.pref.Source() }
 
 func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
+	return c.GetDataByTimeContext(context.Background(), t)
+}
+
+func (c *Client) GetDataByTimeContext(ctx context.Context, t int64) (*GridResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= gridMaxAttempts; attempt++ {
-		grid, err := c.getDataByTimeOnce(t)
+		grid, err := c.getDataByTimeOnce(ctx, t)
 		if err == nil {
 			if attempt > 1 {
 				log.Printf("Gracenote grid time=%d succeeded on attempt %d/%d", t, attempt, gridMaxAttempts)
@@ -100,12 +106,22 @@ func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
 			return grid, nil
 		}
 		lastErr = err
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if attempt == gridMaxAttempts {
 			break
 		}
 		delay := gridRetryDelays[attempt-1]
 		log.Printf("Gracenote grid time=%d attempt %d/%d failed: %v; retrying in %s", t, attempt, gridMaxAttempts, err, delay)
-		time.Sleep(delay)
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	fallback, age, err := loadGridCache(t, c.Source())
 	if err == nil {
@@ -115,7 +131,7 @@ func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
 	return nil, fmt.Errorf("Gracenote grid time=%d failed after %d attempts (%v); cached fallback unavailable: %w", t, gridMaxAttempts, lastErr, err)
 }
 
-func (c *Client) getDataByTimeOnce(t int64) (*GridResponse, error) {
+func (c *Client) getDataByTimeOnce(ctx context.Context, t int64) (*GridResponse, error) {
 	log.Printf("headendId=%s lineupId=%s zipCode=%s", c.pref.Headend, c.pref.LineupId, c.pref.ZipCode)
 	params := url.Values{
 		"aid": {"orbebb"}, "lineupId": {c.pref.LineupId}, "timespan": {"6"}, "headendId": {c.pref.Headend}, "country": {c.pref.Country},
@@ -124,7 +140,7 @@ func (c *Client) getDataByTimeOnce(t int64) (*GridResponse, error) {
 	}
 	gridURL := "https://tvlistings.gracenote.com/api/grid?" + params.Encode()
 	log.Printf("Fetching: %s", gridURL)
-	req, err := http.NewRequest("GET", gridURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gridURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("GetDataByTime failed to build request: %w", err)
 	}

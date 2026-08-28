@@ -29,6 +29,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
 	"github.com/daniel-widrick/GraceNoteScraper/util"
@@ -98,6 +99,27 @@ type APIProgram struct {
 	Rating      string `json:"rating,omitempty"`
 	IconURL     string `json:"iconUrl,omitempty"`
 	Description string `json:"description,omitempty"`
+}
+
+func currentStationNames(g *guide.TVGuide) map[string][]string {
+	stations := make(map[string][]string)
+	if g == nil {
+		return stations
+	}
+	for _, channel := range g.Channels {
+		if strings.TrimSpace(channel.ID) == "" {
+			continue
+		}
+		names := make([]string, 0, 2)
+		if strings.TrimSpace(channel.CallSign) != "" {
+			names = append(names, channel.CallSign)
+		}
+		if strings.TrimSpace(channel.Affiliate) != "" {
+			names = append(names, channel.Affiliate)
+		}
+		stations[channel.ID] = names
+	}
+	return stations
 }
 
 // ---------- Conversion ----------
@@ -1154,6 +1176,26 @@ func main() {
 	dispatcharrHandlers := &dispatcharrServer{
 		lineup: lineuparrHandlers, config: dispatcharrConfigStore, client: dispatcharrClient,
 	}
+	marketCatalog, marketCatalogErr := marketindex.LoadSeeds(util.GetEnv("MARKET_ZIPS_PATH", ""))
+	if marketCatalogErr != nil {
+		log.Printf("Market index is unavailable: %v", marketCatalogErr)
+	} else {
+		marketService, err := marketindex.NewService(marketindex.ServiceConfig{
+			Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+			Catalog:         marketCatalog,
+			Providers:       setupHandlers.providers,
+			Grids:           marketindex.WebGridFetcher{},
+			CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
+			ProviderDelay:   500 * time.Millisecond,
+			GridDelay:       5 * time.Second,
+		})
+		if err != nil {
+			log.Printf("Market index is unavailable: %v", err)
+		} else {
+			setupHandlers.marketIndex = marketService
+			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
+		}
+	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1170,6 +1212,9 @@ func main() {
 	mux.HandleFunc("/api/setup/config", setupHandlers.handleConfig)
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
+	mux.HandleFunc("/api/setup/market-index", setupHandlers.handleMarketIndex)
+	mux.HandleFunc("/api/setup/market-index/run", setupHandlers.handleMarketIndexRun)
+	mux.HandleFunc("/api/setup/market-index/stop", setupHandlers.handleMarketIndexStop)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
@@ -1206,6 +1251,9 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 	log.Println("Shutting down...")
+	if setupHandlers.marketIndex != nil {
+		setupHandlers.marketIndex.Stop()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

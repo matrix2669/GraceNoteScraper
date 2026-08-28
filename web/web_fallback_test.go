@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -99,6 +100,26 @@ func TestGetDataByTimeFallsBackToCachedRawGrid(t *testing.T) {
 	}
 	if len(grid.Channels) != 1 || grid.Channels[0].Events[0].Program.Title != "Morning Business" {
 		t.Fatalf("unexpected cached grid: %#v", grid)
+	}
+}
+
+func TestGetDataByTimeContextCancellationSkipsCachedFallback(t *testing.T) {
+	useTempGridCache(t)
+	prefs := testPreferences()
+	gridTime := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()
+	if err := saveGridCache(gridTime, prefs.Source(), &GridResponse{}); err != nil {
+		t.Fatalf("saveGridCache: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	client := &Client{Client: &http.Client{}, pref: prefs}
+	grid, err := client.GetDataByTimeContext(ctx, gridTime)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetDataByTimeContext error = %v, want context.Canceled", err)
+	}
+	if grid != nil {
+		t.Fatalf("canceled request returned cached grid: %#v", grid)
 	}
 }
 

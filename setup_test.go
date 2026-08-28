@@ -12,6 +12,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -21,6 +22,12 @@ type fakeProviderFinder struct {
 	country  string
 	postal   string
 	language string
+}
+
+type fakeMarketGridFetcher struct{}
+
+func (fakeMarketGridFetcher) FetchGrid(_ context.Context, _ web.Preferences, _ int64) (*web.GridResponse, error) {
+	return &web.GridResponse{}, nil
 }
 
 func (f *fakeProviderFinder) FindProviders(_ context.Context, country, postalCode, language string) (*web.ProviderResponse, error) {
@@ -132,6 +139,55 @@ func TestSetupPageIsEmbedded(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), "GraceNoteScraper setup") {
 		t.Fatal("setup page marker not found")
 	}
+}
+
+func TestSetupMarketIndexFlow(t *testing.T) {
+	catalog, err := marketindex.LoadSeeds("")
+	if err != nil {
+		t.Fatalf("LoadSeeds() error = %v", err)
+	}
+	finder := &fakeProviderFinder{response: &web.ProviderResponse{Providers: []web.Provider{}}}
+	service, err := marketindex.NewService(marketindex.ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   catalog,
+		Providers: finder,
+		Grids:     fakeMarketGridFetcher{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	server := &setupServer{marketIndex: service}
+
+	request := httptest.NewRequest(http.MethodGet, "/api/setup/market-index", nil)
+	recorder := httptest.NewRecorder()
+	server.handleMarketIndex(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("market index status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+	var snapshot marketindex.Snapshot
+	if err := json.Unmarshal(recorder.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decoding market-index response: %v", err)
+	}
+	if snapshot.Catalog.MarketCount != 100 || snapshot.Summary.CompletedMarkets != 0 {
+		t.Fatalf("initial snapshot = %+v", snapshot.Summary)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/setup/market-index/run", strings.NewReader(`{"action":"continue","batchSize":1}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleMarketIndexRun(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("market run status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if current := service.Snapshot(); !current.Job.Running && current.Summary.CompletedMarkets == 1 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("market index did not finish: %+v", service.Snapshot().Job)
 }
 
 func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
