@@ -1186,7 +1186,13 @@ func main() {
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
 	}
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService}
+	lineuparrHandlers := &lineuparrServer{
+		store:                   configStore,
+		state:                   state,
+		builder:                 lineuparrBuilder,
+		marketIndex:             marketService,
+		googleMapsBrowserAPIKey: strings.TrimSpace(util.GetEnv("GOOGLE_MAPS_BROWSER_API_KEY", "")),
+	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1204,6 +1210,7 @@ func main() {
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
+	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)

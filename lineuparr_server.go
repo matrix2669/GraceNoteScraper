@@ -22,10 +22,22 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	store       *appconfig.Store
-	state       *GuideState
-	builder     *lineuparrbuilder.Service
-	marketIndex *marketindex.Service
+	store                   *appconfig.Store
+	state                   *GuideState
+	builder                 *lineuparrbuilder.Service
+	marketIndex             *marketindex.Service
+	googleMapsBrowserAPIKey string
+}
+
+type providerAddressConfigResponse struct {
+	Required      bool   `json:"required"`
+	Enabled       bool   `json:"enabled"`
+	BrowserAPIKey string `json:"browserApiKey,omitempty"`
+	ProviderID    string `json:"providerId,omitempty"`
+	ProviderLabel string `json:"providerLabel,omitempty"`
+	PostalCode    string `json:"postalCode,omitempty"`
+	CountryCode   string `json:"countryCode,omitempty"`
+	Message       string `json:"message,omitempty"`
 }
 
 func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -51,6 +63,54 @@ func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
 		_, _ = w.Write(data)
+	}
+}
+
+func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	config, configured, _ := s.store.Get()
+	if !configured {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+		return
+	}
+	response := providerAddressConfigResponse{
+		PostalCode:  config.Gracenote.PostalCode,
+		CountryCode: autocompleteCountryCode(config.Gracenote.Country),
+	}
+	if source, ok := lineuparrbuilder.ProviderGuideSourceFor(config.Gracenote.ProviderName); ok {
+		response.ProviderID = source.ID
+		response.ProviderLabel = source.Label
+		response.Required = source.LocationMode == "address"
+	}
+	if response.Required {
+		response.BrowserAPIKey = strings.TrimSpace(s.googleMapsBrowserAPIKey)
+		response.Enabled = response.BrowserAPIKey != ""
+		if response.Enabled {
+			response.Message = "Select the service address from Google Places; it must match the active lineup postal code and remains in this browser only."
+		} else {
+			response.Message = "Set GOOGLE_MAPS_BROWSER_API_KEY to enable verified address selection for this provider source."
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeLineuparrJSON(w, http.StatusOK, response)
+}
+
+func autocompleteCountryCode(country string) string {
+	switch strings.ToUpper(strings.TrimSpace(country)) {
+	case "USA":
+		return "us"
+	case "CAN":
+		return "ca"
+	case "GBR":
+		return "gb"
+	case "AUS":
+		return "au"
+	default:
+		return ""
 	}
 }
 

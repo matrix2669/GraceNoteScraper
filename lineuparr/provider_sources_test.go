@@ -23,6 +23,29 @@ func TestProviderSourceInventoryIncludesRequestedProviders(t *testing.T) {
 	}
 }
 
+func TestProviderSourceLocationRequirements(t *testing.T) {
+	tests := []struct {
+		provider string
+		wantID   string
+		wantMode string
+	}{
+		{provider: "Optimum of Woodbury - Digital Rebuild", wantID: "optimum", wantMode: "address"},
+		{provider: "Comcast Xfinity", wantID: "xfinity", wantMode: "address"},
+		{provider: "Charter Spectrum", wantID: "spectrum", wantMode: "address"},
+		{provider: "Verizon FiOS", wantID: "verizon-fios", wantMode: "postal-code"},
+		{provider: "DIRECTV", wantID: "directv", wantMode: "postal-code-county"},
+	}
+	for _, test := range tests {
+		source, ok := ProviderGuideSourceFor(test.provider)
+		if !ok || source.ID != test.wantID || source.LocationMode != test.wantMode {
+			t.Errorf("ProviderGuideSourceFor(%q) = %+v, %v", test.provider, source, ok)
+		}
+	}
+	if source, ok := ProviderGuideSourceFor("Unknown Cable"); ok {
+		t.Fatalf("unexpected provider source = %+v", source)
+	}
+}
+
 func TestProviderGuideRenamePromotesCurrentNameFromFormerIdentity(t *testing.T) {
 	inputs := []InputChannel{{Key: "1", StationID: "S1", CallSign: "TVG"}}
 	statuses := ApplyProviderGuideAliases("Optimum", inputs)
