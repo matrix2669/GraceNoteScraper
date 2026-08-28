@@ -66,6 +66,9 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
+	if !strings.Contains(recorder.Body.String(), "Queued — click to cancel") {
+		t.Fatal("queued alias action is missing from the Lineuparr page")
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()
@@ -79,6 +82,54 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	}
 	if draft.Total != 2 || draft.Included != 2 || draft.Channels[0].ID == draft.Channels[1].ID {
 		t.Fatalf("draft positions = %+v", draft.Channels)
+	}
+}
+
+func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	config.Gracenote.ProviderName = "Optimum of Woodbury - Digital Rebuild"
+	if err := server.store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	server.googleMapsBrowserAPIKey = "browser-key"
+
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
+	recorder := httptest.NewRecorder()
+	server.handleProviderAddressConfig(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("address config response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	var response providerAddressConfigResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "11743" || response.CountryCode != "us" || response.BrowserAPIKey != "browser-key" {
+		t.Fatalf("address config = %+v", response)
+	}
+	if !strings.Contains(response.Message, "browser only") {
+		t.Fatalf("address privacy message = %q", response.Message)
+	}
+}
+
+func TestProviderAddressConfigDoesNotExposeKeyToPostalOnlyProvider(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	config.Gracenote.ProviderName = "Verizon FiOS"
+	if err := server.store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	server.googleMapsBrowserAPIKey = "browser-key"
+
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
+	recorder := httptest.NewRecorder()
+	server.handleProviderAddressConfig(recorder, request)
+	var response providerAddressConfigResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Required || response.Enabled || response.BrowserAPIKey != "" || response.ProviderID != "verizon-fios" {
+		t.Fatalf("address config = %+v", response)
 	}
 }
 

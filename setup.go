@@ -4,16 +4,17 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -24,10 +25,29 @@ type providerFinder interface {
 	FindProviders(ctx context.Context, country, postalCode, language string) (*web.ProviderResponse, error)
 }
 
+type providerChannelCounter interface {
+	CountChannels(ctx context.Context, country, postalCode, language string, provider web.Provider) (int, error)
+}
+
+type webProviderChannelCounter struct{}
+
+func (webProviderChannelCounter) CountChannels(ctx context.Context, country, postalCode, language string, provider web.Provider) (int, error) {
+	client := web.NewClient(web.Preferences{
+		Country: country, ZipCode: postalCode, Headend: provider.HeadendID,
+		LineupId: provider.LineupID, Device: provider.Device, Language: language,
+	})
+	grid, err := client.GetDataByTimeContext(ctx, time.Now().UTC().Truncate(6*time.Hour).Unix())
+	if err != nil {
+		return 0, err
+	}
+	return len(grid.Channels), nil
+}
+
 type setupServer struct {
 	store           *appconfig.Store
 	providers       providerFinder
-	marketIndex     *marketindex.Service
+	channelCounter  providerChannelCounter
+	scrapeStatus    *scrapeStatus
 	onProviderSaved func(changed bool)
 }
 
@@ -105,6 +125,7 @@ func (s *setupServer) handleProviders(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unable to retrieve lineups from Gracenote: "+err.Error(), http.StatusBadGateway)
 		return
 	}
+	s.addProviderChannelCounts(r.Context(), country, postalCode, language, result.Providers)
 	sort.SliceStable(result.Providers, func(i, j int) bool {
 		left := providerTypeOrder(result.Providers[i].Type)
 		right := providerTypeOrder(result.Providers[j].Type)
@@ -115,6 +136,57 @@ func (s *setupServer) handleProviders(w http.ResponseWriter, r *http.Request) {
 	})
 	w.Header().Set("Cache-Control", "no-store")
 	writeSetupJSON(w, http.StatusOK, result)
+}
+
+func (s *setupServer) addProviderChannelCounts(ctx context.Context, country, postalCode, language string, providers []web.Provider) {
+	if s.channelCounter == nil || len(providers) == 0 {
+		return
+	}
+	workers := 4
+	if workers > len(providers) {
+		workers = len(providers)
+	}
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for worker := 0; worker < workers; worker++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				count, err := s.channelCounter.CountChannels(ctx, country, postalCode, language, providers[index])
+				if err != nil {
+					log.Printf("Unable to count channels for lineup %s: %v", providers[index].LineupID, err)
+					continue
+				}
+				providers[index].ChannelCount = count
+				providers[index].ChannelCountKnown = true
+			}
+		}()
+	}
+	for index := range providers {
+		select {
+		case jobs <- index:
+		case <-ctx.Done():
+			close(jobs)
+			wg.Wait()
+			return
+		}
+	}
+	close(jobs)
+	wg.Wait()
+}
+
+func (s *setupServer) handleScrapeStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.scrapeStatus == nil {
+		writeSetupJSON(w, http.StatusOK, scrapeStatusSnapshot{Stage: "idle", Message: "Guide status is unavailable", UpdatedAt: time.Now().UTC()})
+		return
+	}
+	writeSetupJSON(w, http.StatusOK, s.scrapeStatus.snapshotValue())
 }
 
 func (s *setupServer) handleProvider(w http.ResponseWriter, r *http.Request) {
@@ -186,79 +258,6 @@ func (s *setupServer) handleProvider(w http.ResponseWriter, r *http.Request) {
 		"scrapeQueued": true,
 		"provider":     savedConfig.Gracenote,
 	})
-}
-
-func (s *setupServer) handleMarketIndex(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", "GET")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	writeSetupJSON(w, http.StatusOK, s.marketIndex.Snapshot())
-}
-
-func (s *setupServer) handleMarketIndexRun(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	if !requireJSON(w, r) {
-		return
-	}
-
-	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
-	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	var request marketindex.RunRequest
-	if err := decoder.Decode(&request); err != nil {
-		http.Error(w, "Invalid market-index request: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		http.Error(w, "Invalid market-index request: request must contain one JSON object", http.StatusBadRequest)
-		return
-	}
-	job, err := s.marketIndex.Start(request)
-	if err != nil {
-		status := http.StatusBadRequest
-		if errors.Is(err, marketindex.ErrAlreadyRunning) || errors.Is(err, marketindex.ErrNoWork) {
-			status = http.StatusConflict
-		}
-		http.Error(w, err.Error(), status)
-		return
-	}
-	writeSetupJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
-}
-
-func (s *setupServer) handleMarketIndexStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if s.marketIndex == nil {
-		http.Error(w, "Market index is unavailable; check the application log", http.StatusServiceUnavailable)
-		return
-	}
-	writeSetupJSON(w, http.StatusOK, map[string]bool{"stopping": s.marketIndex.Stop()})
-}
-
-func requireJSON(w http.ResponseWriter, r *http.Request) bool {
-	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || mediaType != "application/json" {
-		http.Error(w, "Content-Type must be application/json", http.StatusUnsupportedMediaType)
-		return false
-	}
-	return true
 }
 
 func providerTypeOrder(providerType string) int {

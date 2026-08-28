@@ -12,6 +12,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - Optional Dispatcharr M3U matching with explicit confirm/deny review and reversible alias cleanup
 - On-demand, resumable station-alias discovery across ranked representative US markets
+- Google Places-autocompleted service-address input for official provider sources that cannot localize from ZIP alone
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -71,6 +72,7 @@ docker compose up -d --build
 
 - Docker and Docker Compose, **or** Go 1.25+ for building from source
 - (Optional) A [TMDB API read access token](https://www.themoviedb.org/settings/api) for poster images and metadata
+- (Optional) A browser-restricted Google Maps Platform key with Maps JavaScript API and Places API (New) enabled for provider address autocomplete
 
 ## Building from Source
 
@@ -105,6 +107,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `MARKET_INDEX_PATH` | Saved station/alias observations from on-demand market scans | `market_index.json` |
 | `MARKET_ZIPS_PATH` | Optional replacement for the embedded representative-market catalog | embedded catalog |
+| `GOOGLE_MAPS_BROWSER_API_KEY` | Browser key for Google Places provider-address autocomplete. Restrict it to the scraper's HTTP(S) origin, Maps JavaScript API, and Places API (New). | — |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -120,6 +123,19 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 
 A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. Delete or move that file if you intentionally want to bootstrap from environment settings again.
 
+## Station Alias Discovery
+
+The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
+
+- The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
+- **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
+- Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
+- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, and observed-name provenance are retained; programme events are discarded.
+- Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
+- Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
+
+The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
+
 ## Lineuparr JSON Builder
 
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
@@ -134,7 +150,6 @@ Ambiguous source identities are counted but never applied. Channels without an a
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
 Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
-
 ### Dispatcharr match review
 
 The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Enter the base address and a normal Dispatcharr username/password; GraceNoteScraper authenticates through Dispatcharr's JWT API and keeps its access and refresh tokens in memory only. The saved URL, username, and password live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
@@ -147,18 +162,8 @@ Matching prioritizes exact EPG IDs, direct channel names, and attributable alias
 
 Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
-## Station Alias Discovery
 
-The Alias discovery section on `/setup` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
-
-- The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
-- **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
-- Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
-- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, and observed-name provenance are retained; programme events are discarded.
-- Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
-- Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
-
-The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
+Official provider sources use the active lineup ZIP automatically. When the matched provider requires a precise service address, `/lineuparr` shows a Google Places autocomplete field only if `GOOGLE_MAPS_BROWSER_API_KEY` is configured. The selected suggestion must match the active lineup ZIP, remains in browser memory only, and is not written to scraper configuration, Lineuparr state, source caches, logs, or exports. GraceNoteScraper does not invent a generic address and does not collect provider-account logins. Provider-specific website adapters remain independently testable follow-up work; selecting an address does not claim that an adapter has already loaded the official lineup.
 
 ## HTTP Endpoints
 
@@ -168,11 +173,12 @@ The default catalog and its provenance are in `marketindex/market_zips.json`. Se
 | `GET /api/setup/config` | Read the current non-secret lineup selection |
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
-| `GET /api/setup/market-index` | Read market-scan progress and marginal alias yield |
-| `POST /api/setup/market-index/run` | Continue, selectively refresh, or rebuild the on-demand index |
-| `POST /api/setup/market-index/stop` | Stop a running batch safely |
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
+| `GET /api/lineuparr/provider-address/config` | Read non-secret Google Places and active-lineup constraints for an address-gated provider source |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
+| `GET /api/lineuparr/alias-index` | Read market-scan progress and marginal alias yield |
+| `POST /api/lineuparr/alias-index/run` | Continue, selectively refresh, or rebuild the on-demand index |
+| `POST /api/lineuparr/alias-index/stop` | Stop or cancel a running alias-index batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
 | `POST /api/lineuparr/alias` | Remove or restore one attributable alias for the active lineup |
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |

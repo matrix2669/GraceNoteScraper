@@ -579,6 +579,12 @@ func (s *Service) ingestGrid(marketRank int, lineupKey string, grid *web.GridRes
 			{kind: NameAffiliateName, value: channel.AffiliateName},
 			{kind: NameAffiliateCallSign, value: channel.AffiliateCallSign},
 		}
+		for _, event := range channel.Events {
+			values = append(values, struct {
+				kind  string
+				value string
+			}{kind: NameEventCallSign, value: event.CallSign})
+		}
 		for _, candidate := range values {
 			previousCallSigns := countNames(station, NameCallSign)
 			added, cosmetic, conflict := addStationName(s.index.Stations, station, owners, candidate.kind, candidate.value, lineupKey, marketRank)
@@ -591,7 +597,7 @@ func (s *Service) ingestGrid(marketRank int, lineupKey string, grid *web.GridRes
 			if knownStation {
 				metrics.newNamesOnKnownStations++
 			}
-			if candidate.kind != NameCallSign {
+			if !isCallSignKind(candidate.kind) {
 				metrics.newAffiliateNames++
 				continue
 			}
@@ -625,9 +631,10 @@ func addStationName(stations map[string]*Station, station *Station, owners map[s
 	}
 	for i := range station.Names {
 		name := &station.Names[i]
-		if name.Kind != kind || name.Normalized != normalized {
+		if name.Normalized != normalized || (isCallSignKind(name.Kind) != isCallSignKind(kind)) || (!isCallSignKind(kind) && name.Kind != kind) {
 			continue
 		}
+		name.ObservedAs = appendUniqueString(name.ObservedAs, kind)
 		name.LineupKeys = appendUniqueString(name.LineupKeys, lineupKey)
 		sort.Strings(name.LineupKeys)
 		if value != name.Value && !containsString(name.Variants, value) {
@@ -642,11 +649,12 @@ func addStationName(stations map[string]*Station, station *Station, owners map[s
 		Value:           value,
 		Normalized:      normalized,
 		Kind:            kind,
+		ObservedAs:      []string{kind},
 		LineupKeys:      []string{lineupKey},
 		FirstMarketRank: marketRank,
 	}
 	station.Names = append(station.Names, name)
-	if kind == NameCallSign {
+	if isCallSignKind(kind) {
 		if owners[normalized] == nil {
 			owners[normalized] = make(map[string]bool)
 		}
@@ -662,7 +670,7 @@ func addStationName(stations map[string]*Station, station *Station, owners map[s
 func markCallSignConflict(stations map[string]*Station, normalized string) {
 	for _, station := range stations {
 		for i := range station.Names {
-			if station.Names[i].Kind == NameCallSign && station.Names[i].Normalized == normalized {
+			if isCallSignKind(station.Names[i].Kind) && station.Names[i].Normalized == normalized {
 				station.Names[i].Conflict = true
 			}
 		}
@@ -675,7 +683,7 @@ func (s *Service) callSignOwners() map[string]map[string]bool {
 	owners := make(map[string]map[string]bool)
 	for stationID, station := range s.index.Stations {
 		for _, name := range station.Names {
-			if name.Kind != NameCallSign {
+			if !isCallSignKind(name.Kind) {
 				continue
 			}
 			if owners[name.Normalized] == nil {
@@ -708,11 +716,15 @@ func ignoredName(normalized string) bool {
 func countNames(station *Station, kind string) int {
 	count := 0
 	for _, name := range station.Names {
-		if name.Kind == kind {
+		if name.Kind == kind || (isCallSignKind(kind) && isCallSignKind(name.Kind)) {
 			count++
 		}
 	}
 	return count
+}
+
+func isCallSignKind(kind string) bool {
+	return kind == NameCallSign || kind == NameEventCallSign
 }
 
 func appendUniqueString(values []string, value string) []string {

@@ -3,25 +3,47 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
 	"mime"
 	"net/http"
 	"strings"
+	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 )
 
 //go:embed lineuparr.html
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	store   *appconfig.Store
-	state   *GuideState
-	builder *lineuparrbuilder.Service
+	store                   *appconfig.Store
+	state                   *GuideState
+	builder                 *lineuparrbuilder.Service
+	marketIndex             *marketindex.Service
+	aliasQueue              *aliasJobQueue
+	googleMapsBrowserAPIKey string
+}
+
+type aliasIndexResponse struct {
+	marketindex.Snapshot
+	Queue aliasQueueView `json:"queue"`
+}
+
+type providerAddressConfigResponse struct {
+	Required      bool   `json:"required"`
+	Enabled       bool   `json:"enabled"`
+	BrowserAPIKey string `json:"browserApiKey,omitempty"`
+	ProviderID    string `json:"providerId,omitempty"`
+	ProviderLabel string `json:"providerLabel,omitempty"`
+	PostalCode    string `json:"postalCode,omitempty"`
+	CountryCode   string `json:"countryCode,omitempty"`
+	Message       string `json:"message,omitempty"`
 }
 
 func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +69,54 @@ func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Method == http.MethodGet {
 		_, _ = w.Write(data)
+	}
+}
+
+func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	config, configured, _ := s.store.Get()
+	if !configured {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+		return
+	}
+	response := providerAddressConfigResponse{
+		PostalCode:  config.Gracenote.PostalCode,
+		CountryCode: autocompleteCountryCode(config.Gracenote.Country),
+	}
+	if source, ok := lineuparrbuilder.ProviderGuideSourceFor(config.Gracenote.ProviderName); ok {
+		response.ProviderID = source.ID
+		response.ProviderLabel = source.Label
+		response.Required = source.LocationMode == "address"
+	}
+	if response.Required {
+		response.BrowserAPIKey = strings.TrimSpace(s.googleMapsBrowserAPIKey)
+		response.Enabled = response.BrowserAPIKey != ""
+		if response.Enabled {
+			response.Message = "Select the service address from Google Places; it must match the active lineup postal code and remains in this browser only."
+		} else {
+			response.Message = "Set GOOGLE_MAPS_BROWSER_API_KEY to enable verified address selection for this provider source."
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeLineuparrJSON(w, http.StatusOK, response)
+}
+
+func autocompleteCountryCode(country string) string {
+	switch strings.ToUpper(strings.TrimSpace(country)) {
+	case "USA":
+		return "us"
+	case "CAN":
+		return "ca"
+	case "GBR":
+		return "gb"
+	case "AUS":
+		return "au"
+	default:
+		return ""
 	}
 }
 
@@ -252,12 +322,15 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	if !ok {
 		return nil, appconfig.Config{}, nil, false
 	}
+	additionalSources := lineuparrbuilder.ApplyProviderGuideAliases(config.Gracenote.ProviderName, inputs)
+	additionalSources = append(additionalSources, s.applyMarketAliases(inputs)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),
 		Country:           config.Gracenote.Country,
 		PostalCode:        config.Gracenote.PostalCode,
 		ProviderName:      config.Gracenote.ProviderName,
 		LineupID:          config.Gracenote.LineupID,
+		AdditionalSources: additionalSources,
 	}, inputs)
 	if err != nil {
 		http.Error(w, "Unable to build Lineuparr draft: "+err.Error(), http.StatusInternalServerError)
@@ -269,6 +342,145 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		return nil, appconfig.Config{}, nil, false
 	}
 	return draft, config, inputs, true
+}
+
+func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
+	if s.marketIndex == nil {
+		return nil
+	}
+	stationIDs := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		if strings.TrimSpace(input.StationID) != "" {
+			stationIDs = append(stationIDs, input.StationID)
+		}
+	}
+	candidates := s.marketIndex.AliasesForStations(stationIDs)
+	matched := 0
+	for index := range inputs {
+		known := map[string]bool{normalizeAlias(inputs[index].CallSign): true, normalizeAlias(inputs[index].Affiliate): true}
+		for _, value := range inputs[index].EventCallSigns {
+			known[normalizeAlias(value)] = true
+		}
+		added := false
+		for _, candidate := range candidates[inputs[index].StationID] {
+			normalized := normalizeAlias(candidate.Value)
+			if normalized == "" || known[normalized] {
+				continue
+			}
+			known[normalized] = true
+			method := "same Gracenote station ID across scanned lineups"
+			if candidate.Kind == marketindex.NameEventCallSign {
+				method = "event callsign on the same Gracenote station ID"
+			}
+			inputs[index].ExternalAliases = append(inputs[index].ExternalAliases, lineuparrbuilder.AttributedAlias{
+				Value: candidate.Value, Source: "gracenote-market-index", Method: method,
+			})
+			added = true
+		}
+		if added {
+			matched++
+		}
+	}
+	snapshot := s.marketIndex.Snapshot()
+	return []lineuparrbuilder.SourceStatus{{
+		ID: "gracenote-market-index", Label: "Gracenote market alias index", Status: "local", Matched: matched,
+		Message: fmt.Sprintf("%d markets and %d unique lineups scanned; exact station-ID aliases only", snapshot.Summary.CompletedMarkets, snapshot.Summary.Lineups),
+	}}
+}
+
+func normalizeAlias(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToUpper(r)
+		}
+		return -1
+	}, strings.TrimSpace(value))
+}
+
+func (s *lineuparrServer) handleAliasIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.marketIndex == nil {
+		http.Error(w, "Alias discovery is unavailable; check the application log", http.StatusServiceUnavailable)
+		return
+	}
+	response := aliasIndexResponse{Snapshot: s.marketIndex.Snapshot()}
+	if s.aliasQueue != nil {
+		s.aliasQueue.TryStart()
+		response.Snapshot = s.marketIndex.Snapshot()
+		response.Queue = s.aliasQueue.View()
+	}
+	writeLineuparrJSON(w, http.StatusOK, response)
+}
+
+func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		cancelled := false
+		if s.aliasQueue != nil {
+			cancelled = s.aliasQueue.Cancel()
+		}
+		writeLineuparrJSON(w, http.StatusOK, map[string]bool{"cancelled": cancelled})
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST, DELETE")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.marketIndex == nil {
+		http.Error(w, "Alias discovery is unavailable; check the application log", http.StatusServiceUnavailable)
+		return
+	}
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	var request marketindex.RunRequest
+	if !decodeLineuparrRequest(w, r, &request) {
+		return
+	}
+	if s.aliasQueue != nil {
+		queueView := s.aliasQueue.View()
+		if queueView.Queued {
+			http.Error(w, errAliasJobAlreadyQueued.Error(), http.StatusConflict)
+			return
+		}
+		if queueView.GuideBusy {
+			queued, err := s.aliasQueue.Queue(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"queued": true, "queue": queued})
+			return
+		}
+		s.aliasQueue.ClearError()
+	}
+	job, err := s.marketIndex.Start(request)
+	if err != nil {
+		status := http.StatusBadRequest
+		if errors.Is(err, marketindex.ErrAlreadyRunning) || errors.Is(err, marketindex.ErrNoWork) {
+			status = http.StatusConflict
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
+}
+
+func (s *lineuparrServer) handleAliasIndexStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.marketIndex == nil {
+		http.Error(w, "Alias discovery is unavailable; check the application log", http.StatusServiceUnavailable)
+		return
+	}
+	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"stopping": s.marketIndex.Stop()})
 }
 
 func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config, []lineuparrbuilder.InputChannel, bool) {

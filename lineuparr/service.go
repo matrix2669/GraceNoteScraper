@@ -76,6 +76,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		Matched: len(channels),
 		Message: "Authoritative lineup membership, channel numbers, callsigns, station IDs, and affiliate names",
 	}}
+	statuses = append(statuses, lineup.AdditionalSources...)
 
 	for _, source := range s.fetchSources(ctx, lineup) {
 		status := SourceStatus{
@@ -322,6 +323,28 @@ func normalizeInput(input InputChannel) InputChannel {
 		events = append(events, eventCallSign)
 	}
 	input.EventCallSigns = events
+	if input.PreferredName != nil {
+		preferred := *input.PreferredName
+		preferred.Value = cleanText(preferred.Value)
+		preferred.Source = strings.TrimSpace(preferred.Source)
+		preferred.Method = strings.TrimSpace(preferred.Method)
+		if preferred.Value == "" || preferred.Source == "" || preferred.Method == "" {
+			input.PreferredName = nil
+		} else {
+			input.PreferredName = &preferred
+		}
+	}
+	external := make([]AttributedAlias, 0, len(input.ExternalAliases))
+	for _, alias := range input.ExternalAliases {
+		alias.Value = cleanText(alias.Value)
+		alias.Source = strings.TrimSpace(alias.Source)
+		alias.Method = strings.TrimSpace(alias.Method)
+		if alias.Value == "" || alias.Source == "" || alias.Method == "" {
+			continue
+		}
+		external = append(external, alias)
+	}
+	input.ExternalAliases = external
 	return input
 }
 
@@ -368,6 +391,16 @@ func newChannelWork(input InputChannel) *channelWork {
 	}
 	for _, eventCallSign := range input.EventCallSigns {
 		channel.addAlias(eventCallSign, "gracenote", "event callsign")
+	}
+	for _, alias := range input.ExternalAliases {
+		channel.addAlias(alias.Value, alias.Source, alias.Method)
+	}
+	if input.PreferredName != nil {
+		channel.draft.Name = input.PreferredName.Value
+		channel.draft.NameSource = input.PreferredName.Source
+		channel.draft.NameMethod = input.PreferredName.Method
+		channel.matchedSourceSet[input.PreferredName.Source] = true
+		channel.addAlias(input.PreferredName.Value, input.PreferredName.Source, input.PreferredName.Method)
 	}
 	if input.StationID != "" {
 		channel.addEPGID(input.StationID, "gracenote", "station ID")

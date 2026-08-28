@@ -259,9 +259,27 @@ var errScrapeSourceChanged = errors.New("active lineup changed during scrape")
 
 type guidePersister func(*guide.TVGuide) (bool, error)
 
+type scrapeProgressUpdate struct {
+	Stage     string
+	Message   string
+	Completed int
+	Total     int
+	Channels  int
+	Programs  int
+}
+
+type scrapeProgressReporter func(scrapeProgressUpdate)
+
 // runScrape performs the full scrape cycle and returns the populated TVGuide.
 // It also writes xmlguide.xmltv atomically.
-func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, channelFilter map[string]bool, sourceFingerprint string, sourceCurrent func() bool, persister guidePersister) (*guide.TVGuide, error) {
+func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, channelFilter map[string]bool, sourceFingerprint string, sourceCurrent func() bool, persister guidePersister, reporters ...scrapeProgressReporter) (*guide.TVGuide, error) {
+	report := func(update scrapeProgressUpdate) {
+		for _, reporter := range reporters {
+			if reporter != nil {
+				reporter(update)
+			}
+		}
+	}
 	client := web.NewClient(pref)
 
 	now := time.Now().UTC()
@@ -281,6 +299,7 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		}
 		slot++
 		ts := t.Unix()
+		report(scrapeProgressUpdate{Stage: "gracenote", Message: fmt.Sprintf("Downloading guide data (%d of %d)", slot, totalSlots), Completed: slot - 1, Total: totalSlots, Channels: len(channelMap), Programs: len(programs)})
 		log.Printf("Fetching grid %d/%d for time=%d (%s)", slot, totalSlots, ts, t.Format(time.RFC3339))
 
 		grid, err := client.GetDataByTime(ts)
@@ -315,6 +334,7 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		}
 
 		log.Printf("Channels so far: %d, Events so far: %d", len(channelMap), len(programs))
+		report(scrapeProgressUpdate{Stage: "gracenote", Message: fmt.Sprintf("Downloaded guide data (%d of %d)", slot, totalSlots), Completed: slot, Total: totalSlots, Channels: len(channelMap), Programs: len(programs)})
 
 		if t.Add(6 * time.Hour).Before(endTime) {
 			time.Sleep(5 * time.Second)
@@ -340,8 +360,11 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	if logoClient != nil {
 		defer logoClient.Close()
 	}
+	report(scrapeProgressUpdate{Stage: "logos", Message: "Matching channel logos", Channels: len(channels), Programs: len(programs)})
 	enrichChannelIcons(logoClient, channels)
-	enrichProgramThumbnails(tmdbClient, programs)
+	enrichProgramThumbnails(tmdbClient, programs, func(completed, total int) {
+		report(scrapeProgressUpdate{Stage: "tmdb", Message: fmt.Sprintf("Enriching program titles (%d of %d)", completed, total), Completed: completed, Total: total, Channels: len(channels), Programs: len(programs)})
+	})
 	fixDeadImageURLs(programs)
 
 	// Rewrite image URLs to go through the local proxy
@@ -378,6 +401,7 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	}
 
 	if persister != nil {
+		report(scrapeProgressUpdate{Stage: "saving", Message: "Rendering and saving the guide", Channels: len(tvGuide.Channels), Programs: len(tvGuide.Programs)})
 		persisted, err := persister(tvGuide)
 		if err != nil {
 			return nil, err
@@ -529,7 +553,7 @@ func rotateFiles() {
 
 // startScraper runs the active lineup on a 24-hour timer and accepts immediate
 // requests after setup changes.
-func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store, tmdbClient *tmdb.Client, baseURL string, initialDelay time.Duration, trigger <-chan struct{}, jellyfinURL, jellyfinAPIKey string, filterEnabled bool) {
+func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store, tmdbClient *tmdb.Client, baseURL string, initialDelay time.Duration, trigger <-chan struct{}, jellyfinURL, jellyfinAPIKey string, filterEnabled bool, status *scrapeStatus) {
 	if initialDelay <= 0 {
 		initialDelay = 24 * time.Hour
 	}
@@ -556,6 +580,9 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		}
 
 		log.Printf("Starting %s scrape for %s", reason, config.Gracenote.ProviderName)
+		if status != nil {
+			status.start("Starting guide download")
+		}
 		var channelFilter map[string]bool
 		if filterEnabled {
 			cf, err := fetchJellyfinChannelNumbers(jellyfinURL, jellyfinAPIKey)
@@ -581,15 +608,30 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 			current, ok, _ := store.Get()
 			return ok && current.Fingerprint() == fingerprint
 		}
-		_, err := runScrape(config.Preferences(), tmdbClient, baseURL, channelFilter, fingerprint, sourceCurrent, persister)
+		var reporter scrapeProgressReporter
+		if status != nil {
+			reporter = func(update scrapeProgressUpdate) {
+				status.update(update.Stage, update.Message, update.Completed, update.Total, update.Channels, update.Programs)
+			}
+		}
+		builtGuide, err := runScrape(config.Preferences(), tmdbClient, baseURL, channelFilter, fingerprint, sourceCurrent, persister, reporter)
 		nextDelay := 24 * time.Hour
 		if errors.Is(err, errScrapeSourceChanged) {
 			log.Println("Discarded scrape because the active lineup changed")
+			if status != nil {
+				status.queue("Waiting to build the newly selected lineup")
+			}
 		} else if err != nil {
 			log.Printf("Scrape failed: %v", err)
+			if status != nil {
+				status.fail("Guide build failed: " + err.Error())
+			}
 			nextDelay = 15 * time.Minute
 		} else {
 			log.Println("Scrape complete")
+			if status != nil {
+				status.ready(len(builtGuide.Channels), len(builtGuide.Programs))
+			}
 		}
 		resetScrapeTimer(timer, nextDelay)
 	}
@@ -1155,6 +1197,12 @@ func main() {
 		initialFingerprint = config.Fingerprint()
 	}
 	state.UpdateForSource(g, initialFingerprint)
+	guideChannels, guidePrograms := 0, 0
+	if g != nil {
+		guideChannels = len(g.Channels)
+		guidePrograms = len(g.Programs)
+	}
+	guideStatus := newScrapeStatus(g != nil, guideChannels, guidePrograms)
 
 	// Signal context for graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -1162,25 +1210,25 @@ func main() {
 
 	scrapeTrigger := make(chan struct{}, 1)
 	setupHandlers := &setupServer{
-		store:     configStore,
-		providers: web.NewProviderClient(),
+		store:          configStore,
+		providers:      web.NewProviderClient(),
+		channelCounter: webProviderChannelCounter{},
+		scrapeStatus:   guideStatus,
 		onProviderSaved: func(changed bool) {
 			if changed {
 				state.UpdateForSource(nil, "")
 				invalidateCurrentGuideArtifacts()
 			}
+			guideStatus.queue("Guide build queued")
 			queueScrape(scrapeTrigger)
 		},
 	}
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder}
-	dispatcharrHandlers := &dispatcharrServer{
-		lineup: lineuparrHandlers, config: dispatcharrConfigStore, client: dispatcharrClient,
-	}
+	var marketService *marketindex.Service
 	marketCatalog, marketCatalogErr := marketindex.LoadSeeds(util.GetEnv("MARKET_ZIPS_PATH", ""))
 	if marketCatalogErr != nil {
 		log.Printf("Market index is unavailable: %v", marketCatalogErr)
 	} else {
-		marketService, err := marketindex.NewService(marketindex.ServiceConfig{
+		service, serviceErr := marketindex.NewService(marketindex.ServiceConfig{
 			Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
 			Catalog:         marketCatalog,
 			Providers:       setupHandlers.providers,
@@ -1189,21 +1237,37 @@ func main() {
 			ProviderDelay:   500 * time.Millisecond,
 			GridDelay:       5 * time.Second,
 		})
-		if err != nil {
-			log.Printf("Market index is unavailable: %v", err)
+		if serviceErr != nil {
+			log.Printf("Market index is unavailable: %v", serviceErr)
 		} else {
-			setupHandlers.marketIndex = marketService
+			marketService = service
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
+	}
+	aliasQueue := newAliasJobQueue(guideStatus, marketService)
+	lineuparrHandlers := &lineuparrServer{
+		store:                   configStore,
+		state:                   state,
+		builder:                 lineuparrBuilder,
+		marketIndex:             marketService,
+		aliasQueue:              aliasQueue,
+		googleMapsBrowserAPIKey: strings.TrimSpace(util.GetEnv("GOOGLE_MAPS_BROWSER_API_KEY", "")),
+	}
+	if aliasQueue != nil {
+		go aliasQueue.Run(ctx)
+	}
+	dispatcharrHandlers := &dispatcharrServer{
+		lineup: lineuparrHandlers, config: dispatcharrConfigStore, client: dispatcharrClient,
 	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
 		log.Println("Initial scrape queued")
+		guideStatus.queue("Initial guide build queued")
 	} else {
 		log.Printf("Next scrape in %s", nextScrapeIn.Round(time.Minute))
 	}
-	go startScraper(ctx, state, configStore, tmdbClient, baseURL, nextScrapeIn, scrapeTrigger, jellyfinURL, jellyfinAPIKey, channelFilterEnabled)
+	go startScraper(ctx, state, configStore, tmdbClient, baseURL, nextScrapeIn, scrapeTrigger, jellyfinURL, jellyfinAPIKey, channelFilterEnabled, guideStatus)
 
 	// HTTP server
 	mux := http.NewServeMux()
@@ -1212,16 +1276,18 @@ func main() {
 	mux.HandleFunc("/api/setup/config", setupHandlers.handleConfig)
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
-	mux.HandleFunc("/api/setup/market-index", setupHandlers.handleMarketIndex)
-	mux.HandleFunc("/api/setup/market-index/run", setupHandlers.handleMarketIndexRun)
-	mux.HandleFunc("/api/setup/market-index/stop", setupHandlers.handleMarketIndexStop)
+	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
+	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/alias", lineuparrHandlers.handleAlias)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
+	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
+	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
+	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/review", dispatcharrHandlers.handleReview)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", dispatcharrHandlers.handleDecision)
@@ -1251,8 +1317,8 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 	log.Println("Shutting down...")
-	if setupHandlers.marketIndex != nil {
-		setupHandlers.marketIndex.Stop()
+	if marketService != nil {
+		marketService.Stop()
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1276,7 +1342,7 @@ func xmlEscape(s string) string {
 
 // replaces broken Gracenote thumbnail URLs with TMDB
 // poster images, star ratings, dates, and descriptions.
-func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program) {
+func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, progress ...func(completed, total int)) {
 	if client == nil {
 		return
 	}
@@ -1306,11 +1372,21 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program) {
 	}
 
 	log.Printf("TMDB: looking up %d unique titles", len(unique))
+	for _, update := range progress {
+		if update != nil {
+			update(0, len(unique))
+		}
+	}
 
 	// Phase 2: lookup each unique title
 	results := make(map[titleKey]tmdb.CacheEntry)
-	for _, k := range unique {
+	for index, k := range unique {
 		results[k] = client.Lookup(k.title, k.isMovie)
+		for _, update := range progress {
+			if update != nil {
+				update(index+1, len(unique))
+			}
+		}
 	}
 
 	// Phase 3: apply results back to programs

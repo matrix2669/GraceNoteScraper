@@ -136,6 +136,33 @@
 
     .current-name { font-weight: 750; }
     .current-meta { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .current-actions { display: flex; align-items: center; gap: 9px; }
+
+    .secondary-button {
+      min-height: 40px;
+      padding: 0 14px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .035);
+      color: var(--muted);
+    }
+
+    .secondary-button:hover { border-color: var(--accent); background: rgba(255, 255, 255, .055); color: var(--text); }
+
+    .guide-status {
+      display: none;
+      margin: 0 0 20px;
+      padding: 18px 20px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(16, 30, 25, .88);
+    }
+
+    .guide-status.show { display: block; }
+    .status-heading { display: flex; justify-content: space-between; gap: 14px; font-weight: 750; }
+    .status-stage { color: var(--accent); }
+    .status-detail { margin-top: 6px; color: var(--muted); font-size: 13px; }
+    .progress-track { overflow: hidden; height: 7px; margin-top: 13px; border-radius: 999px; background: rgba(255, 255, 255, .08); }
+    .progress-fill { width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width .25s ease; }
 
     .panel {
       overflow: hidden;
@@ -315,120 +342,15 @@
       line-height: 1.55;
     }
 
-    .alias-panel { margin-top: 28px; padding: 28px; }
-
-    .alias-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
-
-    .alias-header p {
-      max-width: 680px;
-      margin: 9px 0 0;
-      color: var(--muted);
-      line-height: 1.55;
-    }
-
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(0, 1fr));
-      gap: 10px;
-      margin-top: 24px;
-    }
-
-    .metric {
-      min-height: 92px;
-      padding: 15px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: rgba(7, 17, 14, .48);
-    }
-
-    .metric-value { font-size: 25px; font-weight: 820; letter-spacing: -.03em; }
-    .metric-label { margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.35; }
-
-    .scan-progress {
-      margin-top: 20px;
-      padding: 17px;
-      border: 1px solid var(--line);
-      border-radius: 13px;
-      background: rgba(7, 17, 14, .38);
-    }
-
-    .progress-copy { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 13px; }
-    .progress-copy strong { color: var(--text); }
-
-    .progress-track {
-      overflow: hidden;
-      height: 8px;
-      margin-top: 12px;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, .07);
-    }
-
-    .progress-bar {
-      width: 0;
-      height: 100%;
-      border-radius: inherit;
-      background: linear-gradient(90deg, var(--accent-strong), var(--accent));
-      transition: width .25s ease;
-    }
-
-    .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
-
-    button.secondary { border: 1px solid var(--line); background: transparent; color: var(--text); }
-    button.secondary:hover { border-color: var(--accent); background: rgba(124, 230, 166, .06); }
-    button.danger { color: var(--danger); }
-
-    .batch-section { margin-top: 28px; }
-    .batch-section h3 { margin: 0 0 12px; font-size: 15px; }
-    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; }
-    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
-    th:first-child, td:first-child { text-align: left; }
-    th { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
-    tr:last-child td { border-bottom: 0; }
-
-    .market-details { margin-top: 20px; }
-    .market-details summary { color: var(--muted); cursor: pointer; font-size: 13px; }
-    .market-list { display: grid; gap: 7px; margin-top: 12px; }
-
-    .market-row {
-      display: grid;
-      grid-template-columns: 48px minmax(180px, 1fr) 72px 96px auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      color: var(--muted);
-      font-size: 12px;
-    }
-
-    .market-name { color: var(--text); font-weight: 660; }
-    .status-pill { justify-self: start; padding: 3px 7px; border-radius: 999px; background: rgba(255, 255, 255, .06); }
-    .status-pill.complete { color: var(--accent); background: rgba(124, 230, 166, .08); }
-    .status-pill.error { color: var(--danger); background: rgba(255, 95, 87, .08); }
-    .status-pill.running { color: var(--warning); }
-    .market-refresh { min-height: 34px; padding: 0 10px; font-size: 11px; }
-
     @media (max-width: 720px) {
       .shell { width: min(100% - 22px, 1040px); padding-top: 24px; }
       .topbar { margin-bottom: 28px; }
       .search-area, .results { padding-left: 18px; padding-right: 18px; }
       .search-form { grid-template-columns: 1fr; }
       .current, .save-row { align-items: flex-start; flex-direction: column; }
+      .current-actions { width: 100%; flex-wrap: wrap; }
       .provider-card { grid-template-columns: 22px 1fr; }
       .provider-device { display: none; }
-      .alias-panel { padding: 20px 18px; }
-      .alias-header { flex-direction: column; }
-      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .market-row { grid-template-columns: 40px 1fr auto; }
-      .market-zip { display: none; }
     }
   </style>
 </head>
@@ -454,13 +376,20 @@
         <div class="current-name" id="currentName"></div>
         <div class="current-meta" id="currentMeta"></div>
       </div>
-      <div class="top-links">
+      <div class="current-actions">
+        <button class="secondary-button" id="changeButton" type="button">Change lineup</button>
         <a class="guide-link" style="display:inline-block" href="/lineuparr">Build Lineuparr JSON</a>
         <a class="guide-link" style="display:inline-block" href="/">View guide</a>
       </div>
     </section>
 
-    <section class="panel">
+    <section class="guide-status" id="guideStatus" aria-live="polite">
+      <div class="status-heading"><span id="statusMessage">Checking guide status…</span><span class="status-stage" id="statusStage"></span></div>
+      <div class="status-detail" id="statusDetail"></div>
+      <div class="progress-track" id="progressTrack" hidden><div class="progress-fill" id="progressFill"></div></div>
+    </section>
+
+    <section class="panel" id="chooserPanel">
       <div class="search-area">
         <div class="step"><span class="step-number">1</span><span>Find lineups for your area</span></div>
         <form class="search-form" id="searchForm">
@@ -492,50 +421,6 @@
 
     <p class="footnote">Lineup availability comes from Gracenote's provider directory. GraceNoteScraper stores the selected lineup identifiers locally; this step does not require a provider account or password.</p>
 
-    <section class="panel alias-panel" id="aliasPanel">
-      <div class="alias-header">
-        <div>
-          <p class="eyebrow">Alias discovery</p>
-          <h2>Build a reusable station-name index</h2>
-          <p>Scan ranked television markets in groups of 25. Shared Gracenote station IDs reveal names used by other provider lineups, while duplicate lineups are downloaded only once.</p>
-        </div>
-      </div>
-
-      <div class="metric-grid" aria-live="polite">
-        <div class="metric"><div class="metric-value" id="marketsMetric">—</div><div class="metric-label">Markets completed</div></div>
-        <div class="metric"><div class="metric-value" id="lineupsMetric">—</div><div class="metric-label">Unique lineups</div></div>
-        <div class="metric"><div class="metric-value" id="stationsMetric">—</div><div class="metric-label">Station IDs</div></div>
-        <div class="metric"><div class="metric-value" id="aliasesMetric">—</div><div class="metric-label">Meaningful aliases</div></div>
-        <div class="metric"><div class="metric-value" id="currentAliasesMetric">—</div><div class="metric-label">Aliases for current lineup</div></div>
-      </div>
-
-      <div class="scan-progress">
-        <div class="progress-copy"><strong id="scanStatus">Loading market index…</strong><span id="scanProgressCount"></span></div>
-        <div class="progress-track"><div class="progress-bar" id="scanProgressBar"></div></div>
-        <div class="message" id="marketMessage" role="status" aria-live="polite"></div>
-        <div class="action-row">
-          <button id="continueScanButton" type="button">Scan next 25 markets</button>
-          <button class="secondary" id="stopScanButton" type="button" style="display:none">Stop scan</button>
-          <button class="secondary danger" id="rebuildIndexButton" type="button">Rebuild index</button>
-        </div>
-      </div>
-
-      <section class="batch-section">
-        <h3>Marginal yield by batch</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Markets</th><th>New lineups</th><th>New stations</th><th>Names on known IDs</th><th>Callsign aliases</th><th>Affiliate names</th><th>Cosmetic only</th><th>Current lineup</th><th>Conflicts</th><th>Errors</th></tr></thead>
-            <tbody id="batchRows"><tr><td colspan="10">No market batches have run yet.</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-
-      <details class="market-details">
-        <summary id="marketListSummary">View curated market ZIP list</summary>
-        <div class="market-list" id="marketList"></div>
-      </details>
-      <p class="footnote" id="marketProvenance"></p>
-    </section>
   </main>
 
   <script>
@@ -545,6 +430,14 @@
       var currentCard = document.getElementById('currentCard');
       var currentName = document.getElementById('currentName');
       var currentMeta = document.getElementById('currentMeta');
+      var changeButton = document.getElementById('changeButton');
+      var chooserPanel = document.getElementById('chooserPanel');
+      var guideStatus = document.getElementById('guideStatus');
+      var statusMessage = document.getElementById('statusMessage');
+      var statusStage = document.getElementById('statusStage');
+      var statusDetail = document.getElementById('statusDetail');
+      var progressTrack = document.getElementById('progressTrack');
+      var progressFill = document.getElementById('progressFill');
       var guideLink = document.getElementById('guideLink');
       var builderLink = document.getElementById('builderLink');
       var form = document.getElementById('searchForm');
@@ -557,175 +450,16 @@
       var saveRow = document.getElementById('saveRow');
       var saveButton = document.getElementById('saveButton');
 
-      var marketsMetric = document.getElementById('marketsMetric');
-      var lineupsMetric = document.getElementById('lineupsMetric');
-      var stationsMetric = document.getElementById('stationsMetric');
-      var aliasesMetric = document.getElementById('aliasesMetric');
-      var currentAliasesMetric = document.getElementById('currentAliasesMetric');
-      var scanStatus = document.getElementById('scanStatus');
-      var scanProgressCount = document.getElementById('scanProgressCount');
-      var scanProgressBar = document.getElementById('scanProgressBar');
-      var marketMessage = document.getElementById('marketMessage');
-      var continueScanButton = document.getElementById('continueScanButton');
-      var stopScanButton = document.getElementById('stopScanButton');
-      var rebuildIndexButton = document.getElementById('rebuildIndexButton');
-      var batchRows = document.getElementById('batchRows');
-      var marketList = document.getElementById('marketList');
-      var marketListSummary = document.getElementById('marketListSummary');
-      var marketProvenance = document.getElementById('marketProvenance');
-
       var providers = [];
       var selectedIndex = -1;
       var language = 'en-us';
-
-      var marketPoll = null;
+      var configured = false;
+      var statusTimer = null;
 
       function setMessage(text, kind) {
         message.textContent = text || '';
         message.className = 'message' + (kind ? ' ' + kind : '');
         message.style.display = text ? 'block' : 'none';
-      }
-
-      function setMarketMessage(text, kind) {
-        marketMessage.textContent = text || '';
-        marketMessage.className = 'message' + (kind ? ' ' + kind : '');
-        marketMessage.style.display = text ? 'block' : 'none';
-      }
-
-      function readResponse(response) {
-        if (!response.ok) {
-          return response.text().then(function (text) { throw new Error(text.trim() || 'Request failed'); });
-        }
-        return response.json();
-      }
-
-      function statusLabel(status) {
-        if (status === 'complete') return 'Complete';
-        if (status === 'running') return 'Scanning';
-        if (status === 'error') return 'Needs retry';
-        return 'Pending';
-      }
-
-      function renderMarketIndex(data) {
-        var summary = data.summary;
-        var catalog = data.catalog;
-        var job = data.job;
-        var completed = summary.completedMarkets || 0;
-        var total = catalog.marketCount || 0;
-        var percent = total ? Math.round((completed / total) * 100) : 0;
-
-        marketsMetric.textContent = completed + ' / ' + total;
-        lineupsMetric.textContent = String(summary.lineups || 0);
-        stationsMetric.textContent = String(summary.stations || 0);
-        aliasesMetric.textContent = String(summary.meaningfulAliases || 0);
-        currentAliasesMetric.textContent = summary.currentLineupStations ? String(summary.currentLineupAliases || 0) : '—';
-        scanProgressCount.textContent = percent + '%';
-        scanProgressBar.style.width = percent + '%';
-
-        if (job.running) {
-          scanStatus.textContent = 'Scanning #' + job.currentRank + ' ' + (job.currentMarket || 'next market') + ' · ' + job.completedCount + ' of ' + job.totalCount + ' in this batch';
-        } else if (completed === total && total > 0) {
-          scanStatus.textContent = 'All curated markets have been processed';
-        } else if (summary.errorMarkets) {
-          scanStatus.textContent = summary.errorMarkets + ' market' + (summary.errorMarkets === 1 ? '' : 's') + ' will be retried before continuing';
-        } else {
-          scanStatus.textContent = completed ? 'Ready for the next 25-market checkpoint' : 'Ready to scan the first 25 markets';
-        }
-
-        continueScanButton.disabled = job.running || (completed === total && !summary.errorMarkets);
-        continueScanButton.textContent = completed ? 'Scan next 25 markets' : 'Scan first 25 markets';
-        stopScanButton.style.display = job.running ? 'inline-block' : 'none';
-        rebuildIndexButton.disabled = job.running;
-        if (job.lastError && !job.running) setMarketMessage(job.lastError, 'error');
-        else if (!job.running) setMarketMessage('', '');
-
-        batchRows.textContent = '';
-        var batches = (data.batches || []).slice().reverse().slice(0, 8);
-        if (!batches.length) {
-          var emptyRow = document.createElement('tr');
-          var emptyCell = document.createElement('td');
-          emptyCell.colSpan = 10;
-          emptyCell.textContent = 'No market batches have run yet.';
-          emptyRow.appendChild(emptyCell);
-          batchRows.appendChild(emptyRow);
-        }
-        batches.forEach(function (batch) {
-          var row = document.createElement('tr');
-          [batch.fromRank + '–' + batch.toRank, batch.newLineups, batch.newStations, batch.newNamesOnKnownStations, batch.newCallSignAliases, batch.newAffiliateNames, batch.cosmeticVariants, batch.currentLineupAliases, batch.conflicts, batch.errors].forEach(function (value) {
-            var cell = document.createElement('td');
-            cell.textContent = String(value || 0);
-            row.appendChild(cell);
-          });
-          batchRows.appendChild(row);
-        });
-
-        marketList.textContent = '';
-        (data.markets || []).forEach(function (market) {
-          var row = document.createElement('div');
-          row.className = 'market-row';
-          var rank = document.createElement('span');
-          rank.textContent = '#' + market.rank;
-          var name = document.createElement('span');
-          name.className = 'market-name';
-          name.textContent = market.name;
-          var zip = document.createElement('span');
-          zip.className = 'market-zip';
-          zip.textContent = market.postalCode;
-          var status = document.createElement('span');
-          status.className = 'status-pill ' + market.status;
-          status.textContent = statusLabel(market.status);
-          var refresh = document.createElement('button');
-          refresh.type = 'button';
-          refresh.className = 'secondary market-refresh';
-          refresh.textContent = 'Refresh';
-          refresh.disabled = job.running;
-          refresh.addEventListener('click', function () { startMarketScan('refresh', [market.rank]); });
-          row.appendChild(rank);
-          row.appendChild(name);
-          row.appendChild(zip);
-          row.appendChild(status);
-          row.appendChild(refresh);
-          marketList.appendChild(row);
-        });
-        marketListSummary.textContent = 'View curated market ZIP list (' + total + ')';
-        marketProvenance.textContent = catalog.selectionMethod + ' Ranking snapshot: ' + catalog.asOf + '.';
-
-        if (job.running && !marketPoll) {
-          marketPoll = window.setInterval(loadMarketIndex, 2500);
-        } else if (!job.running && marketPoll) {
-          window.clearInterval(marketPoll);
-          marketPoll = null;
-        }
-      }
-
-      function loadMarketIndex() {
-        fetch('/api/setup/market-index', { cache: 'no-store' })
-          .then(readResponse)
-          .then(renderMarketIndex)
-          .catch(function (error) {
-            setMarketMessage(error.message || 'Unable to load the market index.', 'error');
-            scanStatus.textContent = 'Market index unavailable';
-          });
-      }
-
-      function startMarketScan(action, ranks) {
-        continueScanButton.disabled = true;
-        rebuildIndexButton.disabled = true;
-        setMarketMessage(action === 'refresh' ? 'Refreshing the selected market…' : 'Starting the market scan…');
-        fetch('/api/setup/market-index/run', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: action, batchSize: action === 'refresh' ? 1 : 25, ranks: ranks || [] })
-        })
-          .then(readResponse)
-          .then(function () {
-            setMarketMessage('Scan started. Progress is saved after every lineup.', 'success');
-            loadMarketIndex();
-          })
-          .catch(function (error) {
-            setMarketMessage(error.message || 'Unable to start the market scan.', 'error');
-            loadMarketIndex();
-          });
       }
 
       function providerTypeLabel(type) {
@@ -740,14 +474,58 @@
         if (provider.location) pieces.push(provider.location);
         if (provider.device === 'L') pieces.push('Digital rebuild');
         else if (provider.device === 'X') pieces.push('Digital');
+        if (provider.channelCountKnown) pieces.push(provider.channelCount.toLocaleString() + ' channels');
         return pieces.join(' · ') || providerTypeLabel(provider.type);
       }
 
       function providerDeviceLabel(provider) {
+        var device;
         if (provider.device === 'L') return 'Rebuild';
         if (provider.device === 'X') return 'Digital';
         if (provider.type === 'OTA') return 'OTA';
-        return provider.type || 'Other';
+        device = provider.type || 'Other';
+        return device;
+      }
+
+      function showConfigured(config) {
+        configured = true;
+        currentName.textContent = config.providerName;
+        currentMeta.textContent = [config.location, config.postalCode, providerTypeLabel(config.providerType)].filter(Boolean).join(' · ');
+        currentCard.style.display = 'flex';
+        guideLink.style.display = 'inline-block';
+        builderLink.style.display = 'inline-block';
+        chooserPanel.style.display = 'none';
+        guideStatus.classList.add('show');
+        pollGuideStatus();
+      }
+
+      function renderGuideStatus(status) {
+        var labels = { queued: 'Queued', starting: 'Starting', gracenote: 'Guide download', logos: 'Channel logos', tmdb: 'TMDB enrichment', saving: 'Saving guide', ready: 'Complete', error: 'Needs attention', idle: 'Waiting' };
+        statusMessage.textContent = status.message || 'Guide status unavailable';
+        statusStage.textContent = labels[status.stage] || status.stage || '';
+        var details = [];
+        if (status.channels) details.push(status.channels.toLocaleString() + ' channels');
+        if (status.programs) details.push(status.programs.toLocaleString() + ' programs');
+        statusDetail.textContent = details.join(' · ');
+        var hasProgress = status.running && status.total > 0;
+        progressTrack.hidden = !hasProgress;
+        progressFill.style.width = hasProgress ? Math.max(0, Math.min(100, status.completed * 100 / status.total)) + '%' : '0';
+      }
+
+      function pollGuideStatus() {
+        if (!configured) return;
+        clearTimeout(statusTimer);
+        fetch('/api/setup/status', { cache: 'no-store' })
+          .then(function (response) {
+            if (!response.ok) throw new Error('Unable to read guide status');
+            return response.json();
+          })
+          .then(renderGuideStatus)
+          .catch(function (error) {
+            statusMessage.textContent = error.message;
+            statusStage.textContent = '';
+          })
+          .finally(function () { statusTimer = setTimeout(pollGuideStatus, 2000); });
       }
 
       function loadCurrentConfig() {
@@ -759,11 +537,7 @@
           .then(function (data) {
             if (!data.configured || !data.gracenote) return;
             var config = data.gracenote;
-            currentName.textContent = config.providerName;
-            currentMeta.textContent = [config.location, config.postalCode, providerTypeLabel(config.providerType)].filter(Boolean).join(' · ');
-            currentCard.style.display = 'flex';
-            guideLink.style.display = 'inline-block';
-            builderLink.style.display = 'inline-block';
+            showConfigured(config);
             country.value = config.country || 'USA';
             postalCode.value = config.postalCode || '';
             language = config.language || 'en-us';
@@ -857,7 +631,7 @@
         var postal = postalCode.value.trim().toUpperCase();
         if (!postal) return;
 
-        setMessage('Looking up lineups for ' + postal + '…');
+        setMessage('Looking up lineups and channel counts for ' + postal + '…');
         searchButton.disabled = true;
         results.style.display = 'none';
         providers = [];
@@ -911,12 +685,9 @@
             return response.json();
           })
           .then(function (data) {
-            currentName.textContent = data.provider.providerName;
-            currentMeta.textContent = [data.provider.location, data.provider.postalCode, providerTypeLabel(data.provider.providerType)].filter(Boolean).join(' · ');
-            currentCard.style.display = 'flex';
-            guideLink.style.display = 'inline-block';
-            builderLink.style.display = 'inline-block';
-            setMessage('Lineup saved. A fresh guide has been queued; the first complete build can take several minutes.', 'success');
+            showConfigured(data.provider);
+            results.style.display = 'none';
+            setMessage('');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           })
           .catch(function (error) {
@@ -925,23 +696,15 @@
           .finally(function () { saveButton.disabled = false; });
       });
 
-      continueScanButton.addEventListener('click', function () { startMarketScan('continue'); });
-      stopScanButton.addEventListener('click', function () {
-        fetch('/api/setup/market-index/stop', { method: 'POST' })
-          .then(readResponse)
-          .then(function () {
-            setMarketMessage('Stop requested. Completed checkpoints remain saved.');
-            loadMarketIndex();
-          })
-          .catch(function (error) { setMarketMessage(error.message || 'Unable to stop the scan.', 'error'); });
-      });
-      rebuildIndexButton.addEventListener('click', function () {
-        if (!window.confirm('Rebuild the market index from the beginning? The current index will be kept as a .bak file.')) return;
-        startMarketScan('rebuild');
+      changeButton.addEventListener('click', function () {
+        chooserPanel.style.display = 'block';
+        results.style.display = 'none';
+        setMessage('Choose another lineup. Your current lineup remains active until you save a replacement.');
+        window.scrollTo({ top: chooserPanel.offsetTop - 20, behavior: 'smooth' });
+        postalCode.focus();
       });
 
       loadCurrentConfig();
-      loadMarketIndex();
     }());
   </script>
 </body>

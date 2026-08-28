@@ -309,6 +309,36 @@ func TestServiceRefreshAndRebuild(t *testing.T) {
 	}
 }
 
+func TestServiceRetainsDistinctEventCallSignsAsAliasEvidence(t *testing.T) {
+	providers := &fakeProviders{responses: map[string][]web.Provider{"10001": {testProvider("L1")}}}
+	grids := &fakeGrids{
+		responses: map[string]*web.GridResponse{"L1": {Channels: []web.JSONChannel{{
+			ChannelID: "S1", CallSign: "ONE", Events: []web.JSONEvent{{CallSign: "ONE HD"}},
+		}}}},
+		failures: map[string]int{}, calls: map[string]int{},
+	}
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: providers, Grids: grids,
+		CurrentStations: func() map[string][]string { return map[string][]string{"S1": {"ONE"}} },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(RunRequest{Action: "continue", BatchSize: 1}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForBatch(t, service, 1)
+	if snapshot.Summary.MeaningfulAliases != 1 || snapshot.Summary.CurrentLineupAliases != 1 {
+		t.Fatalf("event callsign summary = %+v", snapshot.Summary)
+	}
+	candidates := service.AliasesForStations([]string{"S1"})["S1"]
+	if len(candidates) != 2 || candidates[1].Value != "ONE HD" || candidates[1].Kind != NameEventCallSign {
+		t.Fatalf("event callsign candidates = %+v", candidates)
+	}
+}
+
 func TestServiceStopLeavesWorkResumable(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "market_index.json")
 	providers := &fakeProviders{responses: map[string][]web.Provider{"10001": {testProvider("BLOCK")}}}
