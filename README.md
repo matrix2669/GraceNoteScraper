@@ -10,6 +10,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
+- Optional Dispatcharr M3U matching with explicit confirm/deny review and reversible alias cleanup
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -96,10 +97,11 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
-| `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
+| `LINEUPARR_STATE_PATH` | Saved channel, alias, and Dispatcharr match-review choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
 | `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
+| `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -130,6 +132,18 @@ The optional **Remove suggested SD** action is conservative: it appears only whe
 
 Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
+### Dispatcharr match review
+
+The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Enter the base address and a normal Dispatcharr username/password; GraceNoteScraper authenticates through Dispatcharr's JWT API and keeps its access and refresh tokens in memory only. The saved URL, username, and password live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
+
+Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Provider prefixes, common HD/UHD markers, and matching provider channel numbers are considered, while decorative playlist headings are ignored. A score is never accepted automatically:
+
+- **Confirm** adds the stream name and, when present, its `tvg_id` to that specific lineup position with Dispatcharr provenance.
+- **Deny** records only that stream/channel pairing as rejected and reveals the next candidate when one exists.
+- **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
+
+Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
+
 ## HTTP Endpoints
 
 | Endpoint | Description |
@@ -141,9 +155,13 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
+| `POST /api/lineuparr/alias` | Remove or restore one attributable alias for the active lineup |
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
+| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; password is never returned |
+| `GET /api/lineuparr/dispatcharr/review` | Fetch the current safe M3U match-review queue; add `?refresh=true` to refresh streams |
+| `POST, DELETE /api/lineuparr/dispatcharr/decision` | Confirm/deny a current candidate, or undo one reviewed decision |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |
@@ -164,6 +182,7 @@ The server includes a built-in retro-styled TV guide web UI at the root URL. If 
 ```
 appconfig/       Persisted non-secret provider configuration
 lineuparr/        Source-aware Lineuparr draft, state, duplicate review, and export
+dispatcharr/      Private connection store, safe stream client, and manual-review matcher
 main.go          Entry point, HTTP server, scraper, image proxy
 guide/           GraceNote data types and XMLTV conversion
 web/             HTTP client for GraceNote API

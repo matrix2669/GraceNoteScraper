@@ -241,6 +241,48 @@ func TestOverridesAreScopedToActiveSource(t *testing.T) {
 	}
 }
 
+func TestConfirmedDispatcharrMatchAndAliasSuppressionAreReversible(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	decision := MatchDecision{
+		Key: "candidate", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source",
+		StreamFingerprint: "stream-hash", StreamKey: "3:10", StreamID: 10, M3UAccountID: 3,
+		ChannelID: "one", ChannelNumber: "5", ChannelName: "ONE", StreamName: "US| One Network HD",
+		TVGID: "OneNetwork.us", Score: 96, Reason: "Exact normalized name or alias",
+	}
+	if err := service.SetMatchDecision(lineup.SourceFingerprint, decision); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []InputChannel{{Key: "one", StationID: "1", Number: "5", CallSign: "ONE"}}
+	draft, err := service.Build(context.Background(), lineup, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel := channelByID(t, draft, "one")
+	if !contains(channel.Aliases, decision.StreamName) || !contains(channel.EPGIDs, decision.TVGID) {
+		t.Fatalf("confirmed aliases/EPG IDs = %v / %v", channel.Aliases, channel.EPGIDs)
+	}
+	if err := service.SetAliasSuppressed(lineup.SourceFingerprint, "one", decision.StreamName, true); err != nil {
+		t.Fatal(err)
+	}
+	draft, _ = service.Build(context.Background(), lineup, inputs)
+	channel = channelByID(t, draft, "one")
+	if contains(channel.Aliases, decision.StreamName) || len(channel.SuppressedAliasEvidence) != 1 {
+		t.Fatalf("suppressed channel = %+v", channel)
+	}
+	if err := service.SetAliasSuppressed(lineup.SourceFingerprint, "one", decision.StreamName, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ClearMatchDecision(lineup.SourceFingerprint, decision.Key); err != nil {
+		t.Fatal(err)
+	}
+	draft, _ = service.Build(context.Background(), lineup, inputs)
+	channel = channelByID(t, draft, "one")
+	if contains(channel.Aliases, decision.StreamName) || contains(channel.EPGIDs, decision.TVGID) {
+		t.Fatalf("cleared decision still enriched channel: %+v", channel)
+	}
+}
+
 func TestExportIsLineuparrCompatibleAndExcludesRemovedChannels(t *testing.T) {
 	service := newTestService(t, "", "")
 	inputs := []InputChannel{

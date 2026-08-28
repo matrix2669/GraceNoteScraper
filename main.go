@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
@@ -1045,6 +1046,12 @@ func main() {
 		UseDefaultCatalogs: useDefaultCatalogs,
 		IPTVOrgURL:         iptvOrgURL,
 	})
+	dispatcharrConfigPath := util.GetEnv("DISPATCHARR_CONFIG_PATH", "dispatcharr_config.json")
+	dispatcharrConfigStore, dispatcharrConfigErr := dispatcharr.LoadConfigStore(dispatcharrConfigPath)
+	if dispatcharrConfigErr != nil {
+		log.Printf("Dispatcharr connection could not be loaded; reconnect through the Lineuparr builder: %v", dispatcharrConfigErr)
+	}
+	dispatcharrClient := dispatcharr.NewClient(nil)
 
 	jellyfinURL := strings.TrimRight(util.GetEnv("JELLYFIN_URL", ""), "/")
 	jellyfinAPIKey := util.GetEnv("JELLYFIN_API_KEY", "")
@@ -1144,6 +1151,9 @@ func main() {
 		},
 	}
 	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder}
+	dispatcharrHandlers := &dispatcharrServer{
+		lineup: lineuparrHandlers, config: dispatcharrConfigStore, client: dispatcharrClient,
+	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1163,9 +1173,13 @@ func main() {
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
+	mux.HandleFunc("/api/lineuparr/alias", lineuparrHandlers.handleAlias)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
+	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
+	mux.HandleFunc("/api/lineuparr/dispatcharr/review", dispatcharrHandlers.handleReview)
+	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", dispatcharrHandlers.handleDecision)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)

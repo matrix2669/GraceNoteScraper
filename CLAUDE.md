@@ -23,7 +23,7 @@ docker compose up -d --build
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o gracenotescraper .
 ```
 
-Run `go test ./...` for setup, configuration, provider-client, and Lineuparr builder tests.
+Run `go test ./...` for setup, configuration, provider-client, Lineuparr builder, and Dispatcharr match-review tests.
 
 ## Architecture
 
@@ -39,6 +39,7 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 6. `fixDeadImageURLs` rewrites `zap2it.tmsimg.com` → `tmsimg.com` for broken Gracenote image URLs.
 7. If `BASE_URL` is set, all image URLs are rewritten to route through the local `/img` proxy endpoint.
 8. `/lineuparr` builds a source-aware draft from the active lineup. `lineuparr/` derives exact Gracenote aliases, merges unique exact catalog/iptv-org identities, applies source-fingerprint-scoped user choices, suggests only quality-marked SD/HD duplicates, and emits the Lineuparr `categories` JSON shape. Remote enrichment is optional and cannot block the guide.
+9. `dispatcharr/` optionally authenticates to Dispatcharr, pages through non-stale streams from active M3U accounts, immediately discards URL/logo/token/statistic fields, and proposes exact or bounded fuzzy matches. Confirm/deny decisions are always explicit, source-fingerprint scoped, reversible, and applied by `lineuparr/` as attributable aliases/EPG IDs only after confirmation.
 
 **Caching layers:**
 
@@ -49,8 +50,9 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 | TV logo HEAD checks | `tvlogo_cache.json` | persisted, no expiry |
 | Image proxy | `image_cache/` dir | indefinite (per-URL SHA256 key) |
 | Lineuparr source data | `lineuparr_source_cache/` dir | 24h fresh; stale fallback on refresh failure |
+| Dispatcharr stream metadata | memory only | 5 minutes; visible stale fallback on refresh failure |
 
-`lineuparr_state.json` is not an enrichment cache. It stores only explicit inclusion/category choices and is ignored automatically when the active Gracenote source fingerprint changes.
+`lineuparr_state.json` is not an enrichment cache. It stores explicit inclusion/category choices, alias suppressions, and Dispatcharr match decisions, and is ignored automatically when the active Gracenote source fingerprint changes. `dispatcharr_config.json` is a separate connection file created with mode `0600` on POSIX systems and excluded from Git and Docker build context; JWTs and stream URLs are never persisted.
 
 **Server mode startup logic:** The HTTP server starts even without a provider so `/setup` is always recoverable. `/` redirects to setup until a valid source exists. If `xmlguide.xmltv` and a source-matching `guide_cache.json` both exist and the cache is under 4 hours old, the initial scrape is skipped. Otherwise a background scrape is queued. A `sync.RWMutex`-guarded `GuideState` holds the live guide, and `appconfig.Store.WhileCurrent` prevents an old scrape from publishing after a provider change.
 

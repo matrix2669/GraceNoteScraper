@@ -53,6 +53,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	defer s.buildMu.Unlock()
 
 	overrides := s.store.Snapshot(lineup.SourceFingerprint)
+	matchDecisions := s.store.MatchDecisionSnapshot(lineup.SourceFingerprint)
 	channels := make([]*channelWork, 0, len(inputs))
 	seenKeys := make(map[string]int)
 	for _, input := range inputs {
@@ -114,6 +115,31 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		statuses = append(statuses, status)
 	}
 
+	channelByID := make(map[string]*channelWork, len(channels))
+	for _, channel := range channels {
+		channelByID[channel.draft.ID] = channel
+	}
+	confirmedMatches := 0
+	for _, decision := range matchDecisions {
+		if decision.Decision != "confirmed" {
+			continue
+		}
+		channel := channelByID[decision.ChannelID]
+		if channel == nil {
+			continue
+		}
+		channel.addAlias(decision.StreamName, "dispatcharr-confirmed", "user-confirmed M3U stream match")
+		channel.addEPGID(decision.TVGID, "dispatcharr-confirmed", "user-confirmed M3U tvg-id")
+		channel.matchedSourceSet["dispatcharr-confirmed"] = true
+		confirmedMatches++
+	}
+	if confirmedMatches > 0 {
+		statuses = append(statuses, SourceStatus{
+			ID: "dispatcharr-confirmed", Label: "Confirmed Dispatcharr M3U matches", Status: "saved", Matched: confirmedMatches,
+			Message: "Aliases and EPG IDs accepted through explicit match review",
+		})
+	}
+
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
 		finalizeChannel(channel)
@@ -126,6 +152,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 				channel.draft.CategorySource = "user"
 				channel.draft.CategoryMethod = "user edit"
 			}
+			applyAliasSuppressions(&channel.draft, override.SuppressedAliases)
 		}
 		resultChannels = append(resultChannels, channel.draft)
 	}
@@ -203,6 +230,71 @@ func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) er
 
 func (s *Service) RestoreAll(fingerprint string) error {
 	return s.store.RestoreAll(fingerprint)
+}
+
+func (s *Service) SetAliasSuppressed(fingerprint, channelID, alias string, suppressed bool) error {
+	alias = cleanText(alias)
+	if len(alias) > 512 {
+		return errors.New("alias must be 512 characters or fewer")
+	}
+	return s.store.SetAliasSuppressed(fingerprint, channelID, alias, suppressed)
+}
+
+func (s *Service) MatchDecisions(fingerprint string) map[string]MatchDecision {
+	return s.store.MatchDecisionSnapshot(fingerprint)
+}
+
+func (s *Service) SetMatchDecision(fingerprint string, decision MatchDecision) error {
+	decision.Key = strings.TrimSpace(decision.Key)
+	decision.Decision = strings.ToLower(strings.TrimSpace(decision.Decision))
+	decision.DispatcharrFingerprint = strings.TrimSpace(decision.DispatcharrFingerprint)
+	decision.StreamFingerprint = strings.TrimSpace(decision.StreamFingerprint)
+	decision.StreamKey = strings.TrimSpace(decision.StreamKey)
+	decision.ChannelID = strings.TrimSpace(decision.ChannelID)
+	decision.StreamName = cleanText(decision.StreamName)
+	decision.TVGID = cleanText(decision.TVGID)
+	decision.ChannelName = cleanText(decision.ChannelName)
+	decision.ChannelNumber = cleanText(decision.ChannelNumber)
+	decision.Reason = cleanText(decision.Reason)
+	if decision.Decision != "confirmed" && decision.Decision != "denied" {
+		return errors.New("match decision must be confirmed or denied")
+	}
+	if decision.Key == "" || decision.DispatcharrFingerprint == "" || decision.StreamFingerprint == "" || decision.StreamKey == "" || decision.ChannelID == "" || decision.StreamName == "" {
+		return errors.New("match decision is incomplete")
+	}
+	if len(decision.StreamName) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
+		return errors.New("match decision metadata is too long")
+	}
+	decision.UpdatedAt = time.Now().UTC()
+	return s.store.SetMatchDecision(fingerprint, decision)
+}
+
+func (s *Service) ClearMatchDecision(fingerprint, key string) error {
+	return s.store.ClearMatchDecision(fingerprint, strings.TrimSpace(key))
+}
+
+func applyAliasSuppressions(channel *DraftChannel, suppressed []string) {
+	if len(suppressed) == 0 || len(channel.AliasEvidence) == 0 {
+		return
+	}
+	suppressedSet := make(map[string]bool, len(suppressed))
+	for _, alias := range suppressed {
+		suppressedSet[strings.ToLower(cleanText(alias))] = true
+	}
+	aliases := make([]string, 0, len(channel.Aliases))
+	evidence := make([]AliasEvidence, 0, len(channel.AliasEvidence))
+	removed := make([]AliasEvidence, 0)
+	for _, item := range channel.AliasEvidence {
+		if suppressedSet[strings.ToLower(item.Value)] {
+			removed = append(removed, item)
+			continue
+		}
+		evidence = append(evidence, item)
+		aliases = append(aliases, item.Value)
+	}
+	channel.Aliases = aliases
+	channel.AliasEvidence = evidence
+	channel.SuppressedAliasEvidence = removed
 }
 
 func normalizeInput(input InputChannel) InputChannel {
