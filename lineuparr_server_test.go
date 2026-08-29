@@ -82,10 +82,11 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	}
 }
 
-func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
+func TestProviderAddressConfigSkipsRegionalOptimumAddress(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	config, _, _ := server.store.Get()
 	config.Gracenote.ProviderName = "Optimum of Woodbury - Digital Rebuild"
+	config.Gracenote.Location = "Hicksville"
 	if err := server.store.Save(config); err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +102,36 @@ func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "11743" || response.CountryCode != "us" || response.BrowserAPIKey != "browser-key" {
+	if response.Required || response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "11743" || response.CountryCode != "us" || response.BrowserAPIKey != "" {
+		t.Fatalf("address config = %+v", response)
+	}
+	if response.Message != "" {
+		t.Fatalf("address message = %q", response.Message)
+	}
+}
+
+func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	config.Gracenote.ProviderName = "Optimum"
+	config.Gracenote.Location = "Dallas"
+	config.Gracenote.PostalCode = "75001"
+	if err := server.store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	server.googleMapsBrowserAPIKey = "browser-key"
+
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
+	recorder := httptest.NewRecorder()
+	server.handleProviderAddressConfig(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("address config response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	var response providerAddressConfigResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.BrowserAPIKey != "browser-key" {
 		t.Fatalf("address config = %+v", response)
 	}
 	if !strings.Contains(response.Message, "browser only") {

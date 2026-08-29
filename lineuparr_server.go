@@ -81,7 +81,7 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 		PostalCode:  config.Gracenote.PostalCode,
 		CountryCode: autocompleteCountryCode(config.Gracenote.Country),
 	}
-	if source, ok := lineuparrbuilder.ProviderGuideSourceFor(config.Gracenote.ProviderName); ok {
+	if source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode); ok {
 		response.ProviderID = source.ID
 		response.ProviderLabel = source.Label
 		response.Required = source.LocationMode == "address"
@@ -258,7 +258,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	if !ok {
 		return nil, appconfig.Config{}, nil, false
 	}
-	additionalSources := lineuparrbuilder.ApplyProviderGuideAliases(config.Gracenote.ProviderName, inputs)
+	additionalSources := lineuparrbuilder.ApplyProviderGuideAliasesForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode, inputs)
 	additionalSources = append(additionalSources, s.applyMarketAliases(inputs)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),

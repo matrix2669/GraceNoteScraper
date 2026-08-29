@@ -26,23 +26,39 @@ func TestProviderSourceInventoryIncludesRequestedProviders(t *testing.T) {
 func TestProviderSourceLocationRequirements(t *testing.T) {
 	tests := []struct {
 		provider string
+		location string
+		postal   string
 		wantID   string
 		wantMode string
+		wantURL  string
 	}{
-		{provider: "Optimum of Woodbury - Digital Rebuild", wantID: "optimum", wantMode: "address"},
-		{provider: "Comcast Xfinity", wantID: "xfinity", wantMode: "address"},
-		{provider: "Charter Spectrum", wantID: "spectrum", wantMode: "address"},
-		{provider: "Verizon FiOS", wantID: "verizon-fios", wantMode: "postal-code"},
-		{provider: "DIRECTV", wantID: "directv", wantMode: "postal-code-county"},
+		{provider: "Optimum of Woodbury - Digital Rebuild", location: "Hicksville", postal: "11743", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum", location: "Bridgeport", postal: "06604", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum", location: "Newark", postal: "07102", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum", location: "Philadelphia", postal: "19103", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum", location: "Hendersonville", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum of West Jefferson", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
+		{provider: "Optimum", location: "Dallas", postal: "75001", wantID: "optimum", wantMode: "address", wantURL: "https://www.optimum.com/tvlineup"},
+		{provider: "Comcast Xfinity", wantID: "xfinity", wantMode: "address", wantURL: "https://www.xfinity.com/support/local-channel-lineup/"},
+		{provider: "Charter Spectrum", wantID: "spectrum", wantMode: "address", wantURL: "https://www.spectrum.com/cable-tv/channel-lineup"},
+		{provider: "Verizon FiOS", wantID: "verizon-fios", wantMode: "postal-code", wantURL: "https://www.verizon.com/home/fios-tv/channel-lineup/"},
+		{provider: "DIRECTV", wantID: "directv", wantMode: "postal-code-county", wantURL: "https://www.directv.com/guide/channel-guide"},
 	}
 	for _, test := range tests {
-		source, ok := ProviderGuideSourceFor(test.provider)
-		if !ok || source.ID != test.wantID || source.LocationMode != test.wantMode {
-			t.Errorf("ProviderGuideSourceFor(%q) = %+v, %v", test.provider, source, ok)
+		source, ok := ProviderGuideSourceForLineup(test.provider, test.location, test.postal)
+		if !ok || source.ID != test.wantID || source.LocationMode != test.wantMode || source.URL != test.wantURL {
+			t.Errorf("ProviderGuideSourceForLineup(%q, %q, %q) = %+v, %v", test.provider, test.location, test.postal, source, ok)
 		}
 	}
 	if source, ok := ProviderGuideSourceFor("Unknown Cable"); ok {
 		t.Fatalf("unexpected provider source = %+v", source)
+	}
+}
+
+func TestProviderGuideStatusUsesResolvedOptimumSource(t *testing.T) {
+	statuses := ApplyProviderGuideAliasesForLineup("Optimum of Woodbury - Digital Rebuild", "Hicksville", "11743", nil)
+	if len(statuses) != 1 || statuses[0].ID != "provider-guide-optimum" || statuses[0].LocationMode != "market-list" || statuses[0].URL != "https://www.optimum.net/pages/channel-lineups.html" {
+		t.Fatalf("provider source statuses = %+v", statuses)
 	}
 }
 
