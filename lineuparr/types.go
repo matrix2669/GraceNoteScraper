@@ -19,16 +19,17 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key             string
-	StationID       string
-	PlacementID     string
-	Number          string
-	CallSign        string
-	Affiliate       string
-	EventCallSigns  []string
-	PreferredName   *AttributedAlias
-	CategoryHint    *AttributedCategory
-	ExternalAliases []AttributedAlias
+	Key              string
+	StationID        string
+	PlacementID      string
+	Number           string
+	CallSign         string
+	Affiliate        string
+	EventCallSigns   []string
+	PreferredName    *AttributedAlias
+	CategoryHint     *AttributedCategory
+	CategoryConflict bool
+	ExternalAliases  []AttributedAlias
 }
 
 type AttributedAlias struct {

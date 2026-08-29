@@ -38,6 +38,21 @@ type blockingGrid struct {
 	started chan struct{}
 }
 
+type fakeEvidence struct{}
+
+func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
+	if request.Provider.LineupID != "L1" {
+		return ProviderEvidenceResult{}, nil
+	}
+	return ProviderEvidenceResult{
+		Facts: []ProviderFact{
+			{StationID: "S1", Kind: FactAlias, Value: "ESPN Full Name", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
+			{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
+		},
+		Sources: []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: "complete", Matched: 1, Aliases: 1, Categories: 1}},
+	}, nil
+}
+
 func (f *blockingGrid) FetchGrid(ctx context.Context, _ web.Preferences, _ int64) (*web.GridResponse, error) {
 	close(f.started)
 	<-ctx.Done()
@@ -90,6 +105,83 @@ func waitForBatch(t *testing.T, service *Service, batchCount int) Snapshot {
 	}
 	t.Fatalf("market scan did not finish; snapshot = %+v", service.Snapshot().Job)
 	return Snapshot{}
+}
+
+func waitForPostal(t *testing.T, service *Service, country, postalCode string) Snapshot {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot := service.SnapshotForPostal(country, postalCode)
+		if !snapshot.Job.Running && snapshot.PostalScan != nil {
+			return snapshot
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("postal scan did not finish; snapshot = %+v", service.SnapshotForPostal(country, postalCode).Job)
+	return Snapshot{}
+}
+
+func TestPostalScanEnrichesEveryProviderBeforeCrossLineupReuse(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "market_index.json")
+	providers := &fakeProviders{responses: map[string][]web.Provider{
+		"11743": {testProvider("L1"), testProvider("L2"), testProvider("L1")},
+	}}
+	grids := &fakeGrids{responses: map[string]*web.GridResponse{
+		"L1": {Channels: []web.JSONChannel{{ChannelID: "S1", ChannelNo: "206", CallSign: "ESPN"}}},
+		"L2": {Channels: []web.JSONChannel{{ChannelID: "S1", ChannelNo: "210", CallSign: "ESPNHD"}, {ChannelID: "S2", ChannelNo: "5", CallSign: "WNYW"}}},
+	}, failures: map[string]int{}, calls: map[string]int{}}
+	service, err := NewService(ServiceConfig{
+		Path: path, Catalog: testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: providers, Grids: grids, Evidence: fakeEvidence{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(RunRequest{Action: "postal", Country: "USA", PostalCode: "11743", Language: "en-us"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForPostal(t, service, "USA", "11743")
+	if snapshot.PostalScan.Status != StatusComplete || snapshot.PostalScan.ProviderCount != 2 || snapshot.PostalScan.LineupsScanned != 2 {
+		t.Fatalf("postal scan = %+v", snapshot.PostalScan)
+	}
+	if grids.calls["L1"] != 1 || grids.calls["L2"] != 1 {
+		t.Fatalf("grid calls = %+v", grids.calls)
+	}
+	aliases := service.AliasesForStations([]string{"S1"})["S1"]
+	foundOfficialAlias := false
+	for _, alias := range aliases {
+		if alias.Value == "ESPN Full Name" && alias.SourceID == "provider-one" {
+			foundOfficialAlias = true
+		}
+	}
+	if !foundOfficialAlias {
+		t.Fatalf("aliases = %+v", aliases)
+	}
+	category, ok := service.CategoriesForStations([]string{"S1"})["S1"]
+	if !ok || category.Value != "Sports" || len(category.SourceIDs) != 1 || category.SourceIDs[0] != "provider-one" {
+		t.Fatalf("category = %+v, %v", category, ok)
+	}
+}
+
+func TestCategoriesForStationsRejectsConflictingOfficialSources(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Sports", Normalized: "SPORTS", SourceID: "one"},
+		{Kind: FactCategory, Value: "News", Normalized: "NEWS", SourceID: "two"},
+	}}
+	service.mu.Unlock()
+	if _, ok := service.CategoriesForStations([]string{"S1"})["S1"]; ok {
+		t.Fatal("conflicting categories were applied automatically")
+	}
 }
 
 func TestServiceDeduplicatesLineupsAndReportsAliasYield(t *testing.T) {

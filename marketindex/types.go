@@ -1,9 +1,14 @@
 package marketindex
 
-import "errors"
+import (
+	"context"
+	"errors"
+
+	"github.com/daniel-widrick/GraceNoteScraper/web"
+)
 
 const (
-	CurrentIndexVersion = 2
+	CurrentIndexVersion = 3
 	DefaultBatchSize    = 25
 	MaxBatchSize        = 25
 )
@@ -30,15 +35,36 @@ const (
 // Index is the durable, resumable station-name catalog. Programme payloads are
 // not persisted; only station identity evidence such as event callsigns is kept.
 type Index struct {
-	SchemaVersion int                      `json:"schemaVersion"`
-	SeedDigest    string                   `json:"seedDigest"`
-	SeedAsOf      string                   `json:"seedAsOf"`
-	CreatedAt     string                   `json:"createdAt"`
-	UpdatedAt     string                   `json:"updatedAt"`
-	Markets       map[string]*MarketRecord `json:"markets"`
-	Lineups       map[string]*LineupRecord `json:"lineups"`
-	Stations      map[string]*Station      `json:"stations"`
-	Batches       []BatchReport            `json:"batches"`
+	SchemaVersion int                          `json:"schemaVersion"`
+	SeedDigest    string                       `json:"seedDigest"`
+	SeedAsOf      string                       `json:"seedAsOf"`
+	CreatedAt     string                       `json:"createdAt"`
+	UpdatedAt     string                       `json:"updatedAt"`
+	Markets       map[string]*MarketRecord     `json:"markets"`
+	PostalScans   map[string]*PostalScanRecord `json:"postalScans,omitempty"`
+	Lineups       map[string]*LineupRecord     `json:"lineups"`
+	Stations      map[string]*Station          `json:"stations"`
+	Batches       []BatchReport                `json:"batches"`
+}
+
+// PostalScanRecord describes an on-demand scan of every unique Gracenote
+// lineup returned for the configured postal code. Unlike ranked-market scans,
+// this pass also collects attributable aliases and categories from official
+// provider sources.
+type PostalScanRecord struct {
+	Key            string                 `json:"key"`
+	Country        string                 `json:"country"`
+	PostalCode     string                 `json:"postalCode"`
+	Status         string                 `json:"status"`
+	ProviderCount  int                    `json:"providerCount"`
+	LineupsScanned int                    `json:"lineupsScanned"`
+	GridRequests   int                    `json:"gridRequests"`
+	Aliases        int                    `json:"aliases"`
+	Categories     int                    `json:"categories"`
+	Sources        []EvidenceSourceRecord `json:"sources,omitempty"`
+	StartedAt      string                 `json:"startedAt,omitempty"`
+	CompletedAt    string                 `json:"completedAt,omitempty"`
+	LastError      string                 `json:"lastError,omitempty"`
 }
 
 type MarketRecord struct {
@@ -83,6 +109,65 @@ type Station struct {
 	StationID    string               `json:"stationId"`
 	Names        []StationName        `json:"names"`
 	Observations []StationObservation `json:"observations"`
+	Facts        []StationFact        `json:"facts,omitempty"`
+}
+
+const (
+	FactAlias    = "alias"
+	FactCategory = "category"
+)
+
+// StationFact is official evidence joined to a provider's Gracenote grid and
+// therefore to a provider-independent Gracenote station ID.
+type StationFact struct {
+	Kind        string   `json:"kind"`
+	Value       string   `json:"value"`
+	Normalized  string   `json:"normalized"`
+	SourceID    string   `json:"sourceId"`
+	SourceLabel string   `json:"sourceLabel"`
+	SourceURL   string   `json:"sourceUrl,omitempty"`
+	Method      string   `json:"method"`
+	LineupKeys  []string `json:"lineupKeys"`
+}
+
+// ProviderEvidenceFetcher converts an official provider listing and its
+// matching Gracenote grid into exact station-ID facts.
+type ProviderEvidenceFetcher interface {
+	FetchProviderEvidence(context.Context, ProviderEvidenceRequest) (ProviderEvidenceResult, error)
+}
+
+type ProviderEvidenceRequest struct {
+	Provider   web.Provider
+	LineupKey  string
+	Country    string
+	PostalCode string
+	Grid       *web.GridResponse
+}
+
+type ProviderEvidenceResult struct {
+	Facts   []ProviderFact
+	Sources []EvidenceSourceRecord
+}
+
+type ProviderFact struct {
+	StationID   string
+	Kind        string
+	Value       string
+	SourceID    string
+	SourceLabel string
+	SourceURL   string
+	Method      string
+}
+
+type EvidenceSourceRecord struct {
+	ID         string `json:"id"`
+	Label      string `json:"label"`
+	URL        string `json:"url,omitempty"`
+	Status     string `json:"status"`
+	Matched    int    `json:"matched"`
+	Aliases    int    `json:"aliases"`
+	Categories int    `json:"categories"`
+	Message    string `json:"message,omitempty"`
 }
 
 type StationObservation struct {
@@ -102,10 +187,22 @@ type StationName struct {
 }
 
 type AliasCandidate struct {
-	StationID  string   `json:"stationId"`
-	Value      string   `json:"value"`
-	Kind       string   `json:"kind"`
-	LineupKeys []string `json:"lineupKeys"`
+	StationID   string   `json:"stationId"`
+	Value       string   `json:"value"`
+	Kind        string   `json:"kind"`
+	LineupKeys  []string `json:"lineupKeys"`
+	SourceID    string   `json:"sourceId,omitempty"`
+	SourceLabel string   `json:"sourceLabel,omitempty"`
+	SourceURL   string   `json:"sourceUrl,omitempty"`
+	Method      string   `json:"method,omitempty"`
+}
+
+type CategoryCandidate struct {
+	StationID    string   `json:"stationId"`
+	Value        string   `json:"value"`
+	SourceIDs    []string `json:"sourceIds"`
+	SourceLabels []string `json:"sourceLabels"`
+	Methods      []string `json:"methods"`
 }
 
 type BatchReport struct {
@@ -136,21 +233,25 @@ type BatchReport struct {
 }
 
 type RunRequest struct {
-	Action    string `json:"action"`
-	BatchSize int    `json:"batchSize,omitempty"`
-	Ranks     []int  `json:"ranks,omitempty"`
+	Action     string `json:"action"`
+	BatchSize  int    `json:"batchSize,omitempty"`
+	Ranks      []int  `json:"ranks,omitempty"`
+	Country    string `json:"country,omitempty"`
+	PostalCode string `json:"postalCode,omitempty"`
+	Language   string `json:"language,omitempty"`
 }
 
 type JobView struct {
-	Running        bool   `json:"running"`
-	Action         string `json:"action,omitempty"`
-	StartedAt      string `json:"startedAt,omitempty"`
-	CompletedAt    string `json:"completedAt,omitempty"`
-	CurrentRank    int    `json:"currentRank,omitempty"`
-	CurrentMarket  string `json:"currentMarket,omitempty"`
-	CompletedCount int    `json:"completedCount"`
-	TotalCount     int    `json:"totalCount"`
-	LastError      string `json:"lastError,omitempty"`
+	Running         bool   `json:"running"`
+	Action          string `json:"action,omitempty"`
+	StartedAt       string `json:"startedAt,omitempty"`
+	CompletedAt     string `json:"completedAt,omitempty"`
+	CurrentRank     int    `json:"currentRank,omitempty"`
+	CurrentMarket   string `json:"currentMarket,omitempty"`
+	CurrentProvider string `json:"currentProvider,omitempty"`
+	CompletedCount  int    `json:"completedCount"`
+	TotalCount      int    `json:"totalCount"`
+	LastError       string `json:"lastError,omitempty"`
 }
 
 type CatalogView struct {
@@ -187,9 +288,10 @@ type MarketView struct {
 }
 
 type Snapshot struct {
-	Catalog CatalogView   `json:"catalog"`
-	Summary IndexSummary  `json:"summary"`
-	Job     JobView       `json:"job"`
-	Markets []MarketView  `json:"markets"`
-	Batches []BatchReport `json:"batches"`
+	Catalog    CatalogView       `json:"catalog"`
+	Summary    IndexSummary      `json:"summary"`
+	Job        JobView           `json:"job"`
+	Markets    []MarketView      `json:"markets"`
+	Batches    []BatchReport     `json:"batches"`
+	PostalScan *PostalScanRecord `json:"postalScan,omitempty"`
 }
