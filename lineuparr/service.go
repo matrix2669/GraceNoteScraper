@@ -115,6 +115,36 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		statuses = append(statuses, status)
 	}
 
+	categoryHintMatches := make(map[string]int)
+	categoryHintLabels := make(map[string]string)
+	for _, channel := range channels {
+		hint := channel.input.CategoryHint
+		if hint == nil || channel.draft.CategorySource != "unresolved" {
+			continue
+		}
+		channel.draft.Category = hint.Value
+		channel.draft.CategorySource = hint.Source
+		channel.draft.CategoryMethod = hint.Method
+		channel.matchedSourceSet[hint.Source] = true
+		categoryHintMatches[hint.Source]++
+		categoryHintLabels[hint.Source] = hint.Label
+	}
+	categoryHintSources := make([]string, 0, len(categoryHintMatches))
+	for source := range categoryHintMatches {
+		categoryHintSources = append(categoryHintSources, source)
+	}
+	sort.Strings(categoryHintSources)
+	for _, source := range categoryHintSources {
+		label := categoryHintLabels[source]
+		if label == "" {
+			label = source
+		}
+		statuses = append(statuses, SourceStatus{
+			ID: source, Label: label, Status: "derived", Matched: categoryHintMatches[source],
+			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
+		})
+	}
+
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
 		finalizeChannel(channel)
@@ -240,6 +270,18 @@ func normalizeInput(input InputChannel) InputChannel {
 			input.PreferredName = nil
 		} else {
 			input.PreferredName = &preferred
+		}
+	}
+	if input.CategoryHint != nil {
+		hint := *input.CategoryHint
+		hint.Value = cleanCategory(hint.Value)
+		hint.Source = strings.TrimSpace(hint.Source)
+		hint.Label = cleanText(hint.Label)
+		hint.Method = cleanText(hint.Method)
+		if hint.Value == "" || hint.Value == uncategorized || hint.Source == "" || hint.Method == "" {
+			input.CategoryHint = nil
+		} else {
+			input.CategoryHint = &hint
 		}
 	}
 	external := make([]AttributedAlias, 0, len(input.ExternalAliases))

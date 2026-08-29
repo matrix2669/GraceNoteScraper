@@ -27,12 +27,20 @@ type InputChannel struct {
 	Affiliate       string
 	EventCallSigns  []string
 	PreferredName   *AttributedAlias
+	CategoryHint    *AttributedCategory
 	ExternalAliases []AttributedAlias
 }
 
 type AttributedAlias struct {
 	Value  string
 	Source string
+	Method string
+}
+
+type AttributedCategory struct {
+	Value  string
+	Source string
+	Label  string
 	Method string
 }
 

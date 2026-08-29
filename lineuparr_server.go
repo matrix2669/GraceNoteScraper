@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -9,10 +10,13 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
@@ -22,22 +26,26 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	store                   *appconfig.Store
-	state                   *GuideState
-	builder                 *lineuparrbuilder.Service
-	marketIndex             *marketindex.Service
-	googleMapsBrowserAPIKey string
+	store           *appconfig.Store
+	state           *GuideState
+	builder         *lineuparrbuilder.Service
+	marketIndex     *marketindex.Service
+	addressSearcher providerAddressSearcher
+}
+
+type providerAddressSearcher interface {
+	Search(context.Context, string, string, string) ([]geocode.AddressResult, error)
 }
 
 type providerAddressConfigResponse struct {
-	Required      bool   `json:"required"`
-	Enabled       bool   `json:"enabled"`
-	BrowserAPIKey string `json:"browserApiKey,omitempty"`
-	ProviderID    string `json:"providerId,omitempty"`
-	ProviderLabel string `json:"providerLabel,omitempty"`
-	PostalCode    string `json:"postalCode,omitempty"`
-	CountryCode   string `json:"countryCode,omitempty"`
-	Message       string `json:"message,omitempty"`
+	Required       bool   `json:"required"`
+	Enabled        bool   `json:"enabled"`
+	ProviderID     string `json:"providerId,omitempty"`
+	ProviderLabel  string `json:"providerLabel,omitempty"`
+	PostalCode     string `json:"postalCode,omitempty"`
+	CountryCode    string `json:"countryCode,omitempty"`
+	AttributionURL string `json:"attributionUrl,omitempty"`
+	Message        string `json:"message,omitempty"`
 }
 
 func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -87,16 +95,61 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 		response.Required = source.LocationMode == "address"
 	}
 	if response.Required {
-		response.BrowserAPIKey = strings.TrimSpace(s.googleMapsBrowserAPIKey)
-		response.Enabled = response.BrowserAPIKey != ""
+		response.Enabled = s.addressSearcher != nil
+		response.AttributionURL = "https://www.openstreetmap.org/copyright"
 		if response.Enabled {
-			response.Message = "Select the service address from Google Places; it must match the active lineup postal code and remains in this browser only."
+			response.Message = "Search once, then select a complete OpenStreetMap address that matches the active lineup postal code. The address is sent to the configured geocoder but is not persisted by GraceNoteScraper."
 		} else {
-			response.Message = "Set GOOGLE_MAPS_BROWSER_API_KEY to enable verified address selection for this provider source."
+			response.Message = "Address search is disabled. Set NOMINATIM_URL to a public, hosted, or self-managed Nominatim endpoint."
 		}
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeLineuparrJSON(w, http.StatusOK, response)
+}
+
+func (s *lineuparrServer) handleProviderAddressSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	if s.addressSearcher == nil {
+		http.Error(w, "Address search is disabled", http.StatusServiceUnavailable)
+		return
+	}
+	config, configured, _ := s.store.Get()
+	if !configured {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+		return
+	}
+	source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode)
+	if !ok || source.LocationMode != "address" {
+		http.Error(w, "The active provider source does not require a street address", http.StatusConflict)
+		return
+	}
+	var body struct {
+		Query string `json:"query"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
+		return
+	}
+	body.Query = strings.TrimSpace(body.Query)
+	if len(body.Query) < 5 {
+		http.Error(w, "Enter a complete street address", http.StatusBadRequest)
+		return
+	}
+	searchContext, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+	defer cancel()
+	results, err := s.addressSearcher.Search(searchContext, body.Query, config.Gracenote.PostalCode, autocompleteCountryCode(config.Gracenote.Country))
+	if err != nil {
+		http.Error(w, "Unable to search addresses: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeLineuparrJSON(w, http.StatusOK, map[string]any{"results": results})
 }
 
 func autocompleteCountryCode(country string) string {
@@ -404,10 +457,12 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 	if len(channels) == 0 {
 		channels = g.Channels
 	}
+	categoryHints := scheduleCategoryHints(g)
 	inputs := make([]lineuparrbuilder.InputChannel, 0, len(channels))
 	seenKeys := make(map[string]int)
 	for _, channel := range channels {
 		input := lineupInput(channel)
+		input.CategoryHint = categoryHints[channel.ID]
 		baseKey := strings.TrimSpace(input.Key)
 		if count := seenKeys[baseKey]; count > 0 {
 			input.Key = fmt.Sprintf("%s-%d", baseKey, count+1)
@@ -416,6 +471,127 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 		inputs = append(inputs, input)
 	}
 	return config, inputs, true
+}
+
+const (
+	scheduleCategoryMinimumPrograms = 8
+	scheduleCategoryMinimumMinutes  = 360
+	scheduleCategoryMinimumShare    = 70
+)
+
+type scheduleCategoryProfile struct {
+	programs int
+	minutes  int
+	byFilter map[string]int
+}
+
+func scheduleCategoryHints(g *guide.TVGuide) map[string]*lineuparrbuilder.AttributedCategory {
+	profiles := make(map[string]*scheduleCategoryProfile)
+	for _, program := range g.Programs {
+		channelID := strings.TrimSpace(program.Channel)
+		minutes, err := strconv.Atoi(strings.TrimSpace(program.Length))
+		if channelID == "" || err != nil || minutes <= 0 {
+			continue
+		}
+		profile := profiles[channelID]
+		if profile == nil {
+			profile = &scheduleCategoryProfile{byFilter: make(map[string]int)}
+			profiles[channelID] = profile
+		}
+		profile.programs++
+		profile.minutes += minutes
+		seenFilters := make(map[string]bool)
+		for _, category := range program.Categories {
+			filter := strings.ToLower(strings.TrimSpace(category.Name))
+			switch filter {
+			case "sports", "news", "movie", "family":
+				if !seenFilters[filter] {
+					profile.byFilter[filter] += minutes
+					seenFilters[filter] = true
+				}
+			}
+		}
+	}
+
+	channels := make(map[string]guide.Channel)
+	for _, channel := range g.Channels {
+		channels[channel.ID] = channel
+	}
+	for _, channel := range g.LineupChannels {
+		channels[channel.ID] = channel
+	}
+
+	hints := make(map[string]*lineuparrbuilder.AttributedCategory)
+	for channelID, profile := range profiles {
+		if profile.programs < scheduleCategoryMinimumPrograms || profile.minutes < scheduleCategoryMinimumMinutes {
+			continue
+		}
+		filter, filterMinutes := dominantScheduleFilter(profile.byFilter)
+		share := filterMinutes * 100 / profile.minutes
+		if filter == "" || share < scheduleCategoryMinimumShare {
+			continue
+		}
+		category := mapScheduleFilter(filter, channels[channelID])
+		if category == "" {
+			continue
+		}
+		hints[channelID] = &lineuparrbuilder.AttributedCategory{
+			Value:  category,
+			Source: "gracenote-schedule",
+			Label:  "Gracenote schedule profile",
+			Method: fmt.Sprintf("%d%% of scheduled minutes use Gracenote %s filter", share, filter),
+		}
+	}
+	return hints
+}
+
+func dominantScheduleFilter(minutesByFilter map[string]int) (string, int) {
+	bestFilter := ""
+	bestMinutes := 0
+	for _, filter := range []string{"sports", "news", "movie", "family"} {
+		if minutesByFilter[filter] > bestMinutes {
+			bestFilter = filter
+			bestMinutes = minutesByFilter[filter]
+		}
+	}
+	return bestFilter, bestMinutes
+}
+
+func mapScheduleFilter(filter string, channel guide.Channel) string {
+	switch filter {
+	case "sports":
+		return "Sports"
+	case "news":
+		return "News"
+	case "movie":
+		return "Movies"
+	case "family":
+		if looksLikeKidsChannel(channel) {
+			return "Kids"
+		}
+	}
+	return ""
+}
+
+func looksLikeKidsChannel(channel guide.Channel) bool {
+	parts := []string{channel.CallSign, channel.Affiliate}
+	for _, displayName := range channel.DisplayNames {
+		parts = append(parts, displayName.Name)
+	}
+	compact := strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, strings.Join(parts, " "))
+	for _, marker := range []string{
+		"babyfirst", "boomerang", "cartoonnetwork", "disney", "nickelodeon", "nickjr", "nicktoons", "niktoon", "pbskids", "sprout", "teennick", "universalkids",
+	} {
+		if strings.Contains(compact, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func lineupInput(channel guide.Channel) lineuparrbuilder.InputChannel {

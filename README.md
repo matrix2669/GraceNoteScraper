@@ -11,7 +11,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
 - On-demand, resumable station-alias discovery across ranked representative US markets
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
-- Google Places-autocompleted service-address input for official provider sources that cannot localize from ZIP alone
+- No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -71,7 +71,7 @@ docker compose up -d --build
 
 - Docker and Docker Compose, **or** Go 1.25+ for building from source
 - (Optional) A [TMDB API read access token](https://www.themoviedb.org/settings/api) for poster images and metadata
-- (Optional) A browser-restricted Google Maps Platform key with Maps JavaScript API and Places API (New) enabled for provider address autocomplete
+- Internet access to the public Nominatim search service, or an optional hosted/self-managed Nominatim endpoint, for provider address lookup
 
 ## Building from Source
 
@@ -105,7 +105,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
 | `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
-| `GOOGLE_MAPS_BROWSER_API_KEY` | Browser key for Google Places provider-address autocomplete. Restrict it to the scraper's HTTP(S) origin, Maps JavaScript API, and Places API (New). | — |
+| `NOMINATIM_URL` | OpenStreetMap/Nominatim search service. Set to a hosted/self-managed endpoint, or `off` to disable provider-address search. | `https://nominatim.openstreetmap.org` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -143,13 +143,13 @@ Aliases derived directly from Gracenote include callsigns, station IDs, lineup-p
 - Matching provider and country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin). US defaults select a Verizon FiOS, DIRECTV, or DISH provider catalog when applicable and also use the combined US catalog; other currently mapped catalogs cover the UK, Canada, Australia, Spain, France, and the Netherlands.
 - The public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records.
 
-Ambiguous source identities are counted but never applied. Channels without an attributable category remain in an honest `Uncategorized` group and are highlighted for review. Program genres and Gracenote's station filters are not used as channel-category guesses.
+Ambiguous source identities are counted but never applied. Exact catalog and user categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign Sports, News, Movies, or Kids when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network. Other channels remain in an honest `Uncategorized` group and are highlighted for review.
 
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
 Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
-Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-based lineup lookup. When the resolved provider source requires a precise service address, `/lineuparr` shows a Google Places autocomplete field only if `GOOGLE_MAPS_BROWSER_API_KEY` is configured. The selected suggestion must match the active lineup ZIP, remains in browser memory only, and is not written to scraper configuration, Lineuparr state, source caches, logs, or exports. GraceNoteScraper does not invent a generic address and does not collect provider-account logins. Provider-specific website adapters remain independently testable follow-up work; selecting an address does not claim that an adapter has already loaded the official lineup.
+Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-based lineup lookup. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. Search text is sent to the configured geocoder, but the selected address is not persisted in scraper configuration, Lineuparr state, source caches, logs, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address and does not collect provider-account logins. Provider-specific website adapters remain independently testable follow-up work; selecting an address does not claim that an adapter has already loaded the official lineup.
 
 ## HTTP Endpoints
 
@@ -160,7 +160,8 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
-| `GET /api/lineuparr/provider-address/config` | Read non-secret Google Places and active-lineup constraints for an address-gated provider source |
+| `GET /api/lineuparr/provider-address/config` | Read Nominatim availability and active-lineup constraints for an address-gated provider source |
+| `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `GET /api/lineuparr/alias-index` | Read market-scan progress and marginal alias yield |
 | `POST /api/lineuparr/alias-index/run` | Continue, selectively refresh, or rebuild the on-demand index |

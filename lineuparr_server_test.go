@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +10,24 @@ import (
 	"testing"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 )
+
+type fakeProviderAddressSearcher struct {
+	query       string
+	postalCode  string
+	countryCode string
+	results     []geocode.AddressResult
+}
+
+func (f *fakeProviderAddressSearcher) Search(_ context.Context, query, postalCode, countryCode string) ([]geocode.AddressResult, error) {
+	f.query = query
+	f.postalCode = postalCode
+	f.countryCode = countryCode
+	return append([]geocode.AddressResult(nil), f.results...), nil
+}
 
 func newLineuparrTestServer(t *testing.T, configured bool) *lineuparrServer {
 	t.Helper()
@@ -90,7 +106,7 @@ func TestProviderAddressConfigSkipsRegionalOptimumAddress(t *testing.T) {
 	if err := server.store.Save(config); err != nil {
 		t.Fatal(err)
 	}
-	server.googleMapsBrowserAPIKey = "browser-key"
+	server.addressSearcher = &fakeProviderAddressSearcher{}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
 	recorder := httptest.NewRecorder()
@@ -102,7 +118,7 @@ func TestProviderAddressConfigSkipsRegionalOptimumAddress(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Required || response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "11743" || response.CountryCode != "us" || response.BrowserAPIKey != "" {
+	if response.Required || response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "11743" || response.CountryCode != "us" || response.AttributionURL != "" {
 		t.Fatalf("address config = %+v", response)
 	}
 	if response.Message != "" {
@@ -119,7 +135,7 @@ func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
 	if err := server.store.Save(config); err != nil {
 		t.Fatal(err)
 	}
-	server.googleMapsBrowserAPIKey = "browser-key"
+	server.addressSearcher = &fakeProviderAddressSearcher{}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
 	recorder := httptest.NewRecorder()
@@ -131,22 +147,22 @@ func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.BrowserAPIKey != "browser-key" {
+	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.AttributionURL == "" {
 		t.Fatalf("address config = %+v", response)
 	}
-	if !strings.Contains(response.Message, "browser only") {
+	if !strings.Contains(response.Message, "not persisted") {
 		t.Fatalf("address privacy message = %q", response.Message)
 	}
 }
 
-func TestProviderAddressConfigDoesNotExposeKeyToPostalOnlyProvider(t *testing.T) {
+func TestProviderAddressConfigDoesNotOfferSearchToPostalOnlyProvider(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	config, _, _ := server.store.Get()
 	config.Gracenote.ProviderName = "Verizon FiOS"
 	if err := server.store.Save(config); err != nil {
 		t.Fatal(err)
 	}
-	server.googleMapsBrowserAPIKey = "browser-key"
+	server.addressSearcher = &fakeProviderAddressSearcher{}
 
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/provider-address/config", nil)
 	recorder := httptest.NewRecorder()
@@ -155,8 +171,94 @@ func TestProviderAddressConfigDoesNotExposeKeyToPostalOnlyProvider(t *testing.T)
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response.Required || response.Enabled || response.BrowserAPIKey != "" || response.ProviderID != "verizon-fios" {
+	if response.Required || response.Enabled || response.AttributionURL != "" || response.ProviderID != "verizon-fios" {
 		t.Fatalf("address config = %+v", response)
+	}
+}
+
+func TestProviderAddressSearchUsesActiveLineupLocation(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	config.Gracenote.ProviderName = "Optimum"
+	config.Gracenote.Location = "Dallas"
+	config.Gracenote.PostalCode = "75001"
+	if err := server.store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	searcher := &fakeProviderAddressSearcher{results: []geocode.AddressResult{{
+		ID: "way:1", FormattedAddress: "1 Main Street, Dallas, TX 75001", PostalCode: "75001",
+	}}}
+	server.addressSearcher = searcher
+
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/provider-address/search", strings.NewReader(`{"query":"1 Main Street"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleProviderAddressSearch(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("address search response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	if searcher.query != "1 Main Street" || searcher.postalCode != "75001" || searcher.countryCode != "us" {
+		t.Fatalf("search inputs = %+v", searcher)
+	}
+	if !strings.Contains(recorder.Body.String(), "1 Main Street") || recorder.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("address search response = %s", recorder.Body.String())
+	}
+}
+
+func TestScheduleCategoryHintsRequireDominantUsefulGuideTime(t *testing.T) {
+	programs := make([]guide.Program, 0, 18)
+	for range 8 {
+		programs = append(programs, guide.Program{
+			Channel: "sports", Length: "60", Categories: []guide.Category{{Name: "sports"}},
+		})
+	}
+	for range 2 {
+		programs = append(programs, guide.Program{
+			Channel: "sports", Length: "60", Categories: []guide.Category{{Name: "series"}},
+		})
+	}
+	for range 8 {
+		programs = append(programs, guide.Program{
+			Channel: "mixed", Length: "60", Categories: []guide.Category{{Name: "news"}},
+		})
+	}
+	for range 4 {
+		programs = append(programs, guide.Program{
+			Channel: "mixed", Length: "60", Categories: []guide.Category{{Name: "movie"}},
+		})
+	}
+	hints := scheduleCategoryHints(&guide.TVGuide{
+		Channels: []guide.Channel{{ID: "sports"}, {ID: "mixed"}}, Programs: programs,
+	})
+	if hint := hints["sports"]; hint == nil || hint.Value != "Sports" || !strings.Contains(hint.Method, "80%") {
+		t.Fatalf("sports hint = %+v", hint)
+	}
+	if hint := hints["mixed"]; hint != nil {
+		t.Fatalf("mixed guide should remain unresolved, got %+v", hint)
+	}
+}
+
+func TestScheduleCategoryHintsTreatFamilyAsKidsOnlyForKidsNetworks(t *testing.T) {
+	programs := make([]guide.Program, 0, 16)
+	for _, channelID := range []string{"kids", "general"} {
+		for range 8 {
+			programs = append(programs, guide.Program{
+				Channel: channelID, Length: "60", Categories: []guide.Category{{Name: "family"}},
+			})
+		}
+	}
+	hints := scheduleCategoryHints(&guide.TVGuide{
+		Channels: []guide.Channel{
+			{ID: "kids", CallSign: "NICKJR"},
+			{ID: "general", CallSign: "HALLMARK"},
+		},
+		Programs: programs,
+	})
+	if hint := hints["kids"]; hint == nil || hint.Value != "Kids" {
+		t.Fatalf("kids hint = %+v", hint)
+	}
+	if hint := hints["general"]; hint != nil {
+		t.Fatalf("general family network should remain unresolved, got %+v", hint)
 	}
 }
 
