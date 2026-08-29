@@ -18,12 +18,26 @@ type providerSourceCatalog struct {
 }
 
 type ProviderGuideSource struct {
-	ID           string   `json:"id"`
-	Names        []string `json:"names"`
-	Label        string   `json:"label"`
-	URL          string   `json:"url"`
-	Access       string   `json:"access"`
-	LocationMode string   `json:"locationMode,omitempty"`
+	ID           string               `json:"id"`
+	Names        []string             `json:"names"`
+	Label        string               `json:"label"`
+	URL          string               `json:"url"`
+	Access       string               `json:"access"`
+	LocationMode string               `json:"locationMode,omitempty"`
+	Routes       []ProviderGuideRoute `json:"routes,omitempty"`
+}
+
+type ProviderGuideRoute struct {
+	URL                string                      `json:"url"`
+	Access             string                      `json:"access"`
+	LocationMode       string                      `json:"locationMode,omitempty"`
+	PostalPrefixRanges []ProviderPostalPrefixRange `json:"postalPrefixRanges,omitempty"`
+	Locations          []string                    `json:"locations,omitempty"`
+}
+
+type ProviderPostalPrefixRange struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
 }
 
 type providerRename struct {
@@ -45,6 +59,13 @@ func ProviderGuideSources() []ProviderGuideSource {
 }
 
 func ProviderGuideSourceFor(providerName string) (ProviderGuideSource, bool) {
+	return ProviderGuideSourceForLineup(providerName, "", "")
+}
+
+// ProviderGuideSourceForLineup resolves providers whose official guide entry
+// point varies by service area. The location is Gracenote's non-secret lineup
+// label, not a subscriber address.
+func ProviderGuideSourceForLineup(providerName, location, postalCode string) (ProviderGuideSource, bool) {
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
 	if providerName == "" {
 		return ProviderGuideSource{}, false
@@ -52,6 +73,16 @@ func ProviderGuideSourceFor(providerName string) (ProviderGuideSource, bool) {
 	for _, source := range loadProviderSourceCatalog().Providers {
 		for _, name := range source.Names {
 			if strings.Contains(providerName, strings.ToLower(name)) {
+				for _, route := range source.Routes {
+					if !providerGuideRouteMatches(route, providerName, location, postalCode) {
+						continue
+					}
+					source.URL = route.URL
+					source.Access = route.Access
+					source.LocationMode = route.LocationMode
+					break
+				}
+				source.Routes = nil
 				return source, true
 			}
 		}
@@ -60,19 +91,19 @@ func ProviderGuideSourceFor(providerName string) (ProviderGuideSource, bool) {
 }
 
 func ApplyProviderGuideAliases(providerName string, inputs []InputChannel) []SourceStatus {
+	return ApplyProviderGuideAliasesForLineup(providerName, "", "", inputs)
+}
+
+func ApplyProviderGuideAliasesForLineup(providerName, location, postalCode string, inputs []InputChannel) []SourceStatus {
 	catalog := loadProviderSourceCatalog()
+	matchedSource, matchedProvider := ProviderGuideSourceForLineup(providerName, location, postalCode)
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
 	statusByID := make(map[string]*SourceStatus)
-	for _, source := range catalog.Providers {
-		for _, name := range source.Names {
-			if strings.Contains(providerName, strings.ToLower(name)) {
-				statusByID[source.ID] = &SourceStatus{
-					ID: "provider-guide-" + source.ID, Label: source.Label + " official lineup", URL: source.URL,
-					Status: "registered", Access: source.Access, LocationMode: source.LocationMode,
-					Message: "Maintained provider guide source (" + source.Access + "); aliases require attributable exact evidence",
-				}
-				break
-			}
+	if matchedProvider {
+		statusByID[matchedSource.ID] = &SourceStatus{
+			ID: "provider-guide-" + matchedSource.ID, Label: matchedSource.Label + " official lineup", URL: matchedSource.URL,
+			Status: "registered", Access: matchedSource.Access, LocationMode: matchedSource.LocationMode,
+			Message: "Maintained provider guide source (" + matchedSource.Access + "); aliases require attributable exact evidence",
 		}
 	}
 
@@ -137,6 +168,42 @@ func ApplyProviderGuideAliases(providerName string, inputs []InputChannel) []Sou
 	}
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Label < statuses[j].Label })
 	return statuses
+}
+
+func providerGuideRouteMatches(route ProviderGuideRoute, providerName, location, postalCode string) bool {
+	prefix := postalPrefix(postalCode)
+	for _, candidate := range route.PostalPrefixRanges {
+		if prefix != "" && prefix >= candidate.Start && prefix <= candidate.End {
+			return true
+		}
+	}
+	haystack := strings.ToLower(strings.Join([]string{providerName, location}, " "))
+	for _, candidate := range route.Locations {
+		if strings.Contains(haystack, strings.ToLower(candidate)) {
+			return true
+		}
+	}
+	return false
+}
+
+func postalPrefix(postalCode string) string {
+	var digits []rune
+	for _, character := range strings.TrimSpace(postalCode) {
+		if !unicode.IsDigit(character) {
+			if len(digits) > 0 {
+				break
+			}
+			continue
+		}
+		digits = append(digits, character)
+		if len(digits) == 3 {
+			break
+		}
+	}
+	if len(digits) != 3 {
+		return ""
+	}
+	return string(digits)
 }
 
 func providerNameKey(value string) string {

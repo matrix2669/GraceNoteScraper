@@ -2,7 +2,7 @@
   "asOf": "2026-08-28",
   "providers": [
     {"id":"verizon-fios","names":["verizon","fios"],"label":"Verizon FiOS","url":"https://www.verizon.com/home/fios-tv/channel-lineup/","access":"public-location","locationMode":"postal-code"},
-    {"id":"optimum","names":["optimum","cablevision"],"label":"Optimum","url":"https://www.optimum.com/tvlineup","access":"public-address","locationMode":"address"},
+    {"id":"optimum","names":["optimum","cablevision"],"label":"Optimum","url":"https://www.optimum.com/tvlineup","access":"public-address","locationMode":"address","routes":[{"url":"https://www.optimum.net/pages/channel-lineups.html","access":"public-market-list","locationMode":"market-list","postalPrefixRanges":[{"start":"060","end":"069"},{"start":"070","end":"089"},{"start":"100","end":"149"},{"start":"150","end":"196"}],"locations":["Hendersonville","West Jefferson"]}]},
     {"id":"directv","names":["directv"],"label":"DIRECTV","url":"https://www.directv.com/guide/channel-guide","access":"public-guide","locationMode":"postal-code-county"},
     {"id":"dish","names":["dish"],"label":"DISH","url":"https://my.dish.com/cms-files/channelcards/2026/0219/Channel_Lineup.pdf","access":"public-pdf"},
     {"id":"afn","names":["afn","armed forces network"],"label":"AFN","url":"https://myafn.dodmedia.osd.mil/","access":"public-guide"},
