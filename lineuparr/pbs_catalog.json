@@ -1,0 +1,4588 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "pbs-gracenote-station-map",
+    "label": "PBS station map",
+    "url": "https://github.com/babsonnexus/stream-link-manager-for-channels",
+    "officialApiUrl": "https://station.services.pbs.org/api/public/v1/stations/",
+    "license": "MIT",
+    "commit": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
+    "method": "exact Gracenote station ID from the maintained PBS station map"
+  },
+  "channels": [
+    {
+      "stationId": "15604",
+      "name": "PBS Kids",
+      "aliases": [
+        "WMTJ PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WMTJ_kids_main"
+    },
+    {
+      "stationId": "19581",
+      "name": "WETA",
+      "aliases": [
+        "PBS VA Arlington (WETA) [26.1]",
+        "PBS WETA"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WETA"
+    },
+    {
+      "stationId": "19585",
+      "name": "WLRN Public Media",
+      "aliases": [
+        "PBS FL Miami (WLRN) [17.1]",
+        "PBS WLRN",
+        "WLRN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WLRN"
+    },
+    {
+      "stationId": "19602",
+      "name": "mpb",
+      "aliases": [
+        "PBS MS Jackson (WMPN) [29.1]",
+        "PBS WMPN",
+        "WMPN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WMPN"
+    },
+    {
+      "stationId": "19609",
+      "name": "OPB",
+      "aliases": [
+        "KOPB",
+        "PBS KOPB",
+        "PBS OR Portland (KOPB) [10.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KOPB"
+    },
+    {
+      "stationId": "19610",
+      "name": "WITF",
+      "aliases": [
+        "PBS PA Harrisburg (WITF) [33.1]",
+        "PBS WITF"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WITF"
+    },
+    {
+      "stationId": "19631",
+      "name": "Cascade PBS",
+      "aliases": [
+        "KCTS",
+        "PBS KCTS",
+        "PBS WA Seattle (KCTS) [9.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KCTS"
+    },
+    {
+      "stationId": "19633",
+      "name": "Milwaukee PBS",
+      "aliases": [
+        "PBS WI Milwaukee (WMVS) [10.1]",
+        "PBS WMVS",
+        "WMVS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WMVS"
+    },
+    {
+      "stationId": "19654",
+      "name": "Kansas City PBS",
+      "aliases": [
+        "KCPT",
+        "PBS KCPT",
+        "PBS MO Kansas City (KCPT) [19.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KCPT"
+    },
+    {
+      "stationId": "20206",
+      "name": "PBS Kids",
+      "aliases": [
+        "KCTS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KCTS_kids_main"
+    },
+    {
+      "stationId": "20372",
+      "name": "KERA",
+      "aliases": [
+        "PBS KERA",
+        "PBS TX Dallas (KERA) [13.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KERA"
+    },
+    {
+      "stationId": "21526",
+      "name": "WETA PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WETA_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "21634",
+      "name": "Twin Cities PBS",
+      "aliases": [
+        "KTCA",
+        "PBS KTCA",
+        "PBS MN St Paul (KTCA) [2.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KTCA"
+    },
+    {
+      "stationId": "21652",
+      "name": "NJ PBS",
+      "aliases": [
+        "PBS NJ Trenton (WNJT) [23.1]",
+        "PBS WNJT",
+        "WNJT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNJT"
+    },
+    {
+      "stationId": "21723",
+      "name": "Rocky Mountain PBS",
+      "aliases": [
+        "KRMA",
+        "PBS CO Denver (KRMA) [6.1]",
+        "PBS KRMA"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KRMA"
+    },
+    {
+      "stationId": "21725",
+      "name": "Maine Public",
+      "aliases": [
+        "PBS ME Lewiston (WCBB) [10.1]",
+        "PBS WCBB",
+        "WCBB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCBB"
+    },
+    {
+      "stationId": "21895",
+      "name": "WMVS PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WMVS_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "21896",
+      "name": "SCETV",
+      "aliases": [
+        "PBS SC Columbia (WRLK) [35.1]",
+        "PBS WRLK",
+        "WRLK"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WRLK"
+    },
+    {
+      "stationId": "21897",
+      "name": "New England Public Media",
+      "aliases": [
+        "PBS MA Springfield (WGBY) [57.1]",
+        "PBS WGBY",
+        "WGBY"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGBY"
+    },
+    {
+      "stationId": "24020",
+      "name": "KOCE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KOCE_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "24095",
+      "name": "Create TV",
+      "aliases": [
+        "WRLK Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WRLK_ga_create"
+    },
+    {
+      "stationId": "24098",
+      "name": "WXEL South Florida PBS",
+      "aliases": [
+        "PBS FL Boynton Beach (WXEL) [42.1]",
+        "PBS WXEL",
+        "WXEL"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WXEL"
+    },
+    {
+      "stationId": "24114",
+      "name": "WHYY",
+      "aliases": [
+        "PBS PA Philadelphia (WHYY) [12.1]",
+        "PBS WHYY"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WHYY"
+    },
+    {
+      "stationId": "24344",
+      "name": "KQED",
+      "aliases": [
+        "PBS CA San Francisco (KQED) [9.1]",
+        "PBS KQED"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KQED"
+    },
+    {
+      "stationId": "24783",
+      "name": "PBS39",
+      "aliases": [
+        "PBS PA Allentown (WLVT) [39.1]",
+        "PBS WLVT",
+        "WLVT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WLVT"
+    },
+    {
+      "stationId": "24934",
+      "name": "PBS Reno",
+      "aliases": [
+        "KNPB",
+        "PBS KNPB",
+        "PBS NV Reno (KNPB) [5.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KNPB"
+    },
+    {
+      "stationId": "24942",
+      "name": "KNPB PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KNPB_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "24943",
+      "name": "PBS Kids",
+      "aliases": [
+        "KNPB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KNPB_kids_main"
+    },
+    {
+      "stationId": "24958",
+      "name": "LPB/LOUISIANA PUBLIC BROADCASTING",
+      "aliases": [
+        "PBS LA Baton Rouge (WLPB) [27.1]",
+        "PBS WLPB",
+        "WLPB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WLPB"
+    },
+    {
+      "stationId": "25001",
+      "name": "WOUB/WOUC",
+      "aliases": [
+        "PBS OH Athens (WOUB) [20.1]",
+        "PBS WOUB",
+        "WOUB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WOUB"
+    },
+    {
+      "stationId": "25002",
+      "name": "New Hampshire PBS",
+      "aliases": [
+        "PBS NH Durham (WENH) [11.1]",
+        "PBS WENH",
+        "WENH"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WENH"
+    },
+    {
+      "stationId": "25102",
+      "name": "Arizona PBS",
+      "aliases": [
+        "KAET",
+        "PBS AZ Phoenix (KAET) [8.1]",
+        "PBS KAET"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KAET"
+    },
+    {
+      "stationId": "25104",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KAET WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KAET_ga_world"
+    },
+    {
+      "stationId": "25152",
+      "name": "WVIA Public Media",
+      "aliases": [
+        "PBS PA Scranton (WVIA) [44.1]",
+        "PBS WVIA",
+        "WVIA"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WVIA"
+    },
+    {
+      "stationId": "25512",
+      "name": "Detroit PBS",
+      "aliases": [
+        "PBS MI Wixom (WTVS) [56.1]",
+        "PBS WTVS",
+        "WTVS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTVS"
+    },
+    {
+      "stationId": "26182",
+      "name": "THIRTEEN PBS",
+      "aliases": [
+        "PBS NY New York City (WNET) [13.1]",
+        "PBS WNET",
+        "WNET"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNET"
+    },
+    {
+      "stationId": "26192",
+      "name": "WPBT South Florida PBS",
+      "aliases": [
+        "PBS FL Miami (WPBT) [2.1]",
+        "PBS WPBT",
+        "WPBT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPBT"
+    },
+    {
+      "stationId": "26193",
+      "name": "Houston Public Media TV 8",
+      "aliases": [
+        "KUHT",
+        "PBS KUHT",
+        "PBS TX Houston (KUHT) [8.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUHT"
+    },
+    {
+      "stationId": "27128",
+      "name": "WSRE PBS",
+      "aliases": [
+        "PBS FL Pensacola (WSRE) [23.1]",
+        "PBS WSRE",
+        "WSRE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WSRE"
+    },
+    {
+      "stationId": "27422",
+      "name": "Iowa PBS",
+      "aliases": [
+        "KDIN",
+        "PBS IA Des Moines (KDIN) [11.1]",
+        "PBS KDIN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KDIN"
+    },
+    {
+      "stationId": "28022",
+      "name": "PBS Utah",
+      "aliases": [
+        "KUED",
+        "PBS KUED",
+        "PBS UT Salt Lake City (KUED) [7.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUED"
+    },
+    {
+      "stationId": "28027",
+      "name": "Idaho Public Television",
+      "aliases": [
+        "KAID",
+        "PBS ID Boise (KAID) [4.1]",
+        "PBS KAID"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KAID"
+    },
+    {
+      "stationId": "28055",
+      "name": "GBH",
+      "aliases": [
+        "PBS MA Boston (WGBH) [2.1]",
+        "PBS WGBH",
+        "WGBH"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGBH"
+    },
+    {
+      "stationId": "28680",
+      "name": "WTVP, Public Media for Central Illinois",
+      "aliases": [
+        "PBS IL Peoria (WTVP) [47.1]",
+        "PBS WTVP",
+        "WTVP"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTVP"
+    },
+    {
+      "stationId": "29020",
+      "name": "KET - Kentucky Educational Television",
+      "aliases": [
+        "PBS KY Lexington (WKLE) [46.1]",
+        "PBS WKLE",
+        "WKLE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WKLE"
+    },
+    {
+      "stationId": "29021",
+      "name": "New Mexico PBS, KNME-TV",
+      "aliases": [
+        "KNME",
+        "PBS KNME",
+        "PBS NM Albuquerque (KNME) [5.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KNME"
+    },
+    {
+      "stationId": "29024",
+      "name": "KPBS San Diego",
+      "aliases": [
+        "KPBS",
+        "PBS CA San Diego (KPBS) [15.1]",
+        "PBS KPBS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KPBS"
+    },
+    {
+      "stationId": "29144",
+      "name": "WMVS PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WMVS_ga_local_subchannel_2"
+    },
+    {
+      "stationId": "29145",
+      "name": "WQLN",
+      "aliases": [
+        "PBS PA Erie (WQLN) [54.1]",
+        "PBS WQLN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WQLN"
+    },
+    {
+      "stationId": "30289",
+      "name": "PBS Kids",
+      "aliases": [
+        "WMVS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WMVS_kids_main"
+    },
+    {
+      "stationId": "30293",
+      "name": "PBS Charlotte",
+      "aliases": [
+        "PBS NC Charlotte (WTVI) [42.1]",
+        "PBS WTVI",
+        "WTVI"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTVI"
+    },
+    {
+      "stationId": "30294",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WTVI NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WTVI_ga_nhk"
+    },
+    {
+      "stationId": "30331",
+      "name": "West Virginia Public Broadcasting",
+      "aliases": [
+        "PBS WV Charleston (WVPB) [33.1]",
+        "PBS WVPB",
+        "WVPB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WVPB"
+    },
+    {
+      "stationId": "30334",
+      "name": "WVPB PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WVPB_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "30336",
+      "name": "PBS Kids",
+      "aliases": [
+        "WVPB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WVPB_kids_main"
+    },
+    {
+      "stationId": "30415",
+      "name": "WTTW",
+      "aliases": [
+        "PBS IL Chicago (WTTW) [11.1]",
+        "PBS WTTW"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTTW"
+    },
+    {
+      "stationId": "30461",
+      "name": "Vegas PBS",
+      "aliases": [
+        "KLVX",
+        "PBS KLVX",
+        "PBS NV Las Vegas (KLVX) [10.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KLVX"
+    },
+    {
+      "stationId": "30481",
+      "name": "PBS ",
+      "aliases": [
+        "PBS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WVPT"
+    },
+    {
+      "stationId": "30507",
+      "name": "KQED PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KQED_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "30509",
+      "name": "WKLE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WKLE_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "30550",
+      "name": "WKLE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WKLE_ga_local_subchannel_2"
+    },
+    {
+      "stationId": "30551",
+      "name": "PBS Kids",
+      "aliases": [
+        "WKLE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WKLE_kids_main"
+    },
+    {
+      "stationId": "30646",
+      "name": "PBS Kids",
+      "aliases": [
+        "WUNC PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WUNC_kids_main"
+    },
+    {
+      "stationId": "30648",
+      "name": "WUNC PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WUNC_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "30661",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTVI PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTVI_kids_main"
+    },
+    {
+      "stationId": "30697",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KPBS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KPBS_ga_world"
+    },
+    {
+      "stationId": "30985",
+      "name": "Create TV",
+      "aliases": [
+        "WCBB Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCBB_ga_create"
+    },
+    {
+      "stationId": "30986",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WCBB WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WCBB_ga_world"
+    },
+    {
+      "stationId": "30987",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCBB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCBB_kids_main"
+    },
+    {
+      "stationId": "31262",
+      "name": "PBS Kids",
+      "aliases": [
+        "KTCA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KTCA_kids_main"
+    },
+    {
+      "stationId": "31268",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WSRE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WSRE_ga_world"
+    },
+    {
+      "stationId": "31721",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KFME WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KFME_ga_world"
+    },
+    {
+      "stationId": "31728",
+      "name": "PBS Kids",
+      "aliases": [
+        "KFME PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KFME_kids_main"
+    },
+    {
+      "stationId": "31777",
+      "name": "WHRO",
+      "aliases": [
+        "PBS VA Norfolk (WHRO) [15.1]",
+        "PBS WHRO"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WHRO"
+    },
+    {
+      "stationId": "31780",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNET PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNET_kids_main"
+    },
+    {
+      "stationId": "32050",
+      "name": "PBS Kids",
+      "aliases": [
+        "WETA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WETA_kids_main"
+    },
+    {
+      "stationId": "32052",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WETA WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WETA_ga_world"
+    },
+    {
+      "stationId": "32057",
+      "name": "Nine PBS",
+      "aliases": [
+        "KETC",
+        "PBS KETC",
+        "PBS MO St Louis (KETC) [9.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KETC"
+    },
+    {
+      "stationId": "32065",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KETC WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KETC_ga_world"
+    },
+    {
+      "stationId": "32074",
+      "name": "WCNY Connected",
+      "aliases": [
+        "PBS NY Syracuse (WCNY) [24.1]",
+        "PBS WCNY",
+        "WCNY"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCNY"
+    },
+    {
+      "stationId": "32077",
+      "name": "Create TV",
+      "aliases": [
+        "WCNY Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCNY_ga_create"
+    },
+    {
+      "stationId": "32080",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WCNY WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WCNY_ga_world"
+    },
+    {
+      "stationId": "32464",
+      "name": "WMHT",
+      "aliases": [
+        "PBS NY Troy (WMHT) [17.1]",
+        "PBS WMHT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WMHT"
+    },
+    {
+      "stationId": "32469",
+      "name": "Create TV",
+      "aliases": [
+        "KCPT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KCPT_ga_create"
+    },
+    {
+      "stationId": "32576",
+      "name": "Create TV",
+      "aliases": [
+        "WPBT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WPBT_ga_create"
+    },
+    {
+      "stationId": "33147",
+      "name": "CET",
+      "aliases": [
+        "PBS OH Cincinnati (WCET) [48.1]",
+        "PBS WCET",
+        "WCET"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCET"
+    },
+    {
+      "stationId": "33169",
+      "name": "Create TV",
+      "aliases": [
+        "WCET Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCET_ga_create"
+    },
+    {
+      "stationId": "33419",
+      "name": "WNIN",
+      "aliases": [
+        "PBS IN Evansville (WNIN) [9.1]",
+        "PBS WNIN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNIN"
+    },
+    {
+      "stationId": "33457",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNIN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNIN_kids_main"
+    },
+    {
+      "stationId": "33492",
+      "name": "KLRN",
+      "aliases": [
+        "PBS KLRN",
+        "PBS TX San Antonio (KLRN) [8.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KLRN"
+    },
+    {
+      "stationId": "33511",
+      "name": "PBS Kansas Public Television",
+      "aliases": [
+        "KPTS",
+        "PBS KPTS",
+        "PBS KS Wichita (KPTS) [8.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KPTS"
+    },
+    {
+      "stationId": "33540",
+      "name": "ThinkTVNetwork",
+      "aliases": [
+        "PBS OH Dayton (WPTD) [16.1]",
+        "PBS WPTD",
+        "WPTD"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPTD"
+    },
+    {
+      "stationId": "33549",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WPTD WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WPTD_ga_world"
+    },
+    {
+      "stationId": "33551",
+      "name": "PBS Kids",
+      "aliases": [
+        "WPTD PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WPTD_kids_main"
+    },
+    {
+      "stationId": "33698",
+      "name": "Wyoming PBS",
+      "aliases": [
+        "KCWC",
+        "PBS KCWC",
+        "PBS WY Riverton (KCWC) [4.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KCWC"
+    },
+    {
+      "stationId": "33700",
+      "name": "Create TV",
+      "aliases": [
+        "KCWC Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KCWC_ga_create"
+    },
+    {
+      "stationId": "33787",
+      "name": "WFYI Indianapolis",
+      "aliases": [
+        "PBS IN Indianapolis (WFYI) [20.1]",
+        "PBS WFYI",
+        "WFYI"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WFYI"
+    },
+    {
+      "stationId": "33788",
+      "name": "PBS Kids",
+      "aliases": [
+        "WFYI PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WFYI_kids_main"
+    },
+    {
+      "stationId": "33812",
+      "name": "Nebraska Public Media",
+      "aliases": [
+        "KUON",
+        "PBS KUON",
+        "PBS NE Lincoln (KUON) [12.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUON"
+    },
+    {
+      "stationId": "33814",
+      "name": "KUON PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KUON_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "33854",
+      "name": "WRLK PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WRLK_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "33857",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KUON FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KUON_ga_fnx"
+    },
+    {
+      "stationId": "33863",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WNJT NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WNJT_ga_nhk"
+    },
+    {
+      "stationId": "34135",
+      "name": "Create TV",
+      "aliases": [
+        "WLIW Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WLIW_ga_create"
+    },
+    {
+      "stationId": "34156",
+      "name": "Create TV",
+      "aliases": [
+        "WGBH Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGBH_ga_create"
+    },
+    {
+      "stationId": "34158",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGBH PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGBH_kids_main"
+    },
+    {
+      "stationId": "34168",
+      "name": "PBS Kids",
+      "aliases": [
+        "KQED PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KQED_kids_main"
+    },
+    {
+      "stationId": "34197",
+      "name": "PBS KVIE",
+      "aliases": [
+        "KVIE",
+        "PBS CA Sacramento (KVIE) [6.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KVIE"
+    },
+    {
+      "stationId": "34228",
+      "name": "KTWU/Channel 11",
+      "aliases": [
+        "KTWU",
+        "PBS KS Topeka (KTWU) [11.1]",
+        "PBS KTWU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KTWU"
+    },
+    {
+      "stationId": "34231",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KTWU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KTWU_ga_world"
+    },
+    {
+      "stationId": "34320",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WHRO WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WHRO_ga_world"
+    },
+    {
+      "stationId": "34323",
+      "name": "Create TV",
+      "aliases": [
+        "WHRO Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WHRO_ga_create"
+    },
+    {
+      "stationId": "34325",
+      "name": "WLIW21",
+      "aliases": [
+        "PBS NY Garden City (WLIW) [21.1]",
+        "PBS WLIW",
+        "WLIW"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WLIW"
+    },
+    {
+      "stationId": "34333",
+      "name": "PBS Kids",
+      "aliases": [
+        "WHRO PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WHRO_kids_main"
+    },
+    {
+      "stationId": "34337",
+      "name": "WGCU Public Media",
+      "aliases": [
+        "PBS FL Ft Myers (WGCU) [30.1]",
+        "PBS WGCU",
+        "WGCU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGCU"
+    },
+    {
+      "stationId": "34339",
+      "name": "KSPS Public Television",
+      "aliases": [
+        "KSPS",
+        "PBS KSPS",
+        "PBS WA Spokane (KSPS) [7.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KSPS"
+    },
+    {
+      "stationId": "34355",
+      "name": "WXXI Public Broadcasting",
+      "aliases": [
+        "PBS NY Rochester (WXXI) [21.1]",
+        "PBS WXXI",
+        "WXXI"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WXXI"
+    },
+    {
+      "stationId": "34382",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WXXI WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WXXI_ga_world"
+    },
+    {
+      "stationId": "34387",
+      "name": "Create TV",
+      "aliases": [
+        "WXXI Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WXXI_ga_create"
+    },
+    {
+      "stationId": "34389",
+      "name": "PBS Kids",
+      "aliases": [
+        "WXXI PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WXXI_kids_main"
+    },
+    {
+      "stationId": "34439",
+      "name": "KENW-TV3",
+      "aliases": [
+        "KENW",
+        "PBS KENW",
+        "PBS NM Portales (KENW) [3.2]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KENW"
+    },
+    {
+      "stationId": "34544",
+      "name": "PBS SoCal",
+      "aliases": [
+        "KOCE",
+        "PBS CA Huntington Beach (KOCE) [50.1]",
+        "PBS KOCE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KOCE"
+    },
+    {
+      "stationId": "34555",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WQED WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WQED_ga_world"
+    },
+    {
+      "stationId": "34597",
+      "name": "Smoky Hills PBS",
+      "aliases": [
+        "KOOD",
+        "PBS KOOD",
+        "PBS KS Bunker Hill (KOOD) [9.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KOOD"
+    },
+    {
+      "stationId": "34635",
+      "name": "KBTC Public Television",
+      "aliases": [
+        "KBTC",
+        "PBS KBTC",
+        "PBS WA Tacoma (KBTC) [28.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KBTC"
+    },
+    {
+      "stationId": "34639",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "KBTC NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_KBTC_ga_nhk"
+    },
+    {
+      "stationId": "34641",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KBTC FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KBTC_ga_fnx"
+    },
+    {
+      "stationId": "34692",
+      "name": "KAMU-TV/FM",
+      "aliases": [
+        "KAMU",
+        "PBS KAMU",
+        "PBS TX College Station (KAMU) [12.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KAMU"
+    },
+    {
+      "stationId": "34696",
+      "name": "KMOS-TV",
+      "aliases": [
+        "KMOS",
+        "PBS KMOS",
+        "PBS MO Warrensburg (KMOS) [6.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KMOS"
+    },
+    {
+      "stationId": "34698",
+      "name": "Blue Ridge PBS",
+      "aliases": [
+        "PBS VA Roanoke (WBRA) [15.1]",
+        "PBS WBRA",
+        "WBRA"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WBRA"
+    },
+    {
+      "stationId": "34723",
+      "name": "WQPT PBS",
+      "aliases": [
+        "PBS IL Moline (WQPT) [24.1]",
+        "PBS WQPT",
+        "WQPT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WQPT"
+    },
+    {
+      "stationId": "34844",
+      "name": "WLVT PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WLVT_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "34915",
+      "name": "BTPM PBS",
+      "aliases": [
+        "PBS NY Buffalo (WNED) [17.1]",
+        "PBS WNED",
+        "WNED"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNED"
+    },
+    {
+      "stationId": "34918",
+      "name": "WNED PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WNED_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "34921",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNED PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNED_kids_main"
+    },
+    {
+      "stationId": "34930",
+      "name": "Jax PBS",
+      "aliases": [
+        "PBS FL Jacksonville (WJCT) [7.1]",
+        "PBS WJCT",
+        "WJCT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WJCT"
+    },
+    {
+      "stationId": "35058",
+      "name": "WBGU-TV",
+      "aliases": [
+        "PBS OH Bowling Green (WBGU) [27.1]",
+        "PBS WBGU",
+        "WBGU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WBGU"
+    },
+    {
+      "stationId": "35060",
+      "name": "PBS Kids",
+      "aliases": [
+        "WBGU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WBGU_kids_main"
+    },
+    {
+      "stationId": "35062",
+      "name": "Create TV",
+      "aliases": [
+        "WBGU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WBGU_ga_create"
+    },
+    {
+      "stationId": "35081",
+      "name": "KSMQ Public Television",
+      "aliases": [
+        "KSMQ",
+        "PBS KSMQ",
+        "PBS MN Austin (KSMQ) [15.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KSMQ"
+    },
+    {
+      "stationId": "35102",
+      "name": "Florida's 5 WUFT-TV",
+      "aliases": [
+        "PBS FL Gainesville (WUFT) [36.1]",
+        "PBS WUFT",
+        "WUFT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WUFT"
+    },
+    {
+      "stationId": "35108",
+      "name": "APT PBS",
+      "aliases": [
+        "PBS AL Birmingham (WBIQ) [10.1]",
+        "PBS WBIQ",
+        "WBIQ"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WBIQ"
+    },
+    {
+      "stationId": "35166",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KUED WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KUED_ga_world"
+    },
+    {
+      "stationId": "35168",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUED PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUED_kids_main"
+    },
+    {
+      "stationId": "35193",
+      "name": "WEDU PBS",
+      "aliases": [
+        "PBS FL Tampa (WEDU) [3.1]",
+        "PBS WEDU",
+        "WEDU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WEDU"
+    },
+    {
+      "stationId": "35220",
+      "name": "WUCF",
+      "aliases": [
+        "PBS FL Orlando (WUCF) [24.1]",
+        "PBS WUCF"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WUCF"
+    },
+    {
+      "stationId": "35223",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WEDU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WEDU_ga_world"
+    },
+    {
+      "stationId": "35226",
+      "name": "PBS Kids",
+      "aliases": [
+        "WEDU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WEDU_kids_main"
+    },
+    {
+      "stationId": "35242",
+      "name": "Northern California Public Media",
+      "aliases": [
+        "KRCB",
+        "PBS CA Cotati (KRCB) [22.1]",
+        "PBS KRCB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KRCB"
+    },
+    {
+      "stationId": "35244",
+      "name": "Create TV",
+      "aliases": [
+        "KRCB Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KRCB_ga_create"
+    },
+    {
+      "stationId": "35246",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "KRCB NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_KRCB_ga_nhk"
+    },
+    {
+      "stationId": "35278",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KQED WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KQED_ga_world"
+    },
+    {
+      "stationId": "35279",
+      "name": "Create TV",
+      "aliases": [
+        "WUCF Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WUCF_ga_create"
+    },
+    {
+      "stationId": "35319",
+      "name": "KEET",
+      "aliases": [
+        "PBS CA Eureka (KEET) [13.1]",
+        "PBS KEET"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KEET"
+    },
+    {
+      "stationId": "35321",
+      "name": "PBS Kids",
+      "aliases": [
+        "KEET PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KEET_kids_main"
+    },
+    {
+      "stationId": "35377",
+      "name": "KVIE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KVIE_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "35387",
+      "name": "WFSU",
+      "aliases": [
+        "PBS FL Tallahassee (WFSU) [11.1]",
+        "PBS WFSU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WFSU"
+    },
+    {
+      "stationId": "35391",
+      "name": "Create TV",
+      "aliases": [
+        "WFSU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WFSU_ga_create"
+    },
+    {
+      "stationId": "35393",
+      "name": "PBS Kids",
+      "aliases": [
+        "WFSU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WFSU_kids_main"
+    },
+    {
+      "stationId": "35489",
+      "name": "PBS Western Reserve",
+      "aliases": [
+        "PBS OH Kent (WNEO) [45.1]",
+        "PBS WNEO",
+        "WNEO"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNEO"
+    },
+    {
+      "stationId": "35500",
+      "name": "Austin PBS, KLRU-TV",
+      "aliases": [
+        "KLRU",
+        "PBS KLRU",
+        "PBS TX Austin (KLRU) [18.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KLRU"
+    },
+    {
+      "stationId": "35502",
+      "name": "Create TV",
+      "aliases": [
+        "KLRU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KLRU_ga_create"
+    },
+    {
+      "stationId": "35504",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KLRU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KLRU_ga_world"
+    },
+    {
+      "stationId": "35506",
+      "name": "PBS Kids",
+      "aliases": [
+        "KLRU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KLRU_kids_main"
+    },
+    {
+      "stationId": "35522",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KLRN WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KLRN_ga_world"
+    },
+    {
+      "stationId": "35550",
+      "name": "WTIU Public Television",
+      "aliases": [
+        "PBS IN Bloomington (WTIU) [30.1]",
+        "PBS WTIU",
+        "WTIU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTIU"
+    },
+    {
+      "stationId": "35552",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WTIU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WTIU_ga_world"
+    },
+    {
+      "stationId": "35562",
+      "name": "East Tennessee PBS",
+      "aliases": [
+        "PBS TN Knoxville (WETP) [2.1]",
+        "PBS WETP",
+        "WETP"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WETP"
+    },
+    {
+      "stationId": "35565",
+      "name": "PBS Kids",
+      "aliases": [
+        "WETP PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WETP_kids_main"
+    },
+    {
+      "stationId": "35599",
+      "name": "PBS Kids",
+      "aliases": [],
+      "category": "Kids",
+      "channelKey": "PBS_WVPT_kids_main"
+    },
+    {
+      "stationId": "35622",
+      "name": "Lakeland PBS",
+      "aliases": [
+        "KAWE",
+        "PBS KAWE",
+        "PBS MN Bemidji (KAWE) [9.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KAWE"
+    },
+    {
+      "stationId": "35624",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KAWE FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KAWE_ga_fnx"
+    },
+    {
+      "stationId": "35626",
+      "name": "PBS Kids",
+      "aliases": [
+        "KAWE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KAWE_kids_main"
+    },
+    {
+      "stationId": "35628",
+      "name": "Create TV",
+      "aliases": [
+        "KAWE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KAWE_ga_create"
+    },
+    {
+      "stationId": "35645",
+      "name": "PBS Wisconsin",
+      "aliases": [
+        "PBS WI Madison (WPNE) [38.1]",
+        "PBS WPNE",
+        "WPNE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPNE"
+    },
+    {
+      "stationId": "35648",
+      "name": "WPNE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WPNE_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "35688",
+      "name": "Arizona Public Media",
+      "aliases": [
+        "KUAT",
+        "PBS AZ Tucson (KUAT) [6.1]",
+        "PBS KUAT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUAT"
+    },
+    {
+      "stationId": "35726",
+      "name": "PBS Kids",
+      "aliases": [
+        "WMPB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WMPB_kids_main"
+    },
+    {
+      "stationId": "35728",
+      "name": "Delta College Public Media",
+      "aliases": [
+        "PBS MI University Center (WDCQ) [19.1]",
+        "PBS WDCQ",
+        "WDCQ"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WDCQ"
+    },
+    {
+      "stationId": "35730",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WDCQ WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WDCQ_ga_world"
+    },
+    {
+      "stationId": "35735",
+      "name": "Create TV",
+      "aliases": [
+        "WDCQ Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WDCQ_ga_create"
+    },
+    {
+      "stationId": "35750",
+      "name": "PBS Kids",
+      "aliases": [
+        "WDCQ PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WDCQ_kids_main"
+    },
+    {
+      "stationId": "35787",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WMPB NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WMPB_ga_nhk"
+    },
+    {
+      "stationId": "35824",
+      "name": "WTCI",
+      "aliases": [
+        "PBS TN Chattanooga (WTCI) [45.1]",
+        "PBS WTCI"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTCI"
+    },
+    {
+      "stationId": "35826",
+      "name": "Create TV",
+      "aliases": [
+        "WTCI Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WTCI_ga_create"
+    },
+    {
+      "stationId": "35828",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTCI PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTCI_kids_main"
+    },
+    {
+      "stationId": "35856",
+      "name": "PBS12",
+      "aliases": [
+        "KBDI",
+        "PBS CO Broomfield (KBDI) [12.1]",
+        "PBS KBDI"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KBDI"
+    },
+    {
+      "stationId": "35864",
+      "name": "Create TV",
+      "aliases": [
+        "WLPB Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WLPB_ga_create"
+    },
+    {
+      "stationId": "35866",
+      "name": "PBS Kids",
+      "aliases": [
+        "WLPB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WLPB_kids_main"
+    },
+    {
+      "stationId": "35891",
+      "name": "WOSU TV",
+      "aliases": [
+        "PBS OH Columbus (WOSU) [34.1]",
+        "PBS WOSU",
+        "WOSU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WOSU"
+    },
+    {
+      "stationId": "35898",
+      "name": "PBS Kids",
+      "aliases": [
+        "WOSU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WOSU_kids_main"
+    },
+    {
+      "stationId": "35916",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KVIE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KVIE_ga_world"
+    },
+    {
+      "stationId": "35918",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WGBY WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WGBY_ga_world"
+    },
+    {
+      "stationId": "35920",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGBY PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGBY_kids_main"
+    },
+    {
+      "stationId": "35922",
+      "name": "Create TV",
+      "aliases": [
+        "WGBY Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGBY_ga_create"
+    },
+    {
+      "stationId": "35929",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WGCU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WGCU_ga_world"
+    },
+    {
+      "stationId": "35932",
+      "name": "Create TV",
+      "aliases": [
+        "WGCU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGCU_ga_create"
+    },
+    {
+      "stationId": "36037",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WGBH WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WGBH_ga_world"
+    },
+    {
+      "stationId": "36065",
+      "name": "KEDT/Channel 16",
+      "aliases": [
+        "KEDT",
+        "PBS KEDT",
+        "PBS TX Corpus Christi (KEDT) [16.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KEDT"
+    },
+    {
+      "stationId": "36143",
+      "name": "WKU Public Broadcasting",
+      "aliases": [
+        "PBS KY Bowling Green (WKYU) [24.1]",
+        "PBS WKYU",
+        "WKYU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WKYU"
+    },
+    {
+      "stationId": "36183",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUAT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUAT_kids_main"
+    },
+    {
+      "stationId": "36205",
+      "name": "WGTE Public Media",
+      "aliases": [
+        "PBS OH Toledo (WGTE) [30.1]",
+        "PBS WGTE",
+        "WGTE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGTE"
+    },
+    {
+      "stationId": "36209",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGTE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGTE_kids_main"
+    },
+    {
+      "stationId": "36212",
+      "name": "Create TV",
+      "aliases": [
+        "WGTE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGTE_ga_create"
+    },
+    {
+      "stationId": "36220",
+      "name": "Create TV",
+      "aliases": [
+        "WMHT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WMHT_ga_create"
+    },
+    {
+      "stationId": "37205",
+      "name": "Create TV",
+      "aliases": [
+        "KAID Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KAID_ga_create"
+    },
+    {
+      "stationId": "37206",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KAID WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KAID_ga_world"
+    },
+    {
+      "stationId": "37244",
+      "name": "PBS Kids",
+      "aliases": [
+        "WKYU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WKYU_kids_main"
+    },
+    {
+      "stationId": "42519",
+      "name": "KRWG Public Media",
+      "aliases": [
+        "KRWG",
+        "PBS KRWG",
+        "PBS NM Las Cruces (KRWG) [22.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KRWG"
+    },
+    {
+      "stationId": "42529",
+      "name": "WKAR-TV",
+      "aliases": [
+        "PBS MI East Lansing (WKAR) [23.1]",
+        "PBS WKAR",
+        "WKAR"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WKAR"
+    },
+    {
+      "stationId": "42531",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WKAR WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WKAR_ga_world"
+    },
+    {
+      "stationId": "42549",
+      "name": "Nashville PBS",
+      "aliases": [
+        "PBS TN Nashville (WNPT) [8.1]",
+        "PBS WNPT",
+        "WNPT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNPT"
+    },
+    {
+      "stationId": "42622",
+      "name": "Southern Oregon PBS",
+      "aliases": [
+        "KSYS",
+        "PBS KSYS",
+        "PBS OR Medford (KSYS) [8.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KSYS"
+    },
+    {
+      "stationId": "42680",
+      "name": "KIXE/Channel 9",
+      "aliases": [
+        "KIXE",
+        "PBS CA Redding (KIXE) [9.1]",
+        "PBS KIXE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KIXE"
+    },
+    {
+      "stationId": "42746",
+      "name": "PBS Kids",
+      "aliases": [
+        "WBIQ PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WBIQ_kids_main"
+    },
+    {
+      "stationId": "42767",
+      "name": "WSKG Public Media",
+      "aliases": [
+        "PBS NY Binghampton (WSKG) [46.1]",
+        "PBS WSKG",
+        "WSKG"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WSKG"
+    },
+    {
+      "stationId": "42778",
+      "name": "Create TV",
+      "aliases": [
+        "KLVX Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KLVX_ga_create"
+    },
+    {
+      "stationId": "42816",
+      "name": "PBS Kids",
+      "aliases": [
+        "KNME PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KNME_kids_main"
+    },
+    {
+      "stationId": "42848",
+      "name": "PBS Michiana",
+      "aliases": [
+        "PBS IN South Bend (WNIT) [34.1]",
+        "PBS WNIT",
+        "WNIT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNIT"
+    },
+    {
+      "stationId": "43025",
+      "name": "Montana PBS",
+      "aliases": [
+        "KUSM",
+        "PBS KUSM",
+        "PBS MT Bozeman (KUSM) [9.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUSM"
+    },
+    {
+      "stationId": "43178",
+      "name": "PBS Kids",
+      "aliases": [
+        "WPBT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WPBT_kids_main"
+    },
+    {
+      "stationId": "43184",
+      "name": "Oklahoma Educational Television Authority",
+      "aliases": [
+        "KETA",
+        "PBS KETA",
+        "PBS OK Oklahoma City (KETA) [13.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KETA"
+    },
+    {
+      "stationId": "43186",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KETA WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KETA_ga_world"
+    },
+    {
+      "stationId": "43188",
+      "name": "Create TV",
+      "aliases": [
+        "KETA Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KETA_ga_create"
+    },
+    {
+      "stationId": "43190",
+      "name": "PBS Kids",
+      "aliases": [
+        "KETA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KETA_kids_main"
+    },
+    {
+      "stationId": "43400",
+      "name": "Create TV",
+      "aliases": [
+        "WJCT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WJCT_ga_create"
+    },
+    {
+      "stationId": "43408",
+      "name": "PBS Kids",
+      "aliases": [
+        "WJCT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WJCT_kids_main"
+    },
+    {
+      "stationId": "43419",
+      "name": "West TN PBS",
+      "aliases": [
+        "PBS TN Lexington (WLJT) [11.1]",
+        "PBS WLJT",
+        "WLJT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WLJT"
+    },
+    {
+      "stationId": "43521",
+      "name": "KTTZ",
+      "aliases": [
+        "PBS KTTZ",
+        "PBS TX Lubbock (KTTZ) [5.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KTTZ"
+    },
+    {
+      "stationId": "43683",
+      "name": "WDSE - WRPT",
+      "aliases": [
+        "PBS MN Duluth (WDSE) [8.1]",
+        "PBS WDSE",
+        "WDSE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WDSE"
+    },
+    {
+      "stationId": "43708",
+      "name": "WGVU TV",
+      "aliases": [
+        "PBS MI Grand Rapids (WGVU) [35.1]",
+        "PBS WGVU",
+        "WGVU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGVU"
+    },
+    {
+      "stationId": "43712",
+      "name": "Vincennes PBS",
+      "aliases": [
+        "PBS IN Vincennes (WVUT) [22.1]",
+        "PBS WVUT",
+        "WVUT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WVUT"
+    },
+    {
+      "stationId": "43714",
+      "name": "Basin PBS",
+      "aliases": [
+        "KPBT",
+        "PBS KPBT",
+        "PBS TX Midland (KPBT) [36.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KPBT"
+    },
+    {
+      "stationId": "43720",
+      "name": "PBS Fort Wayne",
+      "aliases": [
+        "PBS IN Fort Wayne (WFWA) [39.1]",
+        "PBS WFWA",
+        "WFWA"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WFWA"
+    },
+    {
+      "stationId": "43761",
+      "name": "WSIU Carbondale",
+      "aliases": [
+        "PBS IL Carbondale (WSIU) [8.1]",
+        "PBS WSIU",
+        "WSIU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WSIU"
+    },
+    {
+      "stationId": "43763",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WSIU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WSIU_ga_world"
+    },
+    {
+      "stationId": "43765",
+      "name": "Create TV",
+      "aliases": [
+        "WSIU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WSIU_ga_create"
+    },
+    {
+      "stationId": "43777",
+      "name": "KLCS",
+      "aliases": [
+        "PBS CA Los Angeles (KLCS) [58.1]",
+        "PBS KLCS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KLCS"
+    },
+    {
+      "stationId": "43780",
+      "name": "Create TV",
+      "aliases": [
+        "KLCS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KLCS_ga_create"
+    },
+    {
+      "stationId": "43782",
+      "name": "VPM",
+      "aliases": [
+        "PBS VA Richmond (WCVE) [23.1]",
+        "PBS WCVE",
+        "WCVE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCVE"
+    },
+    {
+      "stationId": "43787",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WDSE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WDSE_ga_world"
+    },
+    {
+      "stationId": "43789",
+      "name": "Create TV",
+      "aliases": [
+        "WDSE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WDSE_ga_create"
+    },
+    {
+      "stationId": "43837",
+      "name": "PBS Kids",
+      "aliases": [
+        "WFWA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WFWA_kids_main"
+    },
+    {
+      "stationId": "43893",
+      "name": "PBS Kids",
+      "aliases": [
+        "KVIE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KVIE_kids_main"
+    },
+    {
+      "stationId": "43966",
+      "name": "PBS Kids",
+      "aliases": [
+        "WVIA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WVIA_kids_main"
+    },
+    {
+      "stationId": "43968",
+      "name": "Create TV",
+      "aliases": [
+        "WVIA Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WVIA_ga_create"
+    },
+    {
+      "stationId": "43991",
+      "name": "PBS Kids",
+      "aliases": [
+        "KPBT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KPBT_kids_main"
+    },
+    {
+      "stationId": "43992",
+      "name": "PBS El Paso",
+      "aliases": [
+        "KCOS",
+        "PBS KCOS",
+        "PBS TX El Paso (KCOS) [13.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KCOS"
+    },
+    {
+      "stationId": "44002",
+      "name": "Arkansas PBS",
+      "aliases": [
+        "KETS",
+        "PBS AR Little Rock (KETS) [2.1]",
+        "PBS KETS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KETS"
+    },
+    {
+      "stationId": "44007",
+      "name": "Create TV",
+      "aliases": [
+        "WVUT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WVUT_ga_create"
+    },
+    {
+      "stationId": "44015",
+      "name": "PBS Kids",
+      "aliases": [
+        "KLRN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KLRN_kids_main"
+    },
+    {
+      "stationId": "44021",
+      "name": "PBS Kids",
+      "aliases": [
+        "WVUT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WVUT_kids_main"
+    },
+    {
+      "stationId": "44023",
+      "name": "KVCR",
+      "aliases": [
+        "PBS CA San Bernardino (KVCR) [24.1]",
+        "PBS KVCR"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KVCR"
+    },
+    {
+      "stationId": "44032",
+      "name": "Create TV",
+      "aliases": [
+        "WFYI Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WFYI_ga_create"
+    },
+    {
+      "stationId": "44065",
+      "name": "Create TV",
+      "aliases": [
+        "KLRN Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KLRN_ga_create"
+    },
+    {
+      "stationId": "44128",
+      "name": "PBS Kids",
+      "aliases": [
+        "WXEL PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WXEL_kids_main"
+    },
+    {
+      "stationId": "44147",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WLIW WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WLIW_ga_world"
+    },
+    {
+      "stationId": "44148",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WMHT WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WMHT_ga_world"
+    },
+    {
+      "stationId": "44220",
+      "name": "WNMU-TV PBS",
+      "aliases": [
+        "PBS MI Marquette (WNMU) [13.1]",
+        "PBS WNMU",
+        "WNMU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WNMU"
+    },
+    {
+      "stationId": "44222",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNMU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNMU_kids_main"
+    },
+    {
+      "stationId": "44246",
+      "name": "SDPB",
+      "aliases": [
+        "KUSD",
+        "PBS KUSD",
+        "PBS SD Vermillion (KUSD) [2.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUSD"
+    },
+    {
+      "stationId": "44366",
+      "name": "Ideastream",
+      "aliases": [
+        "PBS OH Cleveland (WVIZ) [25.1]",
+        "PBS WVIZ",
+        "WVIZ"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WVIZ"
+    },
+    {
+      "stationId": "44368",
+      "name": "Mountain Lake PBS",
+      "aliases": [
+        "PBS NY Plattsburgh (WCFE) [57.1]",
+        "PBS WCFE",
+        "WCFE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCFE"
+    },
+    {
+      "stationId": "44445",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KSYS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KSYS_ga_world"
+    },
+    {
+      "stationId": "44516",
+      "name": "WCTE Central Tennessee PBS",
+      "aliases": [
+        "PBS TN Cookeville (WCTE) [22.1]",
+        "PBS WCTE",
+        "WCTE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCTE"
+    },
+    {
+      "stationId": "44645",
+      "name": "WKNO/Channel 10",
+      "aliases": [
+        "PBS TN Memphis (WKNO) [10.1]",
+        "PBS WKNO",
+        "WKNO"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WKNO"
+    },
+    {
+      "stationId": "44712",
+      "name": "PBS North Carolina",
+      "aliases": [
+        "PBS NC Chapel Hill (WUNC) [4.1]",
+        "PBS WUNC",
+        "WUNC"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WUNC"
+    },
+    {
+      "stationId": "44732",
+      "name": "WCVE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WCVE_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "44775",
+      "name": "Create TV",
+      "aliases": [
+        "KETS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KETS_ga_create"
+    },
+    {
+      "stationId": "44777",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KETS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KETS_ga_world"
+    },
+    {
+      "stationId": "44779",
+      "name": "KUAC",
+      "aliases": [
+        "PBS AK Fairbanks (KUAC) [9.1]",
+        "PBS KUAC"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KUAC"
+    },
+    {
+      "stationId": "44781",
+      "name": "PBS Kids",
+      "aliases": [
+        "KETS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KETS_kids_main"
+    },
+    {
+      "stationId": "44866",
+      "name": "Create TV",
+      "aliases": [
+        "KCOS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KCOS_ga_create"
+    },
+    {
+      "stationId": "44907",
+      "name": "WYES-TV/New Orleans",
+      "aliases": [
+        "PBS LA New Orleans (WYES) [12.1]",
+        "PBS WYES",
+        "WYES"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WYES"
+    },
+    {
+      "stationId": "44909",
+      "name": "PBS Kids",
+      "aliases": [
+        "WYES PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WYES_kids_main"
+    },
+    {
+      "stationId": "45046",
+      "name": "PBS Kids",
+      "aliases": [
+        "KOOD PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KOOD_kids_main"
+    },
+    {
+      "stationId": "45073",
+      "name": "PBS ",
+      "aliases": [
+        "PBS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPBA"
+    },
+    {
+      "stationId": "45325",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTVS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTVS_kids_main"
+    },
+    {
+      "stationId": "45475",
+      "name": "Prairie Public",
+      "aliases": [
+        "KFME",
+        "PBS KFME",
+        "PBS ND Fargo (KFME) [13.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KFME"
+    },
+    {
+      "stationId": "45617",
+      "name": "PBS Kids",
+      "aliases": [
+        "WSKG PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WSKG_kids_main"
+    },
+    {
+      "stationId": "45716",
+      "name": "KUHT PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KUHT_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "45729",
+      "name": "Valley PBS",
+      "aliases": [
+        "KVPT",
+        "PBS CA Fresno (KVPT) [18.1]",
+        "PBS KVPT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KVPT"
+    },
+    {
+      "stationId": "45772",
+      "name": "PBS Kids",
+      "aliases": [
+        "WKNO PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WKNO_kids_main"
+    },
+    {
+      "stationId": "45799",
+      "name": "WPSU",
+      "aliases": [
+        "PBS PA University Park (WPSU) [3.1]",
+        "PBS WPSU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPSU"
+    },
+    {
+      "stationId": "45913",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WHYY WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WHYY_ga_world"
+    },
+    {
+      "stationId": "46199",
+      "name": "MPT/Maryland Public Television",
+      "aliases": [
+        "PBS MD Owings Mills (WMPB) [67.1]",
+        "PBS WMPB",
+        "WMPB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WMPB"
+    },
+    {
+      "stationId": "46249",
+      "name": "PBS Kids",
+      "aliases": [
+        "KVPT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KVPT_kids_main"
+    },
+    {
+      "stationId": "46273",
+      "name": "Create TV",
+      "aliases": [
+        "WQED Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WQED_ga_create"
+    },
+    {
+      "stationId": "46636",
+      "name": "PBS Kids",
+      "aliases": [
+        "WUCF PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WUCF_kids_main"
+    },
+    {
+      "stationId": "46700",
+      "name": "Create TV",
+      "aliases": [
+        "WUFT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WUFT_ga_create"
+    },
+    {
+      "stationId": "46790",
+      "name": "Create TV",
+      "aliases": [
+        "KIXE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KIXE_ga_create"
+    },
+    {
+      "stationId": "46815",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WUCF NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WUCF_ga_nhk"
+    },
+    {
+      "stationId": "47256",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KSPS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KSPS_ga_world"
+    },
+    {
+      "stationId": "47825",
+      "name": "Ozarks Public Television",
+      "aliases": [
+        "KOZK",
+        "PBS KOZK",
+        "PBS MO Springfield (KOZK) [21.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KOZK"
+    },
+    {
+      "stationId": "47828",
+      "name": "PBS Kids",
+      "aliases": [
+        "KOZK PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KOZK_kids_main"
+    },
+    {
+      "stationId": "48022",
+      "name": "Alaska Public Media",
+      "aliases": [
+        "KAKM",
+        "PBS AK Anchorage (KAKM) [7.1]",
+        "PBS KAKM"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KAKM"
+    },
+    {
+      "stationId": "48024",
+      "name": "Create TV",
+      "aliases": [
+        "KAKM Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KAKM_ga_create"
+    },
+    {
+      "stationId": "48305",
+      "name": "WILL-TV",
+      "aliases": [
+        "PBS IL Urbana (WILL) [12.1]",
+        "PBS WILL",
+        "WILL"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WILL"
+    },
+    {
+      "stationId": "48306",
+      "name": "PBS Kids",
+      "aliases": [
+        "WILL PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WILL_kids_main"
+    },
+    {
+      "stationId": "48309",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "WNEO FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WNEO_ga_fnx"
+    },
+    {
+      "stationId": "48607",
+      "name": "Create TV",
+      "aliases": [
+        "KOZK Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KOZK_ga_create"
+    },
+    {
+      "stationId": "48615",
+      "name": "PBS Kids",
+      "aliases": [
+        "WLJT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WLJT_kids_main"
+    },
+    {
+      "stationId": "48673",
+      "name": "PBS Kids",
+      "aliases": [
+        "KDIN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KDIN_kids_main"
+    },
+    {
+      "stationId": "49053",
+      "name": "Create TV",
+      "aliases": [
+        "WFWA Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WFWA_ga_create"
+    },
+    {
+      "stationId": "49057",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WFWA WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WFWA_ga_world"
+    },
+    {
+      "stationId": "49131",
+      "name": "Ball State PBS",
+      "aliases": [
+        "PBS IN Muncie (WIPB) [49.1]",
+        "PBS WIPB",
+        "WIPB"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WIPB"
+    },
+    {
+      "stationId": "49133",
+      "name": "Create TV",
+      "aliases": [
+        "WIPB Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WIPB_ga_create"
+    },
+    {
+      "stationId": "49153",
+      "name": "Create TV",
+      "aliases": [
+        "WPSU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WPSU_ga_create"
+    },
+    {
+      "stationId": "49155",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WPSU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WPSU_ga_world"
+    },
+    {
+      "stationId": "49216",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCNY PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCNY_kids_main"
+    },
+    {
+      "stationId": "49237",
+      "name": "Lakeshore PBS",
+      "aliases": [
+        "PBS IN Gary (WYIN) [56.1]",
+        "PBS WYIN",
+        "WYIN"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WYIN"
+    },
+    {
+      "stationId": "49241",
+      "name": "WTJX Channel 12",
+      "aliases": [
+        "PBS VI Christiansted (WTJX) [12.1]",
+        "PBS WTJX",
+        "WTJX"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WTJX"
+    },
+    {
+      "stationId": "49245",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTJX PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTJX_kids_main"
+    },
+    {
+      "stationId": "49272",
+      "name": "WNPT PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WNPT_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "49348",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGVU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGVU_kids_main"
+    },
+    {
+      "stationId": "49350",
+      "name": "Create TV",
+      "aliases": [
+        "WGVU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGVU_ga_create"
+    },
+    {
+      "stationId": "49377",
+      "name": "Create TV",
+      "aliases": [
+        "KPBS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KPBS_ga_create"
+    },
+    {
+      "stationId": "49412",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WTVP WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WTVP_ga_world"
+    },
+    {
+      "stationId": "49445",
+      "name": "WKNO PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WKNO_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "49623",
+      "name": "Create TV",
+      "aliases": [
+        "KETC Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KETC_ga_create"
+    },
+    {
+      "stationId": "49769",
+      "name": "Panhandle PBS",
+      "aliases": [
+        "KACV",
+        "PBS KACV",
+        "PBS TX Amarillo (KACV) [2.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KACV"
+    },
+    {
+      "stationId": "49770",
+      "name": "PBS Kids",
+      "aliases": [
+        "KACV PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KACV_kids_main"
+    },
+    {
+      "stationId": "49773",
+      "name": "PBS Kids",
+      "aliases": [],
+      "category": "Kids",
+      "channelKey": "PBS_KCSM_kids_main"
+    },
+    {
+      "stationId": "49808",
+      "name": "WPBS",
+      "aliases": [
+        "PBS NY Watertown (WPBS) [16.1]",
+        "PBS WPBS"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WPBS"
+    },
+    {
+      "stationId": "49918",
+      "name": "PBS Hawaiʻi",
+      "aliases": [
+        "KHET",
+        "PBS HI Honolulu (KHET) [11.1]",
+        "PBS KHET"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KHET"
+    },
+    {
+      "stationId": "50203",
+      "name": "WPNE PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WPNE_ga_local_subchannel_2"
+    },
+    {
+      "stationId": "50344",
+      "name": "Create TV",
+      "aliases": [
+        "KMOS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KMOS_ga_create"
+    },
+    {
+      "stationId": "50783",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCMU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCMU_kids_main"
+    },
+    {
+      "stationId": "50785",
+      "name": "Create TV",
+      "aliases": [
+        "WCMU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCMU_ga_create"
+    },
+    {
+      "stationId": "50871",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WYIN NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WYIN_ga_nhk"
+    },
+    {
+      "stationId": "51000",
+      "name": "PBS Kids",
+      "aliases": [
+        "WHYY PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WHYY_kids_main"
+    },
+    {
+      "stationId": "51040",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WETK WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WETK_ga_world"
+    },
+    {
+      "stationId": "51809",
+      "name": "WQED Multimedia",
+      "aliases": [
+        "PBS PA Pittsburgh (WQED) [13.1]",
+        "PBS WQED",
+        "WQED"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WQED"
+    },
+    {
+      "stationId": "51899",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WOUB WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WOUB_ga_world"
+    },
+    {
+      "stationId": "51901",
+      "name": "Create TV",
+      "aliases": [
+        "WOUB Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WOUB_ga_create"
+    },
+    {
+      "stationId": "52217",
+      "name": "PBS Kids",
+      "aliases": [
+        "KLVX PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KLVX_kids_main"
+    },
+    {
+      "stationId": "52345",
+      "name": "Create TV",
+      "aliases": [
+        "KEDT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KEDT_ga_create"
+    },
+    {
+      "stationId": "52389",
+      "name": "Rhode Island PBS",
+      "aliases": [
+        "PBS RI Providence (WSBE) [36.1]",
+        "PBS WSBE",
+        "WSBE"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WSBE"
+    },
+    {
+      "stationId": "53126",
+      "name": "Connecticut Public",
+      "aliases": [
+        "PBS CT Hartford (WEDH) [24.1]",
+        "PBS WEDH",
+        "WEDH"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WEDH"
+    },
+    {
+      "stationId": "54141",
+      "name": "Create TV",
+      "aliases": [
+        "WILL Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WILL_ga_create"
+    },
+    {
+      "stationId": "54298",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WCFE NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WCFE_ga_nhk"
+    },
+    {
+      "stationId": "54385",
+      "name": "Create TV",
+      "aliases": [
+        "WBIQ Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WBIQ_ga_create"
+    },
+    {
+      "stationId": "54479",
+      "name": "Pioneer PBS",
+      "aliases": [
+        "KWCM",
+        "PBS KWCM",
+        "PBS MN Granite Falls (KWCM) [10.1]"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KWCM"
+    },
+    {
+      "stationId": "54708",
+      "name": "PBS Kids",
+      "aliases": [
+        "WPNE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WPNE_kids_main"
+    },
+    {
+      "stationId": "54803",
+      "name": "Create TV",
+      "aliases": [
+        "WTVS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WTVS_ga_create"
+    },
+    {
+      "stationId": "54828",
+      "name": "Create TV",
+      "aliases": [
+        "KSYS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KSYS_ga_create"
+    },
+    {
+      "stationId": "54832",
+      "name": "PBS Kids",
+      "aliases": [
+        "KOPB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KOPB_kids_main"
+    },
+    {
+      "stationId": "55052",
+      "name": "Vermont Public",
+      "aliases": [
+        "PBS VT Winooski (WETK) [33.1]",
+        "PBS WETK",
+        "WETK"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WETK"
+    },
+    {
+      "stationId": "55175",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WCTE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WCTE_ga_world"
+    },
+    {
+      "stationId": "55343",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTTW PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTTW_kids_main"
+    },
+    {
+      "stationId": "55345",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUHT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUHT_kids_main"
+    },
+    {
+      "stationId": "55349",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KNME FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KNME_ga_fnx"
+    },
+    {
+      "stationId": "55421",
+      "name": "Create TV",
+      "aliases": [
+        "WSKG Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WSKG_ga_create"
+    },
+    {
+      "stationId": "55444",
+      "name": "PBS Kids",
+      "aliases": [
+        "KRMA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KRMA_kids_main"
+    },
+    {
+      "stationId": "55560",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WJCT WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WJCT_ga_world"
+    },
+    {
+      "stationId": "55561",
+      "name": "Create TV",
+      "aliases": [
+        "WKAR Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WKAR_ga_create"
+    },
+    {
+      "stationId": "55593",
+      "name": "PBS Kids",
+      "aliases": [
+        "KAMU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KAMU_kids_main"
+    },
+    {
+      "stationId": "55603",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KIXE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KIXE_ga_world"
+    },
+    {
+      "stationId": "55686",
+      "name": "Create TV",
+      "aliases": [
+        "KWCM Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KWCM_ga_create"
+    },
+    {
+      "stationId": "55700",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WBIQ WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WBIQ_ga_world"
+    },
+    {
+      "stationId": "55984",
+      "name": "PBS Kids",
+      "aliases": [
+        "WBRA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WBRA_kids_main"
+    },
+    {
+      "stationId": "56014",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "WHRO FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WHRO_ga_fnx"
+    },
+    {
+      "stationId": "56048",
+      "name": "PBS Kids",
+      "aliases": [
+        "KHET PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KHET_kids_main"
+    },
+    {
+      "stationId": "56725",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WYES WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WYES_ga_world"
+    },
+    {
+      "stationId": "56744",
+      "name": "WEDU PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WEDU_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "57598",
+      "name": "Create TV",
+      "aliases": [
+        "WETK Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WETK_ga_create"
+    },
+    {
+      "stationId": "57703",
+      "name": "Create TV",
+      "aliases": [
+        "WVIZ Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WVIZ_ga_create"
+    },
+    {
+      "stationId": "58447",
+      "name": "WENH PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WENH_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "58716",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KOCE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KOCE_ga_world"
+    },
+    {
+      "stationId": "58728",
+      "name": "PBS Kids",
+      "aliases": [
+        "KRWG PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KRWG_kids_main"
+    },
+    {
+      "stationId": "58818",
+      "name": "PBS Kids",
+      "aliases": [
+        "WMPN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WMPN_kids_main"
+    },
+    {
+      "stationId": "58820",
+      "name": "Create TV",
+      "aliases": [
+        "WMPN Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WMPN_ga_create"
+    },
+    {
+      "stationId": "58837",
+      "name": "Create TV",
+      "aliases": [
+        "WCVE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCVE_ga_create"
+    },
+    {
+      "stationId": "58879",
+      "name": "PBS Kids",
+      "aliases": [
+        "KAET PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KAET_kids_main"
+    },
+    {
+      "stationId": "58918",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WCVE WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WCVE_ga_world"
+    },
+    {
+      "stationId": "58927",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCFE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCFE_kids_main"
+    },
+    {
+      "stationId": "59145",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KWCM WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KWCM_ga_world"
+    },
+    {
+      "stationId": "59160",
+      "name": "WHUT - Howard University Television",
+      "aliases": [
+        "PBS DC Washington (WHUT) [32.1]",
+        "PBS WHUT",
+        "WHUT"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WHUT"
+    },
+    {
+      "stationId": "59189",
+      "name": "PBS Kids",
+      "aliases": [
+        "WKAR PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WKAR_kids_main"
+    },
+    {
+      "stationId": "59192",
+      "name": "Create TV",
+      "aliases": [
+        "WPBS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WPBS_ga_create"
+    },
+    {
+      "stationId": "59195",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WPBS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WPBS_ga_world"
+    },
+    {
+      "stationId": "59210",
+      "name": "GPB",
+      "aliases": [
+        "PBS GA Athens (WGTV) [8.1]",
+        "PBS WGTV",
+        "WGTV"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WGTV"
+    },
+    {
+      "stationId": "59247",
+      "name": "Create TV",
+      "aliases": [
+        "KSPS Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KSPS_ga_create"
+    },
+    {
+      "stationId": "59412",
+      "name": "PBS Kids",
+      "aliases": [
+        "WSIU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WSIU_kids_main"
+    },
+    {
+      "stationId": "59972",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KVCR FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KVCR_ga_fnx"
+    },
+    {
+      "stationId": "59974",
+      "name": "Create TV",
+      "aliases": [
+        "KVCR Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KVCR_ga_create"
+    },
+    {
+      "stationId": "60038",
+      "name": "PBS Kids",
+      "aliases": [
+        "WETK PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WETK_kids_main"
+    },
+    {
+      "stationId": "60086",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KDIN WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KDIN_ga_world"
+    },
+    {
+      "stationId": "60131",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KRWG WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KRWG_ga_world"
+    },
+    {
+      "stationId": "61230",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WMVS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WMVS_ga_world"
+    },
+    {
+      "stationId": "61372",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WYES WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WYES_ga_world"
+    },
+    {
+      "stationId": "61543",
+      "name": "Create TV",
+      "aliases": [
+        "WGTV Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WGTV_ga_create"
+    },
+    {
+      "stationId": "61567",
+      "name": "WGTV PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WGTV_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "61709",
+      "name": "Create TV",
+      "aliases": [
+        "KSMQ Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KSMQ_ga_create"
+    },
+    {
+      "stationId": "61738",
+      "name": "Create TV",
+      "aliases": [
+        "WYES Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WYES_ga_create"
+    },
+    {
+      "stationId": "61923",
+      "name": "KMOS PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KMOS_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "62033",
+      "name": "Create TV",
+      "aliases": [
+        "KUAC Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KUAC_ga_create"
+    },
+    {
+      "stationId": "62036",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KUAC FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KUAC_ga_fnx"
+    },
+    {
+      "stationId": "62292",
+      "name": "PBS Kids",
+      "aliases": [
+        "WSRE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WSRE_kids_main"
+    },
+    {
+      "stationId": "62301",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUSM PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUSM_kids_main"
+    },
+    {
+      "stationId": "62447",
+      "name": "Create TV",
+      "aliases": [
+        "KUSM Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KUSM_ga_create"
+    },
+    {
+      "stationId": "62754",
+      "name": "Create TV",
+      "aliases": [
+        "KRMA Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KRMA_ga_create"
+    },
+    {
+      "stationId": "63377",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WENH WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WENH_ga_world"
+    },
+    {
+      "stationId": "63442",
+      "name": "PBS Kids",
+      "aliases": [
+        "WEDH PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WEDH_kids_main"
+    },
+    {
+      "stationId": "63792",
+      "name": "Sistema TV",
+      "aliases": [
+        "PBS PR Fajardo (WMTJ) [40.1]",
+        "PBS WMTJ",
+        "WMTJ"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WMTJ"
+    },
+    {
+      "stationId": "63880",
+      "name": "PBS Guam",
+      "aliases": [
+        "KGTF",
+        "PBS GU Barrigada (KGTF) [12.1]",
+        "PBS KGTF"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_KGTF"
+    },
+    {
+      "stationId": "64472",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KUSM WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KUSM_ga_world"
+    },
+    {
+      "stationId": "65053",
+      "name": "PBS Kids",
+      "aliases": [
+        "KERA PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KERA_kids_main"
+    },
+    {
+      "stationId": "65357",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WQLN WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WQLN_ga_world"
+    },
+    {
+      "stationId": "66291",
+      "name": "WCMU Public Television",
+      "aliases": [
+        "PBS MI Mt Pleasant (WCMU) [14.1]",
+        "PBS WCMU",
+        "WCMU"
+      ],
+      "category": "Local",
+      "channelKey": "PBS_WCMU"
+    },
+    {
+      "stationId": "66359",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WGVU WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WGVU_ga_world"
+    },
+    {
+      "stationId": "67155",
+      "name": "Create TV",
+      "aliases": [
+        "KEET Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KEET_ga_create"
+    },
+    {
+      "stationId": "67492",
+      "name": "Create TV",
+      "aliases": [
+        "WKYU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WKYU_ga_create"
+    },
+    {
+      "stationId": "70801",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "KUHT NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_KUHT_ga_nhk"
+    },
+    {
+      "stationId": "71359",
+      "name": "Create TV",
+      "aliases": [
+        "WYES Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WYES_ga_create"
+    },
+    {
+      "stationId": "72391",
+      "name": "Create TV",
+      "aliases": [
+        "WCTE Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WCTE_ga_create"
+    },
+    {
+      "stationId": "75037",
+      "name": "Create TV",
+      "aliases": [
+        "KTTZ Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KTTZ_ga_create"
+    },
+    {
+      "stationId": "77705",
+      "name": "PBS Kids",
+      "aliases": [
+        "WHUT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WHUT_kids_main"
+    },
+    {
+      "stationId": "78590",
+      "name": "Create TV",
+      "aliases": [
+        "WENH Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WENH_ga_create"
+    },
+    {
+      "stationId": "82354",
+      "name": "PBS Kids",
+      "aliases": [
+        "KCOS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KCOS_kids_main"
+    },
+    {
+      "stationId": "82461",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KEET FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KEET_ga_fnx"
+    },
+    {
+      "stationId": "82462",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "WPBS FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WPBS_ga_fnx"
+    },
+    {
+      "stationId": "82714",
+      "name": "PBS Kids",
+      "aliases": [
+        "KAID PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KAID_kids_main"
+    },
+    {
+      "stationId": "97775",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KVPT WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KVPT_ga_world"
+    },
+    {
+      "stationId": "98168",
+      "name": "KERA PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_KERA_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "99913",
+      "name": "PBS Kids",
+      "aliases": [
+        "KMOS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KMOS_kids_main"
+    },
+    {
+      "stationId": "101364",
+      "name": "PBS Kids",
+      "aliases": [
+        "WYIN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WYIN_kids_main"
+    },
+    {
+      "stationId": "101660",
+      "name": "PBS Kids",
+      "aliases": [
+        "WPSU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WPSU_kids_main"
+    },
+    {
+      "stationId": "101680",
+      "name": "PBS Kids",
+      "aliases": [
+        "WMHT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WMHT_kids_main"
+    },
+    {
+      "stationId": "101895",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "KBDI NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_KBDI_ga_nhk"
+    },
+    {
+      "stationId": "101904",
+      "name": "PBS Kids",
+      "aliases": [
+        "KPBS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KPBS_kids_main"
+    },
+    {
+      "stationId": "101938",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGCU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGCU_kids_main"
+    },
+    {
+      "stationId": "101941",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUSD PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUSD_kids_main"
+    },
+    {
+      "stationId": "101942",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTIU PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTIU_kids_main"
+    },
+    {
+      "stationId": "101947",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KENW FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KENW_ga_fnx"
+    },
+    {
+      "stationId": "101971",
+      "name": "PBS Kids",
+      "aliases": [
+        "WQED PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WQED_kids_main"
+    },
+    {
+      "stationId": "102014",
+      "name": "PBS Kids",
+      "aliases": [
+        "KOCE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KOCE_kids_main"
+    },
+    {
+      "stationId": "102035",
+      "name": "PBS Kids",
+      "aliases": [
+        "WGTV PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WGTV_kids_main"
+    },
+    {
+      "stationId": "102095",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WTVS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WTVS_ga_world"
+    },
+    {
+      "stationId": "102096",
+      "name": "PBS Kids",
+      "aliases": [
+        "WVIZ PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WVIZ_kids_main"
+    },
+    {
+      "stationId": "102097",
+      "name": "PBS Kids",
+      "aliases": [
+        "KTTZ PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KTTZ_kids_main"
+    },
+    {
+      "stationId": "102312",
+      "name": "PBS Kids",
+      "aliases": [
+        "KAKM PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KAKM_kids_main"
+    },
+    {
+      "stationId": "102408",
+      "name": "PBS Kids",
+      "aliases": [
+        "WPBS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WPBS_kids_main"
+    },
+    {
+      "stationId": "102681",
+      "name": "PBS Kids",
+      "aliases": [
+        "KWCM PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KWCM_kids_main"
+    },
+    {
+      "stationId": "102801",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUON PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUON_kids_main"
+    },
+    {
+      "stationId": "102969",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WSKG WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WSKG_ga_world"
+    },
+    {
+      "stationId": "103004",
+      "name": "PBS Kids",
+      "aliases": [
+        "WITF PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WITF_kids_main"
+    },
+    {
+      "stationId": "103191",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCTE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCTE_kids_main"
+    },
+    {
+      "stationId": "103491",
+      "name": "PBS Kids",
+      "aliases": [
+        "KUAC PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KUAC_kids_main"
+    },
+    {
+      "stationId": "104747",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNPT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNPT_kids_main"
+    },
+    {
+      "stationId": "105132",
+      "name": "PBS Kids",
+      "aliases": [
+        "WRLK PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WRLK_kids_main"
+    },
+    {
+      "stationId": "105612",
+      "name": "PBS Kids",
+      "aliases": [
+        "KSPS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KSPS_kids_main"
+    },
+    {
+      "stationId": "105774",
+      "name": "Create TV",
+      "aliases": [
+        "WEDU Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WEDU_ga_create"
+    },
+    {
+      "stationId": "106174",
+      "name": "Create TV",
+      "aliases": [
+        "KDIN Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KDIN_ga_create"
+    },
+    {
+      "stationId": "106532",
+      "name": "Create TV",
+      "aliases": [
+        "KUED Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KUED_ga_create"
+    },
+    {
+      "stationId": "106771",
+      "name": "Create TV",
+      "aliases": [
+        "KACV Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KACV_ga_create"
+    },
+    {
+      "stationId": "107230",
+      "name": "PBS Kids",
+      "aliases": [
+        "KCWC PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KCWC_kids_main"
+    },
+    {
+      "stationId": "107680",
+      "name": "PBS Kids",
+      "aliases": [
+        "WOUB PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WOUB_kids_main"
+    },
+    {
+      "stationId": "107749",
+      "name": "PBS Kids",
+      "aliases": [
+        "WENH PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WENH_kids_main"
+    },
+    {
+      "stationId": "108690",
+      "name": "PBS Kids",
+      "aliases": [
+        "WCVE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WCVE_kids_main"
+    },
+    {
+      "stationId": "109895",
+      "name": "Create TV",
+      "aliases": [
+        "WBRA Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WBRA_ga_create"
+    },
+    {
+      "stationId": "110268",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KCTS WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KCTS_ga_world"
+    },
+    {
+      "stationId": "111222",
+      "name": "PBS Kids",
+      "aliases": [
+        "WNIT PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WNIT_kids_main"
+    },
+    {
+      "stationId": "111717",
+      "name": "PBS Kids",
+      "aliases": [
+        "KPTS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KPTS_kids_main"
+    },
+    {
+      "stationId": "111788",
+      "name": "WFWA PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WFWA_ga_local_subchannel_1"
+    },
+    {
+      "stationId": "111994",
+      "name": "NHK World-Japan",
+      "aliases": [
+        "WYIN NHK World"
+      ],
+      "category": "International",
+      "channelKey": "PBS_WYIN_ga_nhk"
+    },
+    {
+      "stationId": "113118",
+      "name": "PBS Kids",
+      "aliases": [
+        "KETC PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KETC_kids_main"
+    },
+    {
+      "stationId": "113534",
+      "name": "PBS Kids",
+      "aliases": [
+        "KSYS PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_KSYS_kids_main"
+    },
+    {
+      "stationId": "113581",
+      "name": "PBS Kids",
+      "aliases": [
+        "WQLN PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WQLN_kids_main"
+    },
+    {
+      "stationId": "113584",
+      "name": "PBS Kids",
+      "aliases": [
+        "WDSE PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WDSE_kids_main"
+    },
+    {
+      "stationId": "114621",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KOZK WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KOZK_ga_world"
+    },
+    {
+      "stationId": "115254",
+      "name": "Create TV",
+      "aliases": [
+        "WTVP Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WTVP_ga_create"
+    },
+    {
+      "stationId": "116205",
+      "name": "WETA PBS subchannel",
+      "aliases": [],
+      "category": "Local",
+      "channelKey": "PBS_WETA_ga_local_subchannel_2"
+    },
+    {
+      "stationId": "116208",
+      "name": "PBS Kids",
+      "aliases": [
+        "WTVP PBS Kids"
+      ],
+      "category": "Kids",
+      "channelKey": "PBS_WTVP_kids_main"
+    },
+    {
+      "stationId": "116724",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WETP WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WETP_ga_world"
+    },
+    {
+      "stationId": "118800",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KNME WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KNME_ga_world"
+    },
+    {
+      "stationId": "118801",
+      "name": "Create TV",
+      "aliases": [
+        "KNME Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_KNME_ga_create"
+    },
+    {
+      "stationId": "120227",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KRMA WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KRMA_ga_world"
+    },
+    {
+      "stationId": "122255",
+      "name": "Create TV",
+      "aliases": [
+        "WNPT Create"
+      ],
+      "category": "Food & Travel",
+      "channelKey": "PBS_WNPT_ga_create"
+    },
+    {
+      "stationId": "122399",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "KWCM FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KWCM_ga_fnx"
+    },
+    {
+      "stationId": "123851",
+      "name": "WORLD Channel",
+      "aliases": [
+        "KLVX WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_KLVX_ga_world"
+    },
+    {
+      "stationId": "146132",
+      "name": "WORLD Channel",
+      "aliases": [
+        "WBRA WORLD"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WBRA_ga_world"
+    },
+    {
+      "stationId": "190188",
+      "name": "FNX",
+      "aliases": [
+        "First Nations Experience",
+        "WCMU FNX"
+      ],
+      "category": "Discovery",
+      "channelKey": "PBS_WCMU_ga_fnx"
+    }
+  ]
+}

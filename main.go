@@ -32,6 +32,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
 	"github.com/daniel-widrick/GraceNoteScraper/util"
@@ -1302,6 +1303,7 @@ func main() {
 			Catalog:         marketCatalog,
 			Providers:       setupHandlers.providers,
 			Grids:           marketindex.WebGridFetcher{},
+			Evidence:        providersource.NewService(),
 			CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
 			ProviderDelay:   500 * time.Millisecond,
 			GridDelay:       5 * time.Second,

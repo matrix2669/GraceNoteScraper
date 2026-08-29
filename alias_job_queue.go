@@ -151,6 +151,14 @@ func normalizeQueuedAliasRequest(request marketindex.RunRequest) (marketindex.Ru
 	if request.Action == "" {
 		request.Action = "continue"
 	}
+	if request.Action == "postal" {
+		if strings.TrimSpace(request.Country) == "" || strings.TrimSpace(request.PostalCode) == "" {
+			return marketindex.RunRequest{}, errors.New("postal scan requires country and postal code")
+		}
+		request.BatchSize = 0
+		request.Ranks = nil
+		return request, nil
+	}
 	if request.BatchSize == 0 {
 		request.BatchSize = marketindex.DefaultBatchSize
 	}

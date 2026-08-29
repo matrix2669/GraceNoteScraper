@@ -82,3 +82,15 @@ func TestAliasJobQueueRetainsQueuedWorkWhileAnotherScanRuns(t *testing.T) {
 		t.Fatalf("failed queue state = %+v", view)
 	}
 }
+
+func TestAliasJobQueueAcceptsConfiguredPostalScan(t *testing.T) {
+	request, err := normalizeQueuedAliasRequest(marketindex.RunRequest{
+		Action: "postal", Country: "USA", PostalCode: "11743", Language: "en-us", Ranks: []int{7},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if request.Action != "postal" || request.Country != "USA" || request.PostalCode != "11743" || request.BatchSize != 0 || len(request.Ranks) != 0 {
+		t.Fatalf("normalized postal request = %+v", request)
+	}
+}

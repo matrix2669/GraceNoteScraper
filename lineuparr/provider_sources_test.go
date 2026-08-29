@@ -94,3 +94,63 @@ func TestProviderGuideRenamesRemainAliases(t *testing.T) {
 		t.Fatalf("provider source statuses = %+v", statuses)
 	}
 }
+
+func TestNetworkCatalogUsesExactGracenoteStationID(t *testing.T) {
+	inputs := []InputChannel{
+		{Key: "match", StationID: "78808", CallSign: "AHC"},
+		{Key: "miss", StationID: "different", CallSign: "AHC"},
+	}
+	statuses := ApplyNetworkCatalog(inputs)
+	if len(statuses) != 1 || statuses[0].ID != "prismcast-network-catalog" || statuses[0].Matched != 1 {
+		t.Fatalf("network status = %+v", statuses)
+	}
+	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Discovery" {
+		t.Fatalf("network category = %+v", inputs[0].CategoryHint)
+	}
+	if len(inputs[0].ExternalAliases) < 2 || inputs[0].ExternalAliases[0].Value != "American Heroes" {
+		t.Fatalf("network aliases = %+v", inputs[0].ExternalAliases)
+	}
+	if inputs[1].CategoryHint != nil || len(inputs[1].ExternalAliases) != 0 {
+		t.Fatalf("nonmatching station received evidence = %+v", inputs[1])
+	}
+}
+
+func TestPBSCatalogUsesExactGracenoteStationID(t *testing.T) {
+	inputs := []InputChannel{{Key: "wnet", StationID: "26182", CallSign: "WNETDT"}}
+	statuses := ApplyPBSCatalog(inputs)
+	if len(statuses) != 1 || statuses[0].Matched != 1 || statuses[0].ID != "pbs-gracenote-station-map" {
+		t.Fatalf("PBS status = %+v", statuses)
+	}
+	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Local" {
+		t.Fatalf("PBS category = %+v", inputs[0].CategoryHint)
+	}
+	if len(inputs[0].ExternalAliases) == 0 {
+		t.Fatal("PBS exact-ID aliases were not applied")
+	}
+}
+
+func TestPBSCatalogSuppressesAliasesOwnedByDifferentStations(t *testing.T) {
+	inputs := []InputChannel{{StationID: "30481"}, {StationID: "45073"}}
+	ApplyPBSCatalog(inputs)
+	for _, input := range inputs {
+		for _, alias := range input.ExternalAliases {
+			if providerNameKey(alias.Value) == "PBS" {
+				t.Fatalf("shared PBS alias applied to station %s: %+v", input.StationID, input.ExternalAliases)
+			}
+		}
+	}
+}
+
+func TestExactStationCatalogSuppressesConflictingCategories(t *testing.T) {
+	inputs := []InputChannel{{StationID: "100"}}
+	first := []byte(`{"schemaVersion":1,"source":{"id":"one","label":"One","url":"https://example.com/one","license":"test","commit":"1234567890123","method":"exact ID"},"channels":[{"stationId":"100","name":"Example","category":"Sports"}]}`)
+	second := []byte(`{"schemaVersion":1,"source":{"id":"two","label":"Two","url":"https://example.com/two","license":"test","commit":"1234567890123","method":"exact ID"},"channels":[{"stationId":"100","name":"Example","category":"News"}]}`)
+	applyExactStationCatalog(first, "one", "One", inputs)
+	status := applyExactStationCatalog(second, "two", "Two", inputs)
+	if inputs[0].CategoryHint != nil || !inputs[0].CategoryConflict {
+		t.Fatalf("conflicting category was retained: %+v", inputs[0])
+	}
+	if len(status) != 1 || status[0].Ambiguous != 1 {
+		t.Fatalf("conflict status = %+v", status)
+	}
+}

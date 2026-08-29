@@ -6,6 +6,10 @@ import (
 )
 
 func (s *Service) Snapshot() Snapshot {
+	return s.SnapshotForPostal("", "")
+}
+
+func (s *Service) SnapshotForPostal(country, postalCode string) Snapshot {
 	current := normalizeCurrentStations(s.readCurrentStations())
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -30,7 +34,7 @@ func (s *Service) Snapshot() Snapshot {
 		markets = append(markets, view)
 	}
 	batches := append([]BatchReport(nil), s.index.Batches...)
-	return Snapshot{
+	snapshot := Snapshot{
 		Catalog: CatalogView{
 			Name:            s.catalog.Name,
 			AsOf:            s.catalog.AsOf,
@@ -44,6 +48,12 @@ func (s *Service) Snapshot() Snapshot {
 		Markets: markets,
 		Batches: batches,
 	}
+	if record := s.index.PostalScans[postalScanKey(country, postalCode)]; record != nil {
+		copy := *record
+		copy.Sources = append([]EvidenceSourceRecord(nil), record.Sources...)
+		snapshot.PostalScan = &copy
+	}
+	return snapshot
 }
 
 func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary {
@@ -126,9 +136,61 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 				StationID: stationID, Value: name.Value, Kind: name.Kind, LineupKeys: append([]string(nil), name.LineupKeys...),
 			})
 		}
+		for _, fact := range station.Facts {
+			if fact.Kind != FactAlias {
+				continue
+			}
+			result[stationID] = append(result[stationID], AliasCandidate{
+				StationID: stationID, Value: fact.Value, Kind: FactAlias,
+				LineupKeys: append([]string(nil), fact.LineupKeys...), SourceID: fact.SourceID,
+				SourceLabel: fact.SourceLabel, SourceURL: fact.SourceURL, Method: fact.Method,
+			})
+		}
 		sort.SliceStable(result[stationID], func(i, j int) bool {
 			return result[stationID][i].Value < result[stationID][j].Value
 		})
+	}
+	return result
+}
+
+// CategoriesForStations returns only categories that are unambiguous across
+// official sources. Conflicting provider classifications remain visible in the
+// persisted evidence but are not applied automatically.
+func (s *Service) CategoriesForStations(stationIDs []string) map[string]CategoryCandidate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]CategoryCandidate)
+	seenStations := make(map[string]bool)
+	for _, stationID := range stationIDs {
+		if seenStations[stationID] {
+			continue
+		}
+		seenStations[stationID] = true
+		station := s.index.Stations[stationID]
+		if station == nil {
+			continue
+		}
+		byCategory := make(map[string][]StationFact)
+		for _, fact := range station.Facts {
+			if fact.Kind == FactCategory {
+				byCategory[fact.Normalized] = append(byCategory[fact.Normalized], fact)
+			}
+		}
+		if len(byCategory) != 1 {
+			continue
+		}
+		for _, facts := range byCategory {
+			candidate := CategoryCandidate{StationID: stationID, Value: facts[0].Value}
+			for _, fact := range facts {
+				candidate.SourceIDs = appendUniqueString(candidate.SourceIDs, fact.SourceID)
+				candidate.SourceLabels = appendUniqueString(candidate.SourceLabels, fact.SourceLabel)
+				candidate.Methods = appendUniqueString(candidate.Methods, fact.Method)
+			}
+			sort.Strings(candidate.SourceIDs)
+			sort.Strings(candidate.SourceLabels)
+			sort.Strings(candidate.Methods)
+			result[stationID] = candidate
+		}
 	}
 	return result
 }
