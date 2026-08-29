@@ -123,6 +123,33 @@ func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	}
 }
 
+func TestBuildUsesScheduleCategoryOnlyWhenExactSourcesDoNotCategorize(t *testing.T) {
+	catalog := `{"package":"Curated test","categories":{"Sports":[{"name":"ESPN","aliases":["ESPNHD"]}]}}`
+	service := newTestService(t, catalog, "")
+	inputs := []InputChannel{
+		{
+			Key: "catalog", CallSign: "ESPNHD",
+			CategoryHint: &AttributedCategory{Value: "News", Source: "gracenote-schedule", Label: "Gracenote schedule profile", Method: "80% of scheduled minutes use Gracenote news filter"},
+		},
+		{
+			Key: "schedule", CallSign: "MOVIES",
+			CategoryHint: &AttributedCategory{Value: "Movies", Source: "gracenote-schedule", Label: "Gracenote schedule profile", Method: "90% of scheduled minutes use Gracenote movie filter"},
+		},
+	}
+	draft, err := service.Build(context.Background(), testContext("source-one"), inputs)
+	if err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+	catalogChannel := channelByID(t, draft, "catalog")
+	if catalogChannel.Category != "Sports" || catalogChannel.CategoryMethod != "exact catalog identity" {
+		t.Fatalf("catalog category = %+v", catalogChannel)
+	}
+	scheduleChannel := channelByID(t, draft, "schedule")
+	if scheduleChannel.Category != "Movies" || scheduleChannel.CategorySource != "gracenote-schedule" || !strings.Contains(scheduleChannel.CategoryMethod, "90%") {
+		t.Fatalf("schedule category = %+v", scheduleChannel)
+	}
+}
+
 func TestBuildUsesIPTVOrgExactNamesAndCategories(t *testing.T) {
 	iptv := `[
       {"id":"Example.us","name":"Example Network","alt_names":["EXNET"],"country":"US","categories":["documentary"],"closed":null,"replaced_by":null},

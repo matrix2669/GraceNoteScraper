@@ -28,6 +28,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
+	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
@@ -1312,14 +1313,15 @@ func main() {
 			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
 		}
 	}
+	nominatimURL := strings.TrimSpace(util.GetEnv("NOMINATIM_URL", geocode.DefaultNominatimURL))
+	var addressSearcher providerAddressSearcher
+	if !strings.EqualFold(nominatimURL, "off") && !strings.EqualFold(nominatimURL, "none") && nominatimURL != "" {
+		addressSearcher = geocode.NewNominatimClient(nil, nominatimURL)
+	}
 	aliasQueue := newAliasJobQueue(guideStatus, marketService)
 	lineuparrHandlers := &lineuparrServer{
-		store:                   configStore,
-		state:                   state,
-		builder:                 lineuparrBuilder,
-		marketIndex:             marketService,
-		aliasQueue:              aliasQueue,
-		googleMapsBrowserAPIKey: strings.TrimSpace(util.GetEnv("GOOGLE_MAPS_BROWSER_API_KEY", "")),
+		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
+		aliasQueue: aliasQueue, addressSearcher: addressSearcher,
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1347,6 +1349,7 @@ func main() {
 	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
 	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
+	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/alias", lineuparrHandlers.handleAlias)

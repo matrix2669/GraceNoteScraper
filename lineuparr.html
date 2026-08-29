@@ -102,8 +102,11 @@
     .provider-address[hidden] { display: none; }
     .provider-address h3 { margin: 0; font-size: 14px; }
     .provider-address p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-    .provider-address-input { min-width: 0; }
-    .provider-address-input gmp-place-autocomplete { width: 100%; }
+    .provider-address-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
+    .provider-address-input button { min-width: 92px; }
+    .provider-address-results { display: grid; gap: 6px; margin-top: 8px; }
+    .provider-address-result { min-height: 38px; padding: 8px 10px; color: var(--text); font-size: 12px; text-align: left; }
+    .provider-address-attribution { font-size: 10px !important; }
     .provider-address-status { margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.4; }
     .provider-address-status.good { color: var(--accent); }
     .provider-address-status.bad { color: var(--danger); }
@@ -346,8 +349,13 @@
           <p id="provider-address-help"></p>
         </div>
         <div>
-          <div class="provider-address-input" id="provider-address-input"></div>
+          <form class="provider-address-input" id="provider-address-form">
+            <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
+            <button type="submit" id="provider-address-search">Search</button>
+          </form>
+          <div class="provider-address-results" id="provider-address-results"></div>
           <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
+          <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
         </div>
       </section>
     </section>
@@ -490,8 +498,9 @@
       providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
       sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
       providerAddress: document.getElementById('provider-address'), providerAddressTitle: document.getElementById('provider-address-title'),
-      providerAddressHelp: document.getElementById('provider-address-help'), providerAddressInput: document.getElementById('provider-address-input'),
-      providerAddressStatus: document.getElementById('provider-address-status'),
+      providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
+      providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
+      providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
       includedFilter: document.getElementById('included-filter'), visibleCount: document.getElementById('visible-count'),
       builderPanel: document.querySelector('.builder-panel'), viewToggle: document.getElementById('view-toggle'),
@@ -528,8 +537,9 @@
     let marketPoll = null;
     let marketWasRunning = false;
     let aliasQueue = {};
-    let googleMapsPromise = null;
     let selectedProviderAddress = null;
+    let providerAddressConfig = null;
+    const providerAddressCache = new Map();
     let compact = localStorage.getItem('lineuparr-view') === 'compact';
     const pendingDecisions = new Set();
 
@@ -777,92 +787,72 @@
       els.providerAddressStatus.className = `provider-address-status${kind ? ` ${kind}` : ''}`;
     }
 
-    function normalizePostalCode(value) {
-      return String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    }
-
-    function selectedPostalCode(components) {
-      const component = (components || []).find(item => (item.types || []).includes('postal_code'));
-      return component ? (component.longText || component.shortText || '') : '';
-    }
-
-    function postalCodesMatch(selected, active, countryCode) {
-      const selectedCode = normalizePostalCode(selected);
-      const activeCode = normalizePostalCode(active);
-      if (!selectedCode || !activeCode) return false;
-      if (selectedCode === activeCode) return true;
-      return countryCode === 'us' && activeCode.length === 5 && selectedCode.startsWith(activeCode);
-    }
-
-    function loadGoogleMaps(apiKey) {
-      if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps);
-      if (googleMapsPromise) return googleMapsPromise;
-      googleMapsPromise = new Promise((resolve, reject) => {
-        const callback = '__gracenoteGoogleMapsReady';
-        const script = document.createElement('script');
-        const parameters = new URLSearchParams({key: apiKey, loading: 'async', v: 'weekly', callback});
-        window[callback] = () => {
-          delete window[callback];
-          resolve(window.google.maps);
-        };
-        script.async = true;
-        script.src = `https://maps.googleapis.com/maps/api/js?${parameters.toString()}`;
-        script.onerror = () => {
-          delete window[callback];
-          googleMapsPromise = null;
-          reject(new Error('Google Places autocomplete could not be loaded.'));
-        };
-        document.head.append(script);
-      });
-      return googleMapsPromise;
-    }
-
     async function initProviderAddress() {
       try {
         const config = await api('/api/lineuparr/provider-address/config');
         if (!config.required) return;
+        providerAddressConfig = config;
         els.providerAddress.hidden = false;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
-        els.providerAddressHelp.textContent = `This official lineup source requires a service address. Select an address in ${config.postalCode}; it stays in this browser and is not saved by GraceNoteScraper.`;
+        els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
         if (!config.enabled) {
-          setProviderAddressStatus(config.message || 'Google Places autocomplete is not configured.', 'bad');
+          els.providerAddressQuery.disabled = true;
+          els.providerAddressSearch.disabled = true;
+          setProviderAddressStatus(config.message || 'Address search is not configured.', 'bad');
           return;
         }
-        setProviderAddressStatus('Loading Google Places autocomplete…');
-        await loadGoogleMaps(config.browserApiKey);
-        const { PlaceAutocompleteElement } = await google.maps.importLibrary('places');
-        const autocomplete = new PlaceAutocompleteElement();
-        autocomplete.placeholder = `Start typing a service address in ${config.postalCode}`;
-        if (config.countryCode) autocomplete.includedRegionCodes = [config.countryCode];
-        autocomplete.addEventListener('input', () => {
-          selectedProviderAddress = null;
-          setProviderAddressStatus(`Choose a Google suggestion that matches ${config.postalCode}.`);
-        });
-        autocomplete.addEventListener('gmp-select', async ({ placePrediction }) => {
-          selectedProviderAddress = null;
-          setProviderAddressStatus('Checking the selected address…');
-          try {
-            const place = placePrediction.toPlace();
-            await place.fetchFields({fields: ['id', 'formattedAddress', 'addressComponents']});
-            const postalCode = selectedPostalCode(place.addressComponents);
-            if (!postalCodesMatch(postalCode, config.postalCode, config.countryCode)) {
-              setProviderAddressStatus(`Choose an address in the active lineup ZIP ${config.postalCode}.`, 'bad');
-              return;
-            }
-            if (!place.id || !place.formattedAddress) {
-              setProviderAddressStatus('Google did not return a complete street address. Choose another suggestion.', 'bad');
-              return;
-            }
-            selectedProviderAddress = {placeId: place.id, formattedAddress: place.formattedAddress, postalCode};
-            setProviderAddressStatus(`${place.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
-          } catch (error) {
-            setProviderAddressStatus(error.message || 'The selected address could not be verified.', 'bad');
-          }
-        });
-        els.providerAddressInput.replaceChildren(autocomplete);
-        setProviderAddressStatus(`Choose a Google suggestion that matches ${config.postalCode}.`);
+        els.providerAddressQuery.placeholder = `Complete street address in ${config.postalCode}`;
+        setProviderAddressStatus(config.message || `Search for an address in ${config.postalCode}.`);
       } catch (error) {
         setProviderAddressStatus(error.message || 'Provider address setup is unavailable.', 'bad');
+      }
+    }
+
+    function renderProviderAddressResults(results) {
+      els.providerAddressResults.replaceChildren();
+      if (!results.length) {
+        setProviderAddressStatus(`No complete street addresses were found in ${providerAddressConfig.postalCode}. Check the address and search again.`, 'bad');
+        return;
+      }
+      for (const result of results) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'provider-address-result';
+        button.textContent = result.formattedAddress;
+        button.addEventListener('click', () => {
+          selectedProviderAddress = {placeId: result.id, formattedAddress: result.formattedAddress, postalCode: result.postalCode};
+          setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
+        });
+        els.providerAddressResults.append(button);
+      }
+      setProviderAddressStatus(`Choose one verified address in ${providerAddressConfig.postalCode}.`);
+    }
+
+    async function searchProviderAddress(event) {
+      event.preventDefault();
+      if (!providerAddressConfig?.enabled) return;
+      const query = els.providerAddressQuery.value.trim();
+      if (query.length < 5) {
+        setProviderAddressStatus('Enter a complete street address before searching.', 'bad');
+        return;
+      }
+      selectedProviderAddress = null;
+      els.providerAddressSearch.disabled = true;
+      setProviderAddressStatus('Searching OpenStreetMap addresses…');
+      try {
+        const cacheKey = query.toLowerCase();
+        let response = providerAddressCache.get(cacheKey);
+        if (!response) {
+          response = await api('/api/lineuparr/provider-address/search', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query})
+          });
+          providerAddressCache.set(cacheKey, response);
+        }
+        renderProviderAddressResults(response.results || []);
+      } catch (error) {
+        setProviderAddressStatus(error.message || 'The address search failed.', 'bad');
+      } finally {
+        els.providerAddressSearch.disabled = false;
       }
     }
 
@@ -917,6 +907,7 @@
       else if (job.lastError && !job.running) setMarketMessage(job.lastError, 'error');
       else if (aliasQueue.queued) setMarketMessage(`${aliasQueue.action || 'Alias'} scan queued. Click the queued button to cancel.`, 'success');
       else if (aliasQueue.guideBusy) setMarketMessage(`${aliasQueue.guideStatus || 'The guide is busy'}. A scan request will be queued.`, '');
+      else if (!job.running && completed > 0 && !summary.meaningfulAliases) setMarketMessage(`Gracenote returned one canonical callsign per station across ${completed} completed market${completed === 1 ? '' : 's'}, so this index has no cross-lineup aliases yet. More markets may add station coverage; provider guides, exact catalogs, and confirmed M3U names are the useful alternate-name sources.`);
       else if (!job.running && !marketWasRunning) setMarketMessage('');
 
       els.batchRows.replaceChildren();
@@ -952,7 +943,9 @@
       if (needsPolling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
       if (!needsPolling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) {
-        setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
+        if (summary.meaningfulAliases) {
+          setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
+        }
         reloadDraft().catch(error => showMessage(error.message, true));
       }
       marketWasRunning = job.running;
@@ -1226,6 +1219,7 @@
     });
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
+    els.providerAddressForm.addEventListener('submit', searchProviderAddress);
     els.dispatchForm.addEventListener('submit', saveDispatch);
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
