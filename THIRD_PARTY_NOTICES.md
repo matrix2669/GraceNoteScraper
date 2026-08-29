@@ -2,6 +2,9 @@
 
 ## PrismCast channel registry
 
+This compatibility snapshot is disabled by default and is used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
+
 `lineuparr/network_catalog.json` is a normalized snapshot of station identity,
 tag, direct-site, and service-name records from PrismCast commit
 `0aed952e80ec6a1bd997a7cb16a3abe256bf253c`:
@@ -25,6 +28,9 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 ## Stream Link Manager PBS station map
+
+This compatibility snapshot is disabled by default and is used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
 
 `lineuparr/pbs_catalog.json` is a normalized snapshot of PBS station-to-
 Gracenote records from Stream Link Manager for Channels commit
@@ -55,6 +61,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ## Official provider source snapshots
+
+These compatibility snapshots are disabled by default and are used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
 
 `providersource/official_catalog.json` contains normalized factual channel
 names, numbers, and provider-defined sections from the public official sources

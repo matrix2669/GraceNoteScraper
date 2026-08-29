@@ -113,6 +113,7 @@ type Draft struct {
 	Channels             []DraftChannel        `json:"channels"`
 	DuplicateSuggestions []DuplicateSuggestion `json:"duplicateSuggestions"`
 	Sources              []SourceStatus        `json:"sources"`
+	Categories           []string              `json:"categories"`
 	Total                int                   `json:"total"`
 	Included             int                   `json:"included"`
 	Excluded             int                   `json:"excluded"`

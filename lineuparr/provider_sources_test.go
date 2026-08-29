@@ -104,7 +104,7 @@ func TestNetworkCatalogUsesExactGracenoteStationID(t *testing.T) {
 	if len(statuses) != 1 || statuses[0].ID != "prismcast-network-catalog" || statuses[0].Matched != 1 {
 		t.Fatalf("network status = %+v", statuses)
 	}
-	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Discovery" {
+	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Entertainment" {
 		t.Fatalf("network category = %+v", inputs[0].CategoryHint)
 	}
 	if len(inputs[0].ExternalAliases) < 2 || inputs[0].ExternalAliases[0].Value != "American Heroes" {
@@ -121,11 +121,23 @@ func TestPBSCatalogUsesExactGracenoteStationID(t *testing.T) {
 	if len(statuses) != 1 || statuses[0].Matched != 1 || statuses[0].ID != "pbs-gracenote-station-map" {
 		t.Fatalf("PBS status = %+v", statuses)
 	}
-	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Local" {
+	if inputs[0].CategoryHint == nil || inputs[0].CategoryHint.Value != "Local & Public" {
 		t.Fatalf("PBS category = %+v", inputs[0].CategoryHint)
 	}
 	if len(inputs[0].ExternalAliases) == 0 {
 		t.Fatal("PBS exact-ID aliases were not applied")
+	}
+}
+
+func TestEmbeddedCatalogsRequireExplicitOptIn(t *testing.T) {
+	inputs := []InputChannel{{StationID: "26182", CallSign: "WNETDT"}}
+	service := NewService(nil, ServiceOptions{})
+	if statuses := service.ApplyEmbeddedCatalogs(inputs); len(statuses) != 0 || inputs[0].CategoryHint != nil {
+		t.Fatalf("default embedded catalogs = %+v, input = %+v", statuses, inputs[0])
+	}
+	service = NewService(nil, ServiceOptions{UseEmbeddedCatalogs: true})
+	if statuses := service.ApplyEmbeddedCatalogs(inputs); len(statuses) != 2 || inputs[0].CategoryHint == nil {
+		t.Fatalf("enabled embedded catalogs = %+v, input = %+v", statuses, inputs[0])
 	}
 }
 

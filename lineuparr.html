@@ -668,8 +668,7 @@
     }
 
     function categories() {
-      const defaults = ['Local','News','Sports','Regional Sports','Movies','Kids','Entertainment','Reality & Lifestyle','Comedy','Discovery','Crime','Faith','Music','Shopping','Spanish','International','Outdoors','Food & Travel','Adult & PPV','Uncategorized'];
-      return [...new Set([...defaults, ...draft.channels.map(channel => channel.category).filter(Boolean)])].sort((a,b) => a.localeCompare(b));
+      return draft.categories || ['Local & Public','News & Weather','Sports','Movies','Entertainment','Kids & Family','Music','Faith','International','PPV & Events','Other','Uncategorized'];
     }
 
     function renderCategoryOptions() {

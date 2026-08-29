@@ -316,8 +316,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		return nil, appconfig.Config{}, nil, false
 	}
 	additionalSources := lineuparrbuilder.ApplyProviderGuideAliasesForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode, inputs)
-	additionalSources = append(additionalSources, lineuparrbuilder.ApplyNetworkCatalog(inputs)...)
-	additionalSources = append(additionalSources, lineuparrbuilder.ApplyPBSCatalog(inputs)...)
+	additionalSources = append(additionalSources, s.builder.ApplyEmbeddedCatalogs(inputs)...)
 	additionalSources = append(additionalSources, s.applyMarketAliases(config.Gracenote.Country, config.Gracenote.PostalCode, inputs)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),

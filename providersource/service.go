@@ -9,10 +9,12 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
@@ -25,6 +27,10 @@ var officialCatalogData []byte
 type Service struct {
 	httpClient *http.Client
 	catalog    catalog
+}
+
+type Options struct {
+	UseEmbeddedCatalogs bool
 }
 
 type catalog struct {
@@ -45,11 +51,12 @@ type catalogSource struct {
 }
 
 type catalogEntry struct {
-	Numbers   []string `json:"numbers,omitempty"`
-	Name      string   `json:"name"`
-	Aliases   []string `json:"aliases,omitempty"`
-	CallSigns []string `json:"callSigns,omitempty"`
-	Category  string   `json:"category,omitempty"`
+	Numbers        []string `json:"numbers,omitempty"`
+	Name           string   `json:"name"`
+	Aliases        []string `json:"aliases,omitempty"`
+	CallSigns      []string `json:"callSigns,omitempty"`
+	Category       string   `json:"category,omitempty"`
+	CategoryMethod string   `json:"-"`
 }
 
 type dishResponse struct {
@@ -63,16 +70,26 @@ type dishChannel struct {
 	ChannelNo string `json:"ChannelNo"`
 }
 
-func NewService() *Service {
-	return newService(&http.Client{Timeout: 20 * time.Second})
+func NewService(options ...Options) *Service {
+	selected := Options{}
+	if len(options) > 0 {
+		selected = options[0]
+	}
+	return newServiceWithOptions(&http.Client{Timeout: 20 * time.Second}, selected)
 }
 
 func newService(client *http.Client) *Service {
+	return newServiceWithOptions(client, Options{})
+}
+
+func newServiceWithOptions(client *http.Client, options Options) *Service {
 	if client == nil {
 		client = &http.Client{Timeout: 20 * time.Second}
 	}
 	var sources catalog
-	_ = json.Unmarshal(officialCatalogData, &sources)
+	if options.UseEmbeddedCatalogs {
+		_ = json.Unmarshal(officialCatalogData, &sources)
+	}
 	return &Service{httpClient: client, catalog: sources}
 }
 
@@ -155,10 +172,11 @@ func (s *Service) fetchDISH(ctx context.Context) ([]catalogEntry, error) {
 	entries := make([]catalogEntry, 0, len(payload.Channels))
 	for _, channel := range payload.Channels {
 		name := cleanDISHName(channel.Name)
+		category, categoryMethod := dishCategory(channel.Category, name, channel.CallSign)
 		entry := catalogEntry{
 			Numbers: []string{strings.TrimSpace(channel.ChannelNo)}, Name: name,
 			CallSigns: []string{strings.TrimSpace(channel.CallSign)},
-			Category:  dishCategory(channel.Category, name, channel.CallSign),
+			Category:  category, CategoryMethod: categoryMethod,
 		}
 		if name == "" || entry.Numbers[0] == "" {
 			continue
@@ -166,6 +184,16 @@ func (s *Service) fetchDISH(ctx context.Context) ([]catalogEntry, error) {
 		entries = append(entries, entry)
 	}
 	return entries, nil
+}
+
+func dishCategory(raw, name, callSign string) (string, string) {
+	identity := identityKey(name + " " + callSign)
+	for _, sports := range []string{"ESPN", "SPORT", "NFL", "NHL", "NBA", "MLB", "GOLF", "TENNIS", "SEC", "BTN", "PAC12", "FANDUEL", "RACING"} {
+		if strings.Contains(identity, sports) {
+			return channelcategory.Sports, "DISH exact sports-network identity override"
+		}
+	}
+	return strings.TrimSpace(raw), ""
 }
 
 var dishSuffix = regexp.MustCompile(`(?i)\s*(?:\([^)]*\)\s*)?(?:HD|SD)?\s*$`)
@@ -179,38 +207,6 @@ func cleanDISHName(value string) string {
 		}
 		value = cleaned
 	}
-}
-
-func dishCategory(raw, name, callSign string) string {
-	identity := identityKey(name + " " + callSign)
-	for _, sports := range []string{"ESPN", "SPORT", "NFL", "NHL", "NBA", "MLB", "GOLF", "TENNIS", "SEC", "BTN", "PAC12", "FANDUEL", "RACING"} {
-		if strings.Contains(identity, sports) {
-			return "Sports"
-		}
-	}
-	for _, category := range strings.Split(raw, "|") {
-		switch strings.ToLower(strings.TrimSpace(category)) {
-		case "sports":
-			return "Sports"
-		case "news & info":
-			return "News"
-		case "kids & family":
-			return "Kids"
-		case "movies":
-			return "Movies"
-		case "reality & game shows":
-			return "Reality & Lifestyle"
-		case "latino":
-			return "Spanish"
-		case "music":
-			return "Music"
-		case "international":
-			return "International"
-		case "entertainment":
-			return "Entertainment"
-		}
-	}
-	return ""
 }
 
 func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSource) marketindex.ProviderEvidenceResult {
@@ -288,10 +284,22 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod,
 			})
 		}
-		if strings.TrimSpace(entry.Category) != "" {
+		categoryIdentities := append([]string{entry.Name}, entry.Aliases...)
+		categoryIdentities = append(categoryIdentities, entry.CallSigns...)
+		categoryIdentities = append(categoryIdentities, channelIdentityValues(channel)...)
+		if category, ok := channelcategory.Resolve(entry.Category, categoryIdentities...); ok {
+			categoryMethod := category.Method
+			if category.Method == channelcategory.MethodFuzzy {
+				categoryMethod = fmt.Sprintf("%s %.0f%% to %q", category.Method, category.Confidence*100, category.MatchedAlias)
+			}
+			if entry.CategoryMethod != "" {
+				categoryMethod = entry.CategoryMethod + "; " + categoryMethod
+			}
 			result.Facts = append(result.Facts, marketindex.ProviderFact{
-				StationID: channel.ChannelID, Kind: marketindex.FactCategory, Value: entry.Category,
-				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod,
+				StationID: channel.ChannelID, Kind: marketindex.FactCategory, Value: category.Category,
+				RawValue: strings.TrimSpace(entry.Category), MatchMethod: category.Method, MatchConfidence: category.Confidence,
+				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
+				Method: factMethod + "; provider category " + strconv.Quote(strings.TrimSpace(entry.Category)) + " mapped by " + categoryMethod,
 			})
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -29,6 +31,7 @@ type CurrentStations func() map[string][]string
 
 type ServiceConfig struct {
 	Path            string
+	SnapshotDir     string
 	Catalog         SeedCatalog
 	Providers       ProviderFinder
 	Grids           GridFetcher
@@ -42,6 +45,7 @@ type ServiceConfig struct {
 type Service struct {
 	mu              sync.RWMutex
 	path            string
+	snapshotDir     string
 	catalog         SeedCatalog
 	providers       ProviderFinder
 	grids           GridFetcher
@@ -78,8 +82,13 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	snapshotDir := strings.TrimSpace(config.SnapshotDir)
+	if snapshotDir == "" {
+		snapshotDir = filepath.Join(filepath.Dir(config.Path), "lineup_snapshots")
+	}
 	return &Service{
 		path:            config.Path,
+		snapshotDir:     snapshotDir,
 		catalog:         config.Catalog,
 		providers:       config.Providers,
 		grids:           config.Grids,
@@ -383,8 +392,10 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 			runErr = err
 			break
 		}
+		evidence := ProviderEvidenceResult{}
 		if s.evidence != nil {
-			evidence, evidenceErr := s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
+			var evidenceErr error
+			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode, Grid: grid,
 			})
 			if evidenceErr != nil {
@@ -411,6 +422,10 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 				}
 				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
 			})
+		}
+		if err := s.writeLineupSnapshot(*lineup, grid, evidence); err != nil {
+			runErr = err
+			break
 		}
 		if err := s.completeLineup(lineup.Key, len(grid.Channels)); err != nil {
 			runErr = err
@@ -866,6 +881,16 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		if stationID == "" || value == "" || (kind != FactAlias && kind != FactCategory) {
 			continue
 		}
+		if kind == FactCategory {
+			match, ok := channelcategory.Resolve(value)
+			if !ok {
+				continue
+			}
+			value = match.Category
+			if match.Method != channelcategory.MethodCanonical {
+				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
+			}
+		}
 		station := s.index.Stations[stationID]
 		if station == nil {
 			continue
@@ -889,7 +914,9 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			continue
 		}
 		station.Facts = append(station.Facts, StationFact{
-			Kind: kind, Value: value, Normalized: normalized, SourceID: strings.TrimSpace(fact.SourceID),
+			Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
+			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
 			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey},
 		})
@@ -904,6 +931,18 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		return 0, 0, err
 	}
 	return aliases, categories, nil
+}
+
+func appendMethod(existing, addition string) string {
+	existing = strings.TrimSpace(existing)
+	addition = strings.TrimSpace(addition)
+	if existing == "" {
+		return addition
+	}
+	if addition == "" || strings.Contains(existing, addition) {
+		return existing
+	}
+	return existing + "; " + addition
 }
 
 func addStationName(stations map[string]*Station, station *Station, owners map[string]map[string]bool, kind, value, lineupKey string, marketRank int) (added bool, cosmetic bool, conflict bool) {

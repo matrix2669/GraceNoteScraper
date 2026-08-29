@@ -120,14 +120,17 @@ const (
 // StationFact is official evidence joined to a provider's Gracenote grid and
 // therefore to a provider-independent Gracenote station ID.
 type StationFact struct {
-	Kind        string   `json:"kind"`
-	Value       string   `json:"value"`
-	Normalized  string   `json:"normalized"`
-	SourceID    string   `json:"sourceId"`
-	SourceLabel string   `json:"sourceLabel"`
-	SourceURL   string   `json:"sourceUrl,omitempty"`
-	Method      string   `json:"method"`
-	LineupKeys  []string `json:"lineupKeys"`
+	Kind            string   `json:"kind"`
+	Value           string   `json:"value"`
+	Normalized      string   `json:"normalized"`
+	RawValue        string   `json:"rawValue,omitempty"`
+	MatchMethod     string   `json:"matchMethod,omitempty"`
+	MatchConfidence float64  `json:"matchConfidence,omitempty"`
+	SourceID        string   `json:"sourceId"`
+	SourceLabel     string   `json:"sourceLabel"`
+	SourceURL       string   `json:"sourceUrl,omitempty"`
+	Method          string   `json:"method"`
+	LineupKeys      []string `json:"lineupKeys"`
 }
 
 // ProviderEvidenceFetcher converts an official provider listing and its
@@ -150,13 +153,16 @@ type ProviderEvidenceResult struct {
 }
 
 type ProviderFact struct {
-	StationID   string
-	Kind        string
-	Value       string
-	SourceID    string
-	SourceLabel string
-	SourceURL   string
-	Method      string
+	StationID       string
+	Kind            string
+	Value           string
+	RawValue        string
+	MatchMethod     string
+	MatchConfidence float64
+	SourceID        string
+	SourceLabel     string
+	SourceURL       string
+	Method          string
 }
 
 type EvidenceSourceRecord struct {

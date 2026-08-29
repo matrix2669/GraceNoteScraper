@@ -48,7 +48,7 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 			aliases[fact.StationID] = append(aliases[fact.StationID], fact.Value)
 		}
 	}
-	if categories["NEWS"] != "News" || categories["SEC"] != "Sports" {
+	if categories["NEWS"] != "News & Weather" || categories["SEC"] != "Sports" {
 		t.Fatalf("categories = %+v", categories)
 	}
 	if !contains(aliases["NEWS"], "FOX News") || !contains(aliases["NEWS"], "FXNWS") {
@@ -60,7 +60,7 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 }
 
 func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
-	service := NewService()
+	service := NewService(Options{UseEmbeddedCatalogs: true})
 	request := marketindex.ProviderEvidenceRequest{
 		Provider:   web.Provider{Name: "Optimum of Woodbury - Digital Rebuild"},
 		PostalCode: "11743",
@@ -86,6 +86,20 @@ func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
 	}
 	if len(result.Facts) != 0 || len(result.Sources) != 0 {
 		t.Fatalf("out-of-market evidence = %+v", result)
+	}
+}
+
+func TestEmbeddedProviderCatalogsAreOffByDefault(t *testing.T) {
+	request := marketindex.ProviderEvidenceRequest{
+		Provider: web.Provider{Name: "Optimum of Woodbury - Digital Rebuild"}, PostalCode: "11743",
+		Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ESPN", ChannelNo: "210", CallSign: "ESPN"}}},
+	}
+	result, err := NewService().FetchProviderEvidence(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Facts) != 0 || len(result.Sources) != 0 {
+		t.Fatalf("default embedded provider evidence = %+v", result)
 	}
 }
 
