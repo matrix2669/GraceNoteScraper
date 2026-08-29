@@ -40,9 +40,9 @@ func TestProviderSourceLocationRequirements(t *testing.T) {
 		{provider: "Optimum of West Jefferson", wantID: "optimum", wantMode: "market-list", wantURL: "https://www.optimum.net/pages/channel-lineups.html"},
 		{provider: "Optimum", location: "Dallas", postal: "75001", wantID: "optimum", wantMode: "address", wantURL: "https://www.optimum.com/tvlineup"},
 		{provider: "Comcast Xfinity", wantID: "xfinity", wantMode: "address", wantURL: "https://www.xfinity.com/support/local-channel-lineup/"},
-		{provider: "Charter Spectrum", wantID: "spectrum", wantMode: "address", wantURL: "https://www.spectrum.com/cable-tv/channel-lineup"},
+		{provider: "Charter Spectrum", wantID: "spectrum", wantMode: "postal-code", wantURL: "https://www.spectrum.com/cable-tv/channel-lineup"},
 		{provider: "Verizon FiOS", wantID: "verizon-fios", wantMode: "postal-code", wantURL: "https://www.verizon.com/home/fios-tv/channel-lineup/"},
-		{provider: "DIRECTV", wantID: "directv", wantMode: "postal-code-county", wantURL: "https://www.directv.com/guide/channel-guide"},
+		{provider: "DIRECTV", wantID: "directv", wantMode: "postal-code-county", wantURL: "https://www.directv.com/channel-lineup/"},
 	}
 	for _, test := range tests {
 		source, ok := ProviderGuideSourceForLineup(test.provider, test.location, test.postal)

@@ -59,7 +59,7 @@ var definitions = []definition{
 	}},
 	{name: NewsWeather, aliases: []string{
 		"news", "weather", "news and weather", "news info", "news and info", "information",
-		"business", "business news", "legislative", "noticias",
+		"news information", "news and information", "business", "business news", "legislative", "noticias",
 	}},
 	{name: Sports, aliases: []string{
 		"sport", "sports channels", "regional sports", "deportes", "racing", "outdoor sports",
@@ -74,11 +74,12 @@ var definitions = []definition{
 		"discovery", "documentary", "documentaries", "documentales", "science", "culture", "education",
 		"reality", "reality lifestyle", "reality and lifestyle", "reality game shows", "reality and game shows",
 		"food", "travel", "food travel", "food and travel", "cooking", "shopping", "shop",
-		"lifestyle", "divertissement", "entretenimiento", "decouverte", "relax",
+		"lifestyle", "women", "home and leisure", "pop culture", "people and culture", "marketplace",
+		"information and education", "divertissement", "entretenimiento", "decouverte", "relax",
 	}},
 	{name: KidsFamily, aliases: []string{
 		"kids", "children", "childrens", "family", "kids family", "kids and family", "animation",
-		"jeunesse", "infantil",
+		"family kids", "family and kids", "jeunesse", "infantil",
 	}},
 	{name: Music, aliases: []string{
 		"music radio", "music and radio", "radio", "music choice", "musique", "musica",
@@ -93,6 +94,7 @@ var definitions = []definition{
 	{name: PPVEvents, aliases: []string{
 		"ppv", "pay per view", "payperview", "event", "events", "special event", "special events",
 		"event channels", "eventos", "seasonal", "sports ppv", "movie ppv", "sports events",
+		"ppv and subscription events", "ppv and subscription sports",
 	}},
 	{name: Other, aliases: []string{
 		"adult", "adult channels", "other services", "other and services", "services", "service",

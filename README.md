@@ -129,7 +129,7 @@ The Alias discovery section on `/lineuparr` builds a local station-name index on
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP, loads one six-hour grid per provider, and joins supported live official provider sources to their own provider grids. Categories and aliases reach the selected lineup only through the exact same Gracenote station ID.
 - Every successfully downloaded lineup produces its own schema-versioned JSON file under `LINEUP_SNAPSHOT_DIR`. It contains provider positions, Gracenote station IDs, identity aliases, normalized category evidence, source URLs, match methods, and fuzzy confidence, but never programme events, credentials, service addresses, or stream URLs.
-- DISH currently has a live public provider adapter. Other provider source entry points remain registered while their focused runtime adapters are implemented; the older reviewed Optimum, Glorystar, and AFN snapshots are available only through explicit `LINEUPARR_REFERENCE_CATALOGS=on` compatibility mode.
+- Runtime adapters now cover Verizon FiOS, Optimum, DIRECTV, DISH, AFN, Glorystar, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set.
 - The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
 - **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
@@ -137,6 +137,21 @@ The Alias discovery section on `/lineuparr` builds a local station-name index on
 - Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
 - Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
 - Official provider aliases and categories retain their source URL and exact join method. Conflicting categories and aliases shared by multiple station IDs are not applied automatically.
+
+Provider coverage is intentionally explicit about source limitations:
+
+| Provider | Runtime public source | Current limitation |
+| --- | --- | --- |
+| Verizon FiOS | Official national PDF | National channels and provider-published channel-range categories; local positions still come from Gracenote |
+| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Western service areas require a user-selected address for an exact local lineup |
+| DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
+| DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
+| AFN | Official guide PDF format | AFN's CDN may reject automated downloads; that source reports an isolated error when unavailable |
+| Glorystar | Public channel table | The provider is faith-focused, so its published channel rows map to `Faith` |
+| AT&T U-verse | Official public PDF | AT&T's current download URL serves a document marked effective February 2023 and is reported as limited |
+| Xfinity | Public address-qualified channel API | Requires a user-selected address for the active Xfinity lineup |
+| Spectrum | Public lineup page | No stable no-login residential payload is currently exposed; account/login automation is intentionally disabled |
+| BroadStar | Official public PDF | Categories are used only where the provider document has explicit Sports, Premium, Music, or service sections |
 
 The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
 
@@ -157,9 +172,9 @@ User categories take precedence. For channels that remain unresolved, a conserva
 
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
-Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
-Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-based lineup lookup. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. Search text is sent to the configured geocoder, but the selected address is not persisted in scraper configuration, Lineuparr state, source caches, logs, snapshots, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
+Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. The selected structured address is passed in memory only to the active provider's adapter and is not persisted in scraper configuration, Lineuparr state, source caches, logs, snapshots, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
 
 ## HTTP Endpoints
 

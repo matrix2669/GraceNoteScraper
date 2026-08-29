@@ -195,7 +195,10 @@ func (s *Service) startPostal(request RunRequest) (JobView, error) {
 		return JobView{}, err
 	}
 	job := s.job
-	go s.runPostal(ctx, country, postalCode, language)
+	request.Country = country
+	request.PostalCode = postalCode
+	request.Language = language
+	go s.runPostal(ctx, request)
 	return job, nil
 }
 
@@ -323,13 +326,16 @@ func (s *Service) run(ctx context.Context, action string, seeds []MarketSeed) {
 	s.mu.Unlock()
 }
 
-func (s *Service) runPostal(ctx context.Context, country, postalCode, language string) {
+func (s *Service) runPostal(ctx context.Context, request RunRequest) {
+	country := request.Country
+	postalCode := request.PostalCode
+	language := request.Language
 	key := postalScanKey(country, postalCode)
 	current := normalizeCurrentStations(s.readCurrentStations())
 	owners := s.callSignOwners()
 	var lastGridRequest time.Time
 	var runErr error
-	postalErrors := make([]string, 0)
+	gridErrors := make([]string, 0)
 
 	result, err := s.providers.FindProviders(ctx, country, postalCode, language)
 	if err != nil {
@@ -384,7 +390,7 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 					Status: StatusError, Message: err.Error(),
 				})
 			})
-			postalErrors = append(postalErrors, provider.Name+": "+err.Error())
+			gridErrors = append(gridErrors, provider.Name+": "+err.Error())
 			continue
 		}
 
@@ -395,8 +401,13 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 		evidence := ProviderEvidenceResult{}
 		if s.evidence != nil {
 			var evidenceErr error
+			serviceAddress := ProviderAddress{}
+			if sameProviderFamily(provider.Name, request.AddressProvider) {
+				serviceAddress = request.ProviderAddress
+			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
-				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode, Grid: grid,
+				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				ServiceAddress: serviceAddress, Grid: grid,
 			})
 			if evidenceErr != nil {
 				if len(evidence.Sources) == 0 {
@@ -405,7 +416,9 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 						Status: StatusError, Message: evidenceErr.Error(),
 					})
 				}
-				postalErrors = append(postalErrors, provider.Name+" official source: "+evidenceErr.Error())
+				// Official enrichment is deliberately best-effort. The source record
+				// preserves the attributable failure without invalidating Gracenote
+				// lineup data or successful evidence from other providers.
 			}
 			_, _, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
 			if ingestErr != nil {
@@ -436,8 +449,8 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 		s.job.CompletedCount++
 		s.mu.Unlock()
 	}
-	if runErr == nil && len(postalErrors) > 0 {
-		runErr = errors.New(strings.Join(postalErrors, "; "))
+	if runErr == nil && len(gridErrors) > 0 {
+		runErr = errors.New(strings.Join(gridErrors, "; "))
 	}
 
 	completedAt := s.now().UTC().Format(time.RFC3339)
@@ -467,6 +480,33 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 	}
 	s.cancel = nil
 	s.mu.Unlock()
+}
+
+func sameProviderFamily(left, right string) bool {
+	left = providerFamilyKey(left)
+	right = providerFamilyKey(right)
+	return left != "" && right != "" && (left == right || strings.Contains(left, right) || strings.Contains(right, left))
+}
+
+func providerFamilyKey(value string) string {
+	value = strings.ToLower(value)
+	for canonical, aliases := range map[string][]string{
+		"xfinity":  {"xfinity", "comcast"},
+		"optimum":  {"optimum", "cablevision"},
+		"spectrum": {"spectrum", "charter", "time warner"},
+		"fios":     {"verizon", "fios"},
+		"uverse":   {"u-verse", "uverse"},
+	} {
+		for _, alias := range aliases {
+			if strings.Contains(value, alias) {
+				return canonical
+			}
+		}
+	}
+	for _, ignored := range []string{"digital rebuild", "satellite", "television", "tv", "of", "the", "-"} {
+		value = strings.ReplaceAll(value, ignored, " ")
+	}
+	return strings.Join(strings.Fields(value), "")
 }
 
 func postalScanKey(country, postalCode string) string {

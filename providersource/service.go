@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -89,6 +88,13 @@ func newServiceWithOptions(client *http.Client, options Options) *Service {
 	var sources catalog
 	if options.UseEmbeddedCatalogs {
 		_ = json.Unmarshal(officialCatalogData, &sources)
+		filtered := sources.Sources[:0]
+		for _, source := range sources.Sources {
+			if len(source.Entries) > 0 {
+				filtered = append(filtered, source)
+			}
+		}
+		sources.Sources = filtered
 	}
 	return &Service{httpClient: client, catalog: sources}
 }
@@ -98,21 +104,46 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request marketindex
 	if providerName == "" || request.Grid == nil {
 		return marketindex.ProviderEvidenceResult{}, nil
 	}
-	if strings.Contains(providerName, "dish") {
+	var live providerResult
+	hasLiveSource := true
+	switch {
+	case strings.Contains(providerName, "broadstar") || strings.Contains(providerName, "broadstream"):
+		live = s.fetchBroadStar(ctx)
+	case strings.Contains(providerName, "verizon") || strings.Contains(providerName, "fios"):
+		live = s.fetchVerizon(ctx)
+	case strings.Contains(providerName, "optimum") || strings.Contains(providerName, "cablevision"):
+		live = s.fetchOptimum(ctx, request)
+	case strings.Contains(providerName, "directv"):
+		live = s.fetchDIRECTV(ctx)
+	case strings.Contains(providerName, "dish"):
 		entries, err := s.fetchDISH(ctx)
-		if err != nil {
-			return marketindex.ProviderEvidenceResult{Sources: []marketindex.EvidenceSourceRecord{{
-				ID: "dish-official-lineup", Label: "DISH official lineup", URL: dishURL,
-				Status: marketindex.StatusError, Message: err.Error(),
-			}}}, err
-		}
-		return matchCatalog(request, catalogSource{
+		live.source = catalogSource{
 			ID: "dish-official-lineup", Label: "DISH official lineup", URL: dishURL,
 			Method: "exact DISH channel number or unique exact callsign from the public DISH lineup service", Entries: entries,
-		}), nil
+		}
+		if err != nil {
+			live = sourceFailure(live.source, err)
+		}
+	case strings.Contains(providerName, "armed forces") || strings.Contains(providerName, "afn"):
+		live = s.fetchAFN(ctx)
+	case strings.Contains(providerName, "glorystar"):
+		live = s.fetchGlorystar(ctx)
+	case strings.Contains(providerName, "u-verse") || strings.Contains(providerName, "uverse") || strings.Contains(providerName, "at&t"):
+		live = s.fetchUVerse(ctx)
+	case strings.Contains(providerName, "xfinity") || strings.Contains(providerName, "comcast"):
+		live = s.fetchXfinity(ctx, request)
+	case strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner"):
+		live = s.fetchSpectrum(ctx)
+	default:
+		hasLiveSource = false
 	}
 
 	result := marketindex.ProviderEvidenceResult{}
+	if hasLiveSource {
+		matched := matchCatalog(request, live.source)
+		result.Facts = append(result.Facts, matched.Facts...)
+		result.Sources = append(result.Sources, matched.Sources...)
+	}
 	for _, source := range s.catalog.Sources {
 		if !sourceMatches(source, providerName, request.PostalCode) {
 			continue
@@ -121,7 +152,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request marketindex
 		result.Facts = append(result.Facts, matched.Facts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
-	return result, nil
+	return result, live.err
 }
 
 func sourceMatches(source catalogSource, providerName, postalCode string) bool {
@@ -147,23 +178,12 @@ func sourceMatches(source catalogSource, providerName, postalCode string) bool {
 }
 
 func (s *Service) fetchDISH(ctx context.Context) ([]catalogEntry, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dishURL, nil)
+	data, err := s.fetchBytes(ctx, dishURL, "application/json", "DISH official lineup", maxJSONBytes, false)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "GraceNoteScraper provider enrichment")
-	response, err := s.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("DISH lineup request failed: %w", err)
-	}
-	defer response.Body.Close()
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
-		return nil, fmt.Errorf("DISH lineup returned %s", response.Status)
-	}
 	var payload dishResponse
-	if err := json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(&payload); err != nil {
+	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, fmt.Errorf("decoding DISH lineup: %w", err)
 	}
 	if len(payload.Channels) == 0 {
@@ -312,11 +332,21 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 			aliases++
 		}
 	}
-	status := "complete"
-	message := fmt.Sprintf("%d exact station-ID joins from the official provider source", len(matchedStations))
+	status := source.Status
+	if status == "" {
+		status = "complete"
+	}
+	message := source.Message
+	if message == "" {
+		message = fmt.Sprintf("%d exact station-ID joins from the official provider source", len(matchedStations))
+	}
 	if len(matchedStations) == 0 {
-		status = "no-matches"
-		message = "No exact provider channel-number or unique identity joins were found"
+		if source.Status == "" {
+			status = "no-matches"
+		}
+		if source.Message == "" {
+			message = "No exact provider channel-number or unique identity joins were found"
+		}
 	}
 	result.Sources = []marketindex.EvidenceSourceRecord{{
 		ID: source.ID, Label: source.Label, URL: source.URL, Status: status,

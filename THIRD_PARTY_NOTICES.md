@@ -1,5 +1,12 @@
 # Third-party notices
 
+## ledongthuc/pdf
+
+Runtime parsing of public provider PDF guides uses
+[`github.com/ledongthuc/pdf`](https://github.com/ledongthuc/pdf), pinned in
+`go.mod`. The package is distributed under the BSD 3-Clause License. Its full
+license text is included with the module source and remains authoritative.
+
 ## PrismCast channel registry
 
 This compatibility snapshot is disabled by default and is used only when

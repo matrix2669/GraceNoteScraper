@@ -476,10 +476,14 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	if !requireJSONContentType(w, r) {
 		return
 	}
-	var request marketindex.RunRequest
-	if !decodeLineuparrRequest(w, r, &request) {
+	var body struct {
+		marketindex.RunRequest
+		ProviderAddress marketindex.ProviderAddress `json:"providerAddress,omitempty"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
 		return
 	}
+	request := body.RunRequest
 	if strings.EqualFold(strings.TrimSpace(request.Action), "postal") {
 		if s.store == nil {
 			http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
@@ -493,6 +497,13 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 		request.Country = config.Gracenote.Country
 		request.PostalCode = config.Gracenote.PostalCode
 		request.Language = config.Gracenote.Language
+		request.AddressProvider = config.Gracenote.ProviderName
+		providerAddress, err := validateEphemeralProviderAddress(body.ProviderAddress, config.Gracenote.PostalCode)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		request.ProviderAddress = providerAddress
 	}
 	job, err := s.marketIndex.Start(request)
 	if err != nil {
@@ -504,6 +515,42 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
+}
+
+func validateEphemeralProviderAddress(value marketindex.ProviderAddress, postalCode string) (marketindex.ProviderAddress, error) {
+	value.FormattedAddress = strings.Join(strings.Fields(strings.TrimSpace(value.FormattedAddress)), " ")
+	value.StreetAddress = strings.Join(strings.Fields(strings.TrimSpace(value.StreetAddress)), " ")
+	value.City = strings.Join(strings.Fields(strings.TrimSpace(value.City)), " ")
+	value.State = strings.Join(strings.Fields(strings.TrimSpace(value.State)), " ")
+	value.PostalCode = strings.Join(strings.Fields(strings.TrimSpace(value.PostalCode)), " ")
+	value.CountryCode = strings.ToUpper(strings.TrimSpace(value.CountryCode))
+	if value.FormattedAddress == "" {
+		return marketindex.ProviderAddress{}, nil
+	}
+	if len(value.FormattedAddress) > 300 || len(value.StreetAddress) > 180 || len(value.City) > 100 || len(value.State) > 100 || len(value.PostalCode) > 20 || len(value.CountryCode) > 2 {
+		return marketindex.ProviderAddress{}, errors.New("provider address is too long")
+	}
+	if postalCode = strings.TrimSpace(postalCode); postalCode != "" {
+		selected := compactLocationValue(value.PostalCode)
+		active := compactLocationValue(postalCode)
+		matches := selected == active
+		if value.CountryCode == "US" && len(active) == 5 && len(selected) == 9 {
+			matches = strings.HasPrefix(selected, active)
+		}
+		if !matches {
+			return marketindex.ProviderAddress{}, errors.New("provider address must match the active lineup postal code")
+		}
+	}
+	return value, nil
+}
+
+func compactLocationValue(value string) string {
+	return strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToUpper(character)
+		}
+		return -1
+	}, value)
 }
 
 func (s *lineuparrServer) handleAliasIndexStop(w http.ResponseWriter, r *http.Request) {

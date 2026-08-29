@@ -144,7 +144,21 @@ type ProviderEvidenceRequest struct {
 	LineupKey  string
 	Country    string
 	PostalCode string
-	Grid       *web.GridResponse
+	// ServiceAddress is an ephemeral, active-provider-only input. It must not
+	// be persisted in the index, snapshots, logs, source URLs, or API views.
+	ServiceAddress ProviderAddress `json:"-"`
+	Grid           *web.GridResponse
+}
+
+// ProviderAddress contains a user-selected geocoder result for one in-memory
+// scan. The containing request fields are excluded from every serialized view.
+type ProviderAddress struct {
+	FormattedAddress string `json:"formattedAddress,omitempty"`
+	StreetAddress    string `json:"streetAddress,omitempty"`
+	City             string `json:"city,omitempty"`
+	State            string `json:"state,omitempty"`
+	PostalCode       string `json:"postalCode,omitempty"`
+	CountryCode      string `json:"countryCode,omitempty"`
 }
 
 type ProviderEvidenceResult struct {
@@ -245,6 +259,10 @@ type RunRequest struct {
 	Country    string `json:"country,omitempty"`
 	PostalCode string `json:"postalCode,omitempty"`
 	Language   string `json:"language,omitempty"`
+	// ProviderAddress and AddressProvider are populated at the HTTP boundary
+	// for one postal scan and intentionally excluded from serialization.
+	ProviderAddress ProviderAddress `json:"-"`
+	AddressProvider string          `json:"-"`
 }
 
 type JobView struct {

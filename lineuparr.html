@@ -443,7 +443,7 @@
         button.className = 'provider-address-result';
         button.textContent = result.formattedAddress;
         button.addEventListener('click', () => {
-          selectedProviderAddress = {placeId: result.id, formattedAddress: result.formattedAddress, postalCode: result.postalCode};
+          selectedProviderAddress = {...result};
           setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
         });
         els.providerAddressResults.append(button);
@@ -595,7 +595,10 @@
       try {
         await api('/api/lineuparr/alias-index/run', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({action, batchSize: action === 'refresh' ? 1 : action === 'postal' ? 0 : 25, ranks})
+          body: JSON.stringify({
+            action, batchSize: action === 'refresh' ? 1 : action === 'postal' ? 0 : 25, ranks,
+            providerAddress: action === 'postal' ? (selectedProviderAddress || {}) : {}
+          })
         });
         setMarketMessage('Scan started. Progress is saved after every lineup.', 'success');
       } catch (error) {
