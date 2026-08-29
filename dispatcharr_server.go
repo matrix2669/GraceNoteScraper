@@ -212,7 +212,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		existing := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())[body.Key]
-		if existing.Key == "" || existing.DispatcharrFingerprint != dispatchConfig.Fingerprint() {
+		if existing.Key == "" {
 			http.Error(w, "match decision does not belong to the active sources", http.StatusNotFound)
 			return
 		}
@@ -306,9 +306,6 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		matcherDecisions[key] = dispatcharr.Decision{
 			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
 			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID,
-		}
-		if decision.DispatcharrFingerprint != dispatchConfig.Fingerprint() {
-			continue
 		}
 		if decision.Decision == "confirmed" {
 			confirmed++

@@ -22,6 +22,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -542,6 +543,9 @@
     const providerAddressCache = new Map();
     let compact = localStorage.getItem('lineuparr-view') === 'compact';
     const pendingDecisions = new Set();
+    let decisionRevision = 0;
+    let matchReviewRequest = 0;
+    let matchReconcileTimer = null;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -597,6 +601,7 @@
       els.dispatchUser.required = passwordAuth;
       els.dispatchPassword.required = passwordAuth && !canKeepSavedSecret;
       els.dispatchAPIKey.required = !passwordAuth && !canKeepSavedSecret;
+      setDispatchControls();
     }
 
     async function saveDispatch(event) {
@@ -649,20 +654,28 @@
       }
     }
 
-    async function loadMatchReview(force = false) {
-      if (!draft || !dispatchConfig?.configured || dispatchBusy) return;
-      dispatchBusy = true;
-      setDispatchControls();
-      els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing every active M3U stream…' : 'Comparing active M3U streams with this lineup…'));
+    async function loadMatchReview(force = false, interactive = true) {
+      if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
+      const requestNumber = ++matchReviewRequest;
+      const revision = decisionRevision;
+      if (interactive) {
+        dispatchBusy = true;
+        setDispatchControls();
+        els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing every active M3U stream…' : 'Comparing active M3U streams with this lineup…'));
+      }
       try {
-        matchReview = await api('/api/lineuparr/dispatcharr/review' + (force ? '?refresh=true' : ''));
+        const review = await api('/api/lineuparr/dispatcharr/review' + (force ? '?refresh=true' : ''));
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision) return;
+        matchReview = review;
         renderMatchReview();
       } catch (error) {
-        els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+        if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
         showMessage(error.message, true);
       } finally {
-        dispatchBusy = false;
-        setDispatchControls();
+        if (interactive) {
+          dispatchBusy = false;
+          setDispatchControls();
+        }
       }
     }
 
@@ -728,6 +741,7 @@
       const candidate = (matchReview.candidates || []).find(item => item.key === key);
       if (!candidate) return;
       pendingDecisions.add(key);
+      decisionRevision++;
       matchReview = {
         ...matchReview,
         candidateCount: Math.max(0, matchReview.candidateCount - 1),
@@ -752,11 +766,23 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(key);
-        if (pendingDecisions.size === 0) {
-          await reloadDraft();
-          await loadMatchReview();
-        }
+        scheduleMatchReconcile();
       }
+    }
+
+    function scheduleMatchReconcile() {
+      if (matchReconcileTimer) clearTimeout(matchReconcileTimer);
+      matchReconcileTimer = setTimeout(async () => {
+        matchReconcileTimer = null;
+        if (pendingDecisions.size > 0) return scheduleMatchReconcile();
+        const revision = decisionRevision;
+        try {
+          await reloadDraft();
+          if (revision === decisionRevision) await loadMatchReview(false, false);
+        } catch (error) {
+          showMessage(error.message, true);
+        }
+      }, 350);
     }
 
     async function clearDecision(key) {
@@ -774,7 +800,11 @@
     }
 
     function setDispatchControls() {
-      for (const control of [els.dispatchURL, els.dispatchAuth, els.dispatchUser, els.dispatchPassword, els.dispatchAPIKey, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      for (const control of [els.dispatchURL, els.dispatchAuth, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
+      els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
       for (const control of document.querySelectorAll('.match-buttons button, .decision-row button')) control.disabled = dispatchBusy;
     }
 

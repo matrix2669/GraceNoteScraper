@@ -151,9 +151,10 @@ Ambiguous source identities are counted but never applied. Exact catalog and use
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
 Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+
 ### Dispatcharr match review
 
-The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Enter the base address and a normal Dispatcharr username/password; GraceNoteScraper authenticates through Dispatcharr's JWT API and keeps its access and refresh tokens in memory only. The saved URL, username, and password live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
+The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Choose either a normal Dispatcharr username/password or an API key; only the fields for the selected method are shown and enabled. Password authentication uses Dispatcharr's JWT API and keeps access and refresh tokens in memory only. The saved connection settings live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
 
 Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Provider prefixes, common HD/UHD markers, and matching provider channel numbers are considered, while decorative playlist headings are ignored. A score is never accepted automatically:
 
@@ -161,8 +162,9 @@ Matching prioritizes exact EPG IDs, direct channel names, and attributable alias
 - **Deny** records only that stream/channel pairing as rejected and reveals the next candidate when one exists.
 - **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
 
-Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
+Confirm and deny actions remove their row immediately without locking the remaining queue. Decisions are stored against the active lineup, stream fingerprint, and target channel, so changing between password and API-key authentication or restarting the container does not restore reviewed rows.
 
+Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
 Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-based lineup lookup. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. Search text is sent to the configured geocoder, but the selected address is not persisted in scraper configuration, Lineuparr state, source caches, logs, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address and does not collect provider-account logins. Provider-specific website adapters remain independently testable follow-up work; selecting an address does not claim that an adapter has already loaded the official lineup.
 
@@ -186,7 +188,7 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
-| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; password is never returned |
+| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |
 | `GET /api/lineuparr/dispatcharr/review` | Fetch the current safe M3U match-review queue; add `?refresh=true` to refresh streams |
 | `POST, DELETE /api/lineuparr/dispatcharr/decision` | Confirm/deny a current candidate, or undo one reviewed decision |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
