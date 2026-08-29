@@ -40,14 +40,11 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 	prepared, exactIndex, tokenIndex, gramIndex, epgIndex := prepareChannels(channels)
 	confirmedStreams := make(map[string]bool)
 	denied := make(map[string]bool)
-	for key, decision := range decisions {
-		if decision.Source != sourceFingerprint {
-			continue
-		}
+	for _, decision := range decisions {
 		if decision.Decision == "confirmed" {
 			confirmedStreams[decision.StreamHash] = true
 		} else if decision.Decision == "denied" {
-			denied[key] = true
+			denied[decisionPairKey(decision.StreamHash, decision.ChannelID)] = true
 		}
 	}
 
@@ -115,8 +112,7 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 			if score < minimumCandidateScore {
 				continue
 			}
-			key := candidateKey(sourceFingerprint, streamHash, prepared[index].channel.ID)
-			if denied[key] {
+			if denied[decisionPairKey(streamHash, prepared[index].channel.ID)] {
 				continue
 			}
 			scored = append(scored, scoredCandidate{channel: index, score: score, reason: reason})
@@ -162,6 +158,10 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 		return strings.ToLower(result[i].StreamName) < strings.ToLower(result[j].StreamName)
 	})
 	return result
+}
+
+func decisionPairKey(streamHash, channelID string) string {
+	return streamHash + "\x00" + channelID
 }
 
 func prepareChannels(channels []MatchChannel) ([]preparedChannel, map[string][]int, map[string][]int, map[string][]int, map[string][]int) {

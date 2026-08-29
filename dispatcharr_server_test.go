@@ -223,3 +223,51 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 		t.Fatalf("stored denial = %+v", decision)
 	}
 }
+
+func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
+	server, _ := newDispatcharrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	recorder := httptest.NewRecorder()
+	server.handleReview(recorder, request)
+	var review dispatcharrReviewResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
+		t.Fatal(err)
+	}
+	key := review.Candidates[0].Key
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"confirmed"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleDecision(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("confirm response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	if err := server.config.Save(dispatcharr.Config{
+		BaseURL: "https://dispatcharr.test", AuthMethod: dispatcharr.AuthAPIKey, APIKey: "replacement-key",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server.cache.clear()
+	server.clearCandidateCache()
+
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	recorder = httptest.NewRecorder()
+	server.handleReview(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("review after auth change = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
+		t.Fatal(err)
+	}
+	if review.ConfirmedCount != 1 || review.CandidateCount != 0 || len(review.Decisions) != 1 {
+		t.Fatalf("review after auth change = %+v", review)
+	}
+
+	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleDecision(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("undo after auth change = %d body %s", recorder.Code, recorder.Body.String())
+	}
+}

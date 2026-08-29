@@ -146,3 +146,28 @@ func TestDoesNotMatchEventOrDecorativeHeadingByOneGenericToken(t *testing.T) {
 		t.Fatalf("event or heading candidates = %+v", got)
 	}
 }
+
+func TestDecisionsSurviveAuthenticationSourceChange(t *testing.T) {
+	streams := []Stream{
+		{ID: 1, M3UAccountID: 3, Name: "CNN"},
+		{ID: 2, M3UAccountID: 3, Name: "ESPN"},
+	}
+	channels := []MatchChannel{
+		{ID: "cnn", Number: "100", Name: "CNN"},
+		{ID: "espn", Number: "200", Name: "ESPN"},
+	}
+	decisions := map[string]Decision{
+		"old-confirm": {
+			Key: "old-confirm", Decision: "confirmed", Source: "old-auth",
+			StreamHash: streams[0].Fingerprint(), ChannelID: "cnn",
+		},
+		"old-deny": {
+			Key: "old-deny", Decision: "denied", Source: "old-auth",
+			StreamHash: streams[1].Fingerprint(), ChannelID: "espn",
+		},
+	}
+
+	if got := MatchStreams("new-auth", channels, streams, decisions); len(got) != 0 {
+		t.Fatalf("authentication change restored reviewed candidates: %+v", got)
+	}
+}

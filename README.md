@@ -134,13 +134,15 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 
 ### Dispatcharr match review
 
-The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Enter the base address and a normal Dispatcharr username/password; GraceNoteScraper authenticates through Dispatcharr's JWT API and keeps its access and refresh tokens in memory only. The saved URL, username, and password live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
+The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Choose either a normal Dispatcharr username/password or an API key; only the fields for the selected method are shown and enabled. Password authentication uses Dispatcharr's JWT API and keeps access and refresh tokens in memory only. The saved connection settings live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
 
 Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Provider prefixes, common HD/UHD markers, and matching provider channel numbers are considered, while decorative playlist headings are ignored. A score is never accepted automatically:
 
 - **Confirm** adds the stream name and, when present, its `tvg_id` to that specific lineup position with Dispatcharr provenance.
 - **Deny** records only that stream/channel pairing as rejected and reveals the next candidate when one exists.
 - **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
+
+Confirm and deny actions remove their row immediately without locking the remaining queue. Decisions are stored against the active lineup, stream fingerprint, and target channel, so changing between password and API-key authentication or restarting the container does not restore reviewed rows.
 
 Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
@@ -159,7 +161,7 @@ Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/gro
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
-| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; password is never returned |
+| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |
 | `GET /api/lineuparr/dispatcharr/review` | Fetch the current safe M3U match-review queue; add `?refresh=true` to refresh streams |
 | `POST, DELETE /api/lineuparr/dispatcharr/decision` | Confirm/deny a current candidate, or undo one reviewed decision |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
