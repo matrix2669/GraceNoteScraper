@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -29,6 +31,7 @@ type CurrentStations func() map[string][]string
 
 type ServiceConfig struct {
 	Path            string
+	SnapshotDir     string
 	Catalog         SeedCatalog
 	Providers       ProviderFinder
 	Grids           GridFetcher
@@ -42,6 +45,7 @@ type ServiceConfig struct {
 type Service struct {
 	mu              sync.RWMutex
 	path            string
+	snapshotDir     string
 	catalog         SeedCatalog
 	providers       ProviderFinder
 	grids           GridFetcher
@@ -78,8 +82,13 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	snapshotDir := strings.TrimSpace(config.SnapshotDir)
+	if snapshotDir == "" {
+		snapshotDir = filepath.Join(filepath.Dir(config.Path), "lineup_snapshots")
+	}
 	return &Service{
 		path:            config.Path,
+		snapshotDir:     snapshotDir,
 		catalog:         config.Catalog,
 		providers:       config.Providers,
 		grids:           config.Grids,
@@ -186,7 +195,10 @@ func (s *Service) startPostal(request RunRequest) (JobView, error) {
 		return JobView{}, err
 	}
 	job := s.job
-	go s.runPostal(ctx, country, postalCode, language)
+	request.Country = country
+	request.PostalCode = postalCode
+	request.Language = language
+	go s.runPostal(ctx, request)
 	return job, nil
 }
 
@@ -314,13 +326,16 @@ func (s *Service) run(ctx context.Context, action string, seeds []MarketSeed) {
 	s.mu.Unlock()
 }
 
-func (s *Service) runPostal(ctx context.Context, country, postalCode, language string) {
+func (s *Service) runPostal(ctx context.Context, request RunRequest) {
+	country := request.Country
+	postalCode := request.PostalCode
+	language := request.Language
 	key := postalScanKey(country, postalCode)
 	current := normalizeCurrentStations(s.readCurrentStations())
 	owners := s.callSignOwners()
 	var lastGridRequest time.Time
 	var runErr error
-	postalErrors := make([]string, 0)
+	gridErrors := make([]string, 0)
 
 	result, err := s.providers.FindProviders(ctx, country, postalCode, language)
 	if err != nil {
@@ -375,7 +390,7 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 					Status: StatusError, Message: err.Error(),
 				})
 			})
-			postalErrors = append(postalErrors, provider.Name+": "+err.Error())
+			gridErrors = append(gridErrors, provider.Name+": "+err.Error())
 			continue
 		}
 
@@ -383,9 +398,16 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 			runErr = err
 			break
 		}
+		evidence := ProviderEvidenceResult{}
 		if s.evidence != nil {
-			evidence, evidenceErr := s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
-				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode, Grid: grid,
+			var evidenceErr error
+			serviceAddress := ProviderAddress{}
+			if sameProviderFamily(provider.Name, request.AddressProvider) {
+				serviceAddress = request.ProviderAddress
+			}
+			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
+				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				ServiceAddress: serviceAddress, Grid: grid,
 			})
 			if evidenceErr != nil {
 				if len(evidence.Sources) == 0 {
@@ -394,7 +416,9 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 						Status: StatusError, Message: evidenceErr.Error(),
 					})
 				}
-				postalErrors = append(postalErrors, provider.Name+" official source: "+evidenceErr.Error())
+				// Official enrichment is deliberately best-effort. The source record
+				// preserves the attributable failure without invalidating Gracenote
+				// lineup data or successful evidence from other providers.
 			}
 			_, _, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
 			if ingestErr != nil {
@@ -412,6 +436,10 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
 			})
 		}
+		if err := s.writeLineupSnapshot(*lineup, grid, evidence); err != nil {
+			runErr = err
+			break
+		}
 		if err := s.completeLineup(lineup.Key, len(grid.Channels)); err != nil {
 			runErr = err
 			break
@@ -421,8 +449,8 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 		s.job.CompletedCount++
 		s.mu.Unlock()
 	}
-	if runErr == nil && len(postalErrors) > 0 {
-		runErr = errors.New(strings.Join(postalErrors, "; "))
+	if runErr == nil && len(gridErrors) > 0 {
+		runErr = errors.New(strings.Join(gridErrors, "; "))
 	}
 
 	completedAt := s.now().UTC().Format(time.RFC3339)
@@ -452,6 +480,33 @@ func (s *Service) runPostal(ctx context.Context, country, postalCode, language s
 	}
 	s.cancel = nil
 	s.mu.Unlock()
+}
+
+func sameProviderFamily(left, right string) bool {
+	left = providerFamilyKey(left)
+	right = providerFamilyKey(right)
+	return left != "" && right != "" && (left == right || strings.Contains(left, right) || strings.Contains(right, left))
+}
+
+func providerFamilyKey(value string) string {
+	value = strings.ToLower(value)
+	for canonical, aliases := range map[string][]string{
+		"xfinity":  {"xfinity", "comcast"},
+		"optimum":  {"optimum", "cablevision"},
+		"spectrum": {"spectrum", "charter", "time warner"},
+		"fios":     {"verizon", "fios"},
+		"uverse":   {"u-verse", "uverse"},
+	} {
+		for _, alias := range aliases {
+			if strings.Contains(value, alias) {
+				return canonical
+			}
+		}
+	}
+	for _, ignored := range []string{"digital rebuild", "satellite", "television", "tv", "of", "the", "-"} {
+		value = strings.ReplaceAll(value, ignored, " ")
+	}
+	return strings.Join(strings.Fields(value), "")
 }
 
 func postalScanKey(country, postalCode string) string {
@@ -866,6 +921,16 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		if stationID == "" || value == "" || (kind != FactAlias && kind != FactCategory) {
 			continue
 		}
+		if kind == FactCategory {
+			match, ok := channelcategory.Resolve(value)
+			if !ok {
+				continue
+			}
+			value = match.Category
+			if match.Method != channelcategory.MethodCanonical {
+				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
+			}
+		}
 		station := s.index.Stations[stationID]
 		if station == nil {
 			continue
@@ -889,7 +954,9 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			continue
 		}
 		station.Facts = append(station.Facts, StationFact{
-			Kind: kind, Value: value, Normalized: normalized, SourceID: strings.TrimSpace(fact.SourceID),
+			Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
+			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
 			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey},
 		})
@@ -904,6 +971,18 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		return 0, 0, err
 	}
 	return aliases, categories, nil
+}
+
+func appendMethod(existing, addition string) string {
+	existing = strings.TrimSpace(existing)
+	addition = strings.TrimSpace(addition)
+	if existing == "" {
+		return addition
+	}
+	if addition == "" || strings.Contains(existing, addition) {
+		return existing
+	}
+	return existing + "; " + addition
 }
 
 func addStationName(stations map[string]*Station, station *Station, owners map[string]map[string]bool, kind, value, lineupKey string, marketRank int) (added bool, cosmetic bool, conflict bool) {

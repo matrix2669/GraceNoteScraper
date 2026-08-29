@@ -3,6 +3,8 @@ package marketindex
 import (
 	"sort"
 	"strconv"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
 func (s *Service) Snapshot() Snapshot {
@@ -172,9 +174,19 @@ func (s *Service) CategoriesForStations(stationIDs []string) map[string]Category
 		}
 		byCategory := make(map[string][]StationFact)
 		for _, fact := range station.Facts {
-			if fact.Kind == FactCategory {
-				byCategory[fact.Normalized] = append(byCategory[fact.Normalized], fact)
+			if fact.Kind != FactCategory {
+				continue
 			}
+			match, ok := channelcategory.Resolve(fact.Value)
+			if !ok {
+				continue
+			}
+			fact.Value = match.Category
+			fact.Normalized = normalizeName(match.Category)
+			if match.Method != channelcategory.MethodCanonical {
+				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
+			}
+			byCategory[fact.Normalized] = append(byCategory[fact.Normalized], fact)
 		}
 		if len(byCategory) != 1 {
 			continue

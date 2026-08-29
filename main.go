@@ -1140,6 +1140,15 @@ func filterGuideChannels(g *guide.TVGuide, allowed map[string]bool) *guide.TVGui
 
 // ---------- Main ----------
 
+func enabledSetting(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on", "enabled":
+		return true
+	default:
+		return false
+	}
+}
+
 func main() {
 	guideOnly := flag.Bool("guide-only", false, "Scrape once and exit (no server)")
 	flag.Parse()
@@ -1161,7 +1170,7 @@ func main() {
 		log.Printf("Lineuparr builder state could not be loaded; choices will start clean: %v", lineuparrStateErr)
 	}
 	catalogSetting := strings.TrimSpace(util.GetEnv("LINEUPARR_CATALOG_URLS", ""))
-	useDefaultCatalogs := catalogSetting == "" || strings.EqualFold(catalogSetting, "default")
+	useDefaultCatalogs := strings.EqualFold(catalogSetting, "default")
 	var catalogURLs []string
 	if !useDefaultCatalogs && !strings.EqualFold(catalogSetting, "off") && !strings.EqualFold(catalogSetting, "none") {
 		for _, rawURL := range strings.FieldsFunc(catalogSetting, func(r rune) bool { return r == ',' || r == '\n' }) {
@@ -1170,15 +1179,17 @@ func main() {
 			}
 		}
 	}
-	iptvOrgURL := strings.TrimSpace(util.GetEnv("LINEUPARR_IPTV_ORG_URL", lineuparrbuilder.DefaultIPTVOrgURL))
+	iptvOrgURL := strings.TrimSpace(util.GetEnv("LINEUPARR_IPTV_ORG_URL", ""))
 	if strings.EqualFold(iptvOrgURL, "off") || strings.EqualFold(iptvOrgURL, "none") {
 		iptvOrgURL = ""
 	}
+	referenceCatalogsEnabled := enabledSetting(util.GetEnv("LINEUPARR_REFERENCE_CATALOGS", ""))
 	lineuparrBuilder := lineuparrbuilder.NewService(lineuparrStateStore, lineuparrbuilder.ServiceOptions{
-		CacheDir:           util.GetEnv("LINEUPARR_CACHE_DIR", "lineuparr_source_cache"),
-		CatalogURLs:        catalogURLs,
-		UseDefaultCatalogs: useDefaultCatalogs,
-		IPTVOrgURL:         iptvOrgURL,
+		CacheDir:            util.GetEnv("LINEUPARR_CACHE_DIR", "lineuparr_source_cache"),
+		CatalogURLs:         catalogURLs,
+		UseDefaultCatalogs:  useDefaultCatalogs,
+		UseEmbeddedCatalogs: referenceCatalogsEnabled,
+		IPTVOrgURL:          iptvOrgURL,
 	})
 	dispatcharrConfigPath := util.GetEnv("DISPATCHARR_CONFIG_PATH", "dispatcharr_config.json")
 	dispatcharrConfigStore, dispatcharrConfigErr := dispatcharr.LoadConfigStore(dispatcharrConfigPath)
@@ -1300,10 +1311,11 @@ func main() {
 	} else {
 		service, serviceErr := marketindex.NewService(marketindex.ServiceConfig{
 			Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+			SnapshotDir:     util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
 			Catalog:         marketCatalog,
 			Providers:       setupHandlers.providers,
 			Grids:           marketindex.WebGridFetcher{},
-			Evidence:        providersource.NewService(),
+			Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
 			CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
 			ProviderDelay:   500 * time.Millisecond,
 			GridDelay:       5 * time.Second,

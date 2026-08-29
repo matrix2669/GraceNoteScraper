@@ -100,13 +100,15 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
-| `LINEUPARR_STATE_PATH` | Saved channel, alias, and Dispatcharr match-review choices for the current lineup | `lineuparr_state.json` |
-| `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
-| `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
-| `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
-| `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `MARKET_INDEX_PATH` | Saved station/alias observations from on-demand market scans | `market_index.json` |
 | `MARKET_ZIPS_PATH` | Optional replacement for the embedded representative-market catalog | embedded catalog |
+| `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
+| `LINEUPARR_STATE_PATH` | Saved channel, alias, category, and Dispatcharr match-review choices for the current lineup | `lineuparr_state.json` |
+| `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
+| `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
+| `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
+| `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
+| `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `NOMINATIM_URL` | OpenStreetMap/Nominatim search service. Set to a hosted/self-managed endpoint, or `off` to disable provider-address search. | `https://nominatim.openstreetmap.org` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
@@ -128,15 +130,31 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
-- **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP, loads one six-hour grid per provider, and joins supported official provider sources to their own provider grids. Categories and aliases reach the selected lineup only through the exact same Gracenote station ID.
-- The initial provider adapters cover the Optimum Islip/Woodbury official PDF, DISH's public lineup JSON, the Glorystar public channel table, and the AFN official channel guide. Other registered provider sources report whether a focused adapter or an ephemeral selected address is still required instead of claiming a zero-match scrape succeeded.
+- **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP, loads one six-hour grid per provider, and joins supported live official provider sources to their own provider grids. Categories and aliases reach the selected lineup only through the exact same Gracenote station ID.
+- Every successfully downloaded lineup produces its own schema-versioned JSON file under `LINEUP_SNAPSHOT_DIR`. It contains provider positions, Gracenote station IDs, identity aliases, normalized category evidence, source URLs, match methods, and fuzzy confidence, but never programme events, credentials, service addresses, or stream URLs.
+- Runtime adapters now cover Verizon FiOS, Optimum, DIRECTV, DISH, AFN, Glorystar, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set.
 - The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
 - **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
-- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, and observed-name provenance are retained; programme events are discarded.
+- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, observed-name provenance, and attributable category evidence are retained; programme events are discarded.
 - Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
 - Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
 - Official provider aliases and categories retain their source URL and exact join method. Conflicting categories and aliases shared by multiple station IDs are not applied automatically.
+
+Provider coverage is intentionally explicit about source limitations:
+
+| Provider | Runtime public source | Current limitation |
+| --- | --- | --- |
+| Verizon FiOS | Official national PDF | National channels and provider-published channel-range categories; local positions still come from Gracenote |
+| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Western service areas require a user-selected address for an exact local lineup |
+| DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
+| DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
+| AFN | Official guide PDF format | AFN's CDN may reject automated downloads; that source reports an isolated error when unavailable |
+| Glorystar | Public channel table | The provider is faith-focused, so its published channel rows map to `Faith` |
+| AT&T U-verse | Official public PDF | AT&T's current download URL serves a document marked effective February 2023 and is reported as limited |
+| Xfinity | Public address-qualified channel API | Requires a user-selected address for the active Xfinity lineup |
+| Spectrum | Public lineup page | No stable no-login residential payload is currently exposed; account/login automation is intentionally disabled |
+| BroadStar | Official public PDF | Categories are used only where the provider document has explicit Sports, Premium, Music, or service sections |
 
 The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
 
@@ -144,18 +162,20 @@ The default catalog and its provenance are in `marketindex/market_zips.json`. Se
 
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
 
-Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`; exact catalog and iptv-org matches may add their attributable EPG identifiers. The builder then applies only unique exact matches from:
+Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`. Runtime evidence is primary; configured optional sources may add attributable aliases and EPG identifiers. The builder applies only unique identity matches from:
 
-- Public official sources for every provider lineup returned for the configured ZIP. Each source is first joined to its own Gracenote grid by exact provider channel number or unique exact identity; aliases and categories cross into the selected lineup only through an identical Gracenote station ID.
-- Matching provider and country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin). US defaults select a Verizon FiOS, DIRECTV, or DISH provider catalog when applicable and also use the combined US catalog; other currently mapped catalogs cover the UK, Canada, Australia, Spain, France, and the Netherlands.
-- The public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records.
-- Reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), including direct network identities and PBS station/subchannel mappings.
+- Supported public official sources for provider lineups returned for the configured ZIP. Each source is first joined to its own Gracenote grid by exact provider channel number or unique exact identity; aliases and categories cross into the selected lineup only through an identical Gracenote station ID. Providers without a runtime adapter still receive a Gracenote identity snapshot and remain visibly unresolved rather than borrowing another provider's channel numbers.
+- Optional matching provider/country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin), enabled with `LINEUPARR_CATALOG_URLS`.
+- The optional public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records, enabled with `LINEUPARR_IPTV_ORG_URL`.
+- Optional reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), enabled with `LINEUPARR_REFERENCE_CATALOGS=on`.
 
-Ambiguous source identities are counted but never applied. Exact catalog and user categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign Sports, News, Movies, or Kids when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network. Other channels remain in an honest `Uncategorized` group and are highlighted for review.
+The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Unknown or conflicting evidence remains `Uncategorized` rather than being forced into `Other`.
+
+User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
-Source failures do not interrupt guide generation or prevent a Gracenote-only export. Successful public-source downloads are cached for 24 hours, and an older cache is used when a refresh fails. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
 ### Dispatcharr match review
 
@@ -171,7 +191,7 @@ Confirm and deny actions remove their row immediately without locking the remain
 
 Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
-Official provider sources use the active lineup ZIP and Gracenote location automatically. The first focused adapters cover the Optimum Islip/Woodbury official PDF, DISH's public lineup service, Glorystar's official channel table, and the AFN channel guide. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-based lineup lookup. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. Search text is sent to the configured geocoder, but the selected address is not persisted in scraper configuration, Lineuparr state, source caches, logs, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for embedded catalog attribution and licenses.
+Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. The selected structured address is passed in memory only to the active provider's adapter and is not persisted in scraper configuration, Lineuparr state, source caches, logs, snapshots, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
 
 ## HTTP Endpoints
 

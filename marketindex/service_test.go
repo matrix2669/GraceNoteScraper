@@ -40,6 +40,23 @@ type blockingGrid struct {
 
 type fakeEvidence struct{}
 
+type captureEvidence struct {
+	requests chan ProviderEvidenceRequest
+	fail     bool
+}
+
+func (f captureEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
+	f.requests <- request
+	result := ProviderEvidenceResult{Sources: []EvidenceSourceRecord{{
+		ID: "official-" + request.Provider.LineupID, Label: request.Provider.Name + " official source",
+		Status: StatusError, Message: "source unavailable",
+	}}}
+	if f.fail {
+		return result, errors.New("source unavailable")
+	}
+	return result, nil
+}
+
 func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
 	if request.Provider.LineupID != "L1" {
 		return ProviderEvidenceResult{}, nil
@@ -160,6 +177,65 @@ func TestPostalScanEnrichesEveryProviderBeforeCrossLineupReuse(t *testing.T) {
 	category, ok := service.CategoriesForStations([]string{"S1"})["S1"]
 	if !ok || category.Value != "Sports" || len(category.SourceIDs) != 1 || category.SourceIDs[0] != "provider-one" {
 		t.Fatalf("category = %+v, %v", category, ok)
+	}
+}
+
+func TestPostalScanKeepsProviderAddressEphemeralAndSourceFailuresPartial(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "market_index.json")
+	xfinity := testProvider("X1")
+	xfinity.Name = "Xfinity Huntington"
+	spectrum := testProvider("S1")
+	spectrum.Name = "Spectrum Long Island"
+	providers := &fakeProviders{responses: map[string][]web.Provider{"11743": {xfinity, spectrum}}}
+	grids := &fakeGrids{responses: map[string]*web.GridResponse{
+		"X1": {Channels: []web.JSONChannel{{ChannelID: "X", ChannelNo: "2", CallSign: "WCBS"}}},
+		"S1": {Channels: []web.JSONChannel{{ChannelID: "S", ChannelNo: "5", CallSign: "WNYW"}}},
+	}, failures: map[string]int{}, calls: map[string]int{}}
+	captured := captureEvidence{requests: make(chan ProviderEvidenceRequest, 2), fail: true}
+	service, err := NewService(ServiceConfig{
+		Path: path, SnapshotDir: filepath.Join(directory, "snapshots"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: providers, Grids: grids, Evidence: captured,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const address = "123 Private Street, Huntington, NY 11743"
+	providerAddress := ProviderAddress{FormattedAddress: address, StreetAddress: "123 Private Street", City: "Huntington", State: "NY", PostalCode: "11743", CountryCode: "US"}
+	if _, err := service.Start(RunRequest{
+		Action: "postal", Country: "USA", PostalCode: "11743", Language: "en-us",
+		ProviderAddress: providerAddress, AddressProvider: "Comcast",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForPostal(t, service, "USA", "11743")
+	if snapshot.PostalScan.Status != StatusComplete || snapshot.PostalScan.LineupsScanned != 2 {
+		t.Fatalf("provider source failures invalidated postal scan: %+v", snapshot.PostalScan)
+	}
+	addresses := make(map[string]ProviderAddress)
+	for range 2 {
+		request := <-captured.requests
+		addresses[request.Provider.LineupID] = request.ServiceAddress
+	}
+	if addresses["X1"].FormattedAddress != address || addresses["S1"].FormattedAddress != "" {
+		t.Fatalf("address scope = %+v", addresses)
+	}
+	err = filepath.Walk(directory, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info.IsDir() {
+			return walkErr
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(data), address) {
+			t.Fatalf("provider address persisted in %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

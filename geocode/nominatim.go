@@ -18,7 +18,11 @@ const DefaultNominatimURL = "https://nominatim.openstreetmap.org"
 type AddressResult struct {
 	ID               string `json:"id"`
 	FormattedAddress string `json:"formattedAddress"`
+	StreetAddress    string `json:"streetAddress"`
+	City             string `json:"city"`
+	State            string `json:"state"`
 	PostalCode       string `json:"postalCode"`
+	CountryCode      string `json:"countryCode"`
 }
 
 type NominatimClient struct {
@@ -93,10 +97,20 @@ func (c *NominatimClient) Search(ctx context.Context, query, postalCode, country
 		OSMID       int64  `json:"osm_id"`
 		DisplayName string `json:"display_name"`
 		Address     struct {
-			HouseNumber string `json:"house_number"`
-			Road        string `json:"road"`
-			Pedestrian  string `json:"pedestrian"`
-			PostalCode  string `json:"postcode"`
+			HouseNumber  string `json:"house_number"`
+			Road         string `json:"road"`
+			Pedestrian   string `json:"pedestrian"`
+			City         string `json:"city"`
+			Town         string `json:"town"`
+			Village      string `json:"village"`
+			Hamlet       string `json:"hamlet"`
+			Municipality string `json:"municipality"`
+			CityDistrict string `json:"city_district"`
+			County       string `json:"county"`
+			State        string `json:"state"`
+			ISOState     string `json:"ISO3166-2-lvl4"`
+			PostalCode   string `json:"postcode"`
+			CountryCode  string `json:"country_code"`
 		} `json:"address"`
 	}
 	decoder := json.NewDecoder(io.LimitReader(response.Body, 1<<20))
@@ -120,11 +134,31 @@ func (c *NominatimClient) Search(ctx context.Context, query, postalCode, country
 		if item.OSMType != "" && item.OSMID != 0 {
 			identifier = fmt.Sprintf("%s:%d", item.OSMType, item.OSMID)
 		}
+		city := firstNonEmpty(
+			item.Address.City, item.Address.Town, item.Address.Village, item.Address.Hamlet,
+			item.Address.Municipality, item.Address.CityDistrict, item.Address.County,
+		)
+		state := strings.TrimSpace(item.Address.State)
+		if parts := strings.Split(strings.TrimSpace(item.Address.ISOState), "-"); len(parts) == 2 && len(parts[1]) == 2 {
+			state = strings.ToUpper(parts[1])
+		}
 		results = append(results, AddressResult{
-			ID: identifier, FormattedAddress: strings.TrimSpace(item.DisplayName), PostalCode: strings.TrimSpace(item.Address.PostalCode),
+			ID: identifier, FormattedAddress: strings.TrimSpace(item.DisplayName),
+			StreetAddress: strings.TrimSpace(strings.TrimSpace(item.Address.HouseNumber) + " " + road),
+			City:          city, State: state, PostalCode: strings.TrimSpace(item.Address.PostalCode),
+			CountryCode: strings.ToUpper(strings.TrimSpace(item.Address.CountryCode)),
 		})
 	}
 	return results, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c *NominatimClient) doRateLimited(request *http.Request) (*http.Response, error) {

@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
 const uncategorized = "Uncategorized"
@@ -216,6 +218,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		Channels:             resultChannels,
 		DuplicateSuggestions: duplicates,
 		Sources:              statuses,
+		Categories:           append(channelcategory.Categories(), uncategorized),
 		Total:                len(resultChannels),
 	}
 	for _, channel := range resultChannels {
@@ -241,10 +244,7 @@ func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpd
 	if update.Category != nil {
 		category := cleanCategory(*update.Category)
 		if category == "" {
-			category = uncategorized
-		}
-		if len(category) > 80 {
-			return errors.New("category must be 80 characters or fewer")
+			return errors.New("category must be one of the master categories or Uncategorized")
 		}
 		update.Category = &category
 	}
@@ -517,11 +517,12 @@ func finalizeChannel(channel *channelWork) {
 }
 
 type indexedEntry struct {
-	name     string
-	category string
-	aliases  []string
-	epgIDs   []string
-	keys     map[string]bool
+	name           string
+	category       string
+	categoryMethod string
+	aliases        []string
+	epgIDs         []string
+	keys           map[string]bool
 }
 
 func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, sourceLabel string) (int, int) {
@@ -534,7 +535,9 @@ func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, source
 			if name == "" {
 				continue
 			}
-			indexed := indexedEntry{name: name, category: cleanCategory(category), aliases: cleanStrings(entry.Aliases), epgIDs: cleanStrings(entry.EPGIDs), keys: make(map[string]bool)}
+			aliases := cleanStrings(entry.Aliases)
+			mappedCategory, categoryMethod := resolveProviderCategory(category, append([]string{name}, aliases...)...)
+			indexed := indexedEntry{name: name, category: mappedCategory, categoryMethod: categoryMethod, aliases: aliases, epgIDs: cleanStrings(entry.EPGIDs), keys: make(map[string]bool)}
 			for _, value := range append([]string{name}, indexed.aliases...) {
 				if key := identityKey(value); key != "" {
 					indexed.keys[key] = true
@@ -571,7 +574,7 @@ func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, source
 		if channel.draft.CategorySource == "unresolved" && entry.category != "" {
 			channel.draft.Category = entry.category
 			channel.draft.CategorySource = sourceLabel
-			channel.draft.CategoryMethod = "exact catalog identity"
+			channel.draft.CategoryMethod = "exact catalog identity; " + entry.categoryMethod
 		}
 		channel.addAlias(entry.name, sourceID, "exact catalog identity")
 		for _, alias := range entry.aliases {
@@ -627,13 +630,15 @@ func applyIPTVOrg(channels []*channelWork, sourceEntries []iptvOrgChannel, count
 			continue
 		}
 		category := ""
+		categoryMethod := ""
 		for _, rawCategory := range entry.Categories {
-			if mapped := mapIPTVOrgCategory(rawCategory); mapped != "" {
+			if mapped, method := resolveProviderCategory(rawCategory, append([]string{name}, entry.AltNames...)...); mapped != "" {
 				category = mapped
+				categoryMethod = method
 				break
 			}
 		}
-		indexed := indexedEntry{name: name, category: category, aliases: cleanStrings(entry.AltNames), epgIDs: cleanStrings([]string{entry.ID}), keys: make(map[string]bool)}
+		indexed := indexedEntry{name: name, category: category, categoryMethod: categoryMethod, aliases: cleanStrings(entry.AltNames), epgIDs: cleanStrings([]string{entry.ID}), keys: make(map[string]bool)}
 		for _, value := range append([]string{name}, indexed.aliases...) {
 			if key := identityKey(value); key != "" {
 				indexed.keys[key] = true
@@ -674,7 +679,7 @@ func applyIPTVOrg(channels []*channelWork, sourceEntries []iptvOrgChannel, count
 		if channel.draft.CategorySource == "unresolved" && entry.category != "" {
 			channel.draft.Category = entry.category
 			channel.draft.CategorySource = sourceLabel
-			channel.draft.CategoryMethod = "exact public database identity"
+			channel.draft.CategoryMethod = "exact public database identity; " + entry.categoryMethod
 		}
 		channel.addAlias(entry.name, sourceID, "exact public database identity")
 		for _, alias := range entry.aliases {
@@ -804,38 +809,32 @@ func looksLikeDigitalCallSign(value string) bool {
 }
 
 func mapIPTVOrgCategory(category string) string {
-	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "news", "business", "legislative", "weather":
-		return "News"
-	case "sports":
-		return "Sports"
-	case "movies":
-		return "Movies"
-	case "kids", "animation", "family":
-		return "Kids"
-	case "entertainment", "general", "classic", "interactive", "public", "relax", "series":
-		return "Entertainment"
-	case "lifestyle":
-		return "Reality & Lifestyle"
-	case "culture", "documentary", "education", "science":
-		return "Discovery"
-	case "religious":
-		return "Faith"
-	case "music":
-		return "Music"
-	case "shop", "shopping":
-		return "Shopping"
-	case "comedy":
-		return "Comedy"
-	case "cooking", "travel":
-		return "Food & Travel"
-	case "auto", "outdoor":
-		return "Outdoors"
-	case "xxx":
-		return "Adult & PPV"
-	default:
-		return ""
+	if strings.EqualFold(strings.TrimSpace(category), "xxx") {
+		return channelcategory.Other
 	}
+	if strings.EqualFold(strings.TrimSpace(category), "auto") {
+		return channelcategory.Entertainment
+	}
+	mapped, _ := resolveProviderCategory(category)
+	return mapped
+}
+
+func resolveProviderCategory(category string, identities ...string) (string, string) {
+	if strings.EqualFold(strings.TrimSpace(category), "xxx") {
+		return channelcategory.Other, channelcategory.MethodAlias + " (xxx to Adult to Other)"
+	}
+	if strings.EqualFold(strings.TrimSpace(category), "auto") {
+		return channelcategory.Entertainment, channelcategory.MethodAlias + " (auto to Entertainment)"
+	}
+	match, ok := channelcategory.Resolve(category, identities...)
+	if !ok {
+		return "", ""
+	}
+	method := match.Method
+	if match.Method == channelcategory.MethodFuzzy {
+		method = fmt.Sprintf("%s %.0f%% to %q", match.Method, match.Confidence*100, match.MatchedAlias)
+	}
+	return match.Category, method
 }
 
 func safeAffiliate(value string) bool {
@@ -856,10 +855,14 @@ func safeAffiliate(value string) bool {
 
 func cleanCategory(value string) string {
 	value = cleanText(value)
-	if strings.EqualFold(value, "uncategorised") {
+	if strings.EqualFold(value, "uncategorised") || strings.EqualFold(value, uncategorized) {
 		return uncategorized
 	}
-	return value
+	match, ok := channelcategory.Resolve(value)
+	if !ok {
+		return ""
+	}
+	return match.Category
 }
 
 func cleanText(value string) string {

@@ -1,6 +1,16 @@
 # Third-party notices
 
+## ledongthuc/pdf
+
+Runtime parsing of public provider PDF guides uses
+[`github.com/ledongthuc/pdf`](https://github.com/ledongthuc/pdf), pinned in
+`go.mod`. The package is distributed under the BSD 3-Clause License. Its full
+license text is included with the module source and remains authoritative.
+
 ## PrismCast channel registry
+
+This compatibility snapshot is disabled by default and is used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
 
 `lineuparr/network_catalog.json` is a normalized snapshot of station identity,
 tag, direct-site, and service-name records from PrismCast commit
@@ -25,6 +35,9 @@ OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
 PERFORMANCE OF THIS SOFTWARE.
 
 ## Stream Link Manager PBS station map
+
+This compatibility snapshot is disabled by default and is used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
 
 `lineuparr/pbs_catalog.json` is a normalized snapshot of PBS station-to-
 Gracenote records from Stream Link Manager for Channels commit
@@ -55,6 +68,9 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ## Official provider source snapshots
+
+These compatibility snapshots are disabled by default and are used only when
+`LINEUPARR_REFERENCE_CATALOGS=on`.
 
 `providersource/official_catalog.json` contains normalized factual channel
 names, numbers, and provider-defined sections from the public official sources

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Build the embedded official-provider snapshot used by ZIP scans.
+"""Build the optional embedded official-provider compatibility snapshot.
 
-This maintainer tool intentionally keeps PDF/HTML parsing out of the scraper's
-runtime. Inputs are downloaded from the source URLs recorded below, reviewed,
-then converted to a small deterministic JSON snapshot with attribution.
+Runtime provider adapters are authoritative for configured-ZIP scans. This
+maintainer tool converts reviewed source captures into a small deterministic,
+default-off compatibility snapshot with attribution.
 """
 
 import argparse

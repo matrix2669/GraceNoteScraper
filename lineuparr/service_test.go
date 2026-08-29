@@ -110,7 +110,7 @@ func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	if !contains(espn.Aliases, "ESPN US") || !contains(espn.EPGIDs, "20001") {
 		t.Fatalf("ESPN aliases/EPG IDs = %v / %v", espn.Aliases, espn.EPGIDs)
 	}
-	if espn.NameMethod != "exact catalog identity" || espn.CategoryMethod != "exact catalog identity" || !evidenceHasMethod(espn.EPGIDEvidence, "20001", "curated catalog EPG ID") {
+	if espn.NameMethod != "exact catalog identity" || !strings.Contains(espn.CategoryMethod, "exact master category") || !evidenceHasMethod(espn.EPGIDEvidence, "20001", "curated catalog EPG ID") {
 		t.Fatalf("ESPN provenance = name %q category %q EPG %+v", espn.NameMethod, espn.CategoryMethod, espn.EPGIDEvidence)
 	}
 	ambiguous := channelByID(t, draft, "ambiguous")
@@ -141,7 +141,7 @@ func TestBuildUsesScheduleCategoryOnlyWhenExactSourcesDoNotCategorize(t *testing
 		t.Fatalf("Build() error = %v", err)
 	}
 	catalogChannel := channelByID(t, draft, "catalog")
-	if catalogChannel.Category != "Sports" || catalogChannel.CategoryMethod != "exact catalog identity" {
+	if catalogChannel.Category != "Sports" || !strings.Contains(catalogChannel.CategoryMethod, "exact master category") {
 		t.Fatalf("catalog category = %+v", catalogChannel)
 	}
 	scheduleChannel := channelByID(t, draft, "schedule")
@@ -167,7 +167,7 @@ func TestBuildUsesIPTVOrgExactNamesAndCategories(t *testing.T) {
 		t.Fatalf("Build() error = %v", err)
 	}
 	example := channelByID(t, draft, "example")
-	if example.Name != "Example Network" || example.Category != "Discovery" {
+	if example.Name != "Example Network" || example.Category != "Entertainment" {
 		t.Fatalf("iptv-org enrichment = %+v", example)
 	}
 	if !contains(example.EPGIDs, "Example.us") || !evidenceHasMethod(example.EPGIDEvidence, "Example.us", "public database channel ID") {
@@ -183,14 +183,54 @@ func TestBuildUsesIPTVOrgExactNamesAndCategories(t *testing.T) {
 
 func TestIPTVOrgCategoryMappingCoversPublishedCategories(t *testing.T) {
 	tests := map[string]string{
-		"animation": "Kids", "auto": "Outdoors", "business": "News",
-		"culture": "Discovery", "family": "Kids", "interactive": "Entertainment",
-		"series": "Entertainment", "shop": "Shopping", "xxx": "Adult & PPV",
+		"animation": "Kids & Family", "auto": "Entertainment", "business": "News & Weather",
+		"culture": "Entertainment", "family": "Kids & Family", "interactive": "Other",
+		"series": "Entertainment", "shop": "Entertainment", "xxx": "Other",
 	}
 	for input, want := range tests {
 		if got := mapIPTVOrgCategory(input); got != want {
 			t.Errorf("mapIPTVOrgCategory(%q) = %q, want %q", input, got, want)
 		}
+	}
+}
+
+func TestProviderCategoryFuzzyMatchingIsAuditableAndConservative(t *testing.T) {
+	catalog := `{"package":"Provider categories","categories":{"documentry":[{"name":"DOCS"}],"International Sports":[{"name":"AMB"}]}}`
+	service := newTestService(t, catalog, "")
+	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{
+		{Key: "fuzzy", CallSign: "DOCS"},
+		{Key: "ambiguous", CallSign: "AMB"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fuzzy := channelByID(t, draft, "fuzzy")
+	if fuzzy.Category != "Entertainment" || !strings.Contains(fuzzy.CategoryMethod, "fuzzy category alias") || !strings.Contains(fuzzy.CategoryMethod, "documentary") {
+		t.Fatalf("fuzzy category = %+v", fuzzy)
+	}
+	if ambiguous := channelByID(t, draft, "ambiguous"); ambiguous.Category != uncategorized {
+		t.Fatalf("ambiguous category was applied = %+v", ambiguous)
+	}
+}
+
+func TestDraftUsesOnlyMasterCategoriesAndRejectsUnknownEdits(t *testing.T) {
+	service := newTestService(t, "", "")
+	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{{Key: "one", CallSign: "ONE"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Local & Public", "News & Weather", "Sports", "Movies", "Entertainment", "Kids & Family", "Music", "Faith", "International", "PPV & Events", "Other", "Uncategorized"}
+	if len(draft.Categories) != len(want) {
+		t.Fatalf("draft categories = %v", draft.Categories)
+	}
+	for index := range want {
+		if draft.Categories[index] != want[index] {
+			t.Fatalf("draft categories = %v", draft.Categories)
+		}
+	}
+	unknown := "A New Category"
+	if err := service.UpdateChannel("source-one", "one", ChannelUpdate{Category: &unknown}); err == nil {
+		t.Fatal("unknown category edit was accepted")
 	}
 }
 
@@ -259,7 +299,7 @@ func TestOverridesAreScopedToActiveSource(t *testing.T) {
 		t.Fatalf("UpdateChannel() error = %v", err)
 	}
 	draft, _ := service.Build(context.Background(), testContext("source-one"), inputs)
-	if channel := channelByID(t, draft, "one"); channel.Included || channel.Category != "News" {
+	if channel := channelByID(t, draft, "one"); channel.Included || channel.Category != "News & Weather" {
 		t.Fatalf("source-one override = %+v", channel)
 	}
 	draft, _ = service.Build(context.Background(), testContext("source-two"), inputs)
@@ -327,10 +367,10 @@ func TestExportIsLineuparrCompatibleAndExcludesRemovedChannels(t *testing.T) {
 	}
 	draft, _ := service.Build(context.Background(), lineup, inputs)
 	export := ExportFromDraft(draft)
-	if len(export.Categories) != 1 || len(export.Categories["Local"]) != 1 {
+	if len(export.Categories) != 1 || len(export.Categories["Local & Public"]) != 1 {
 		t.Fatalf("export categories = %+v", export.Categories)
 	}
-	entry := export.Categories["Local"][0]
+	entry := export.Categories["Local & Public"][0]
 	if entry.Name != "KEEP" || entry.Number != 5.1 || !contains(entry.EPGIDs, "1") {
 		t.Fatalf("export entry = %+v", entry)
 	}

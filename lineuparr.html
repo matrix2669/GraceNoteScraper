@@ -852,7 +852,7 @@
         button.className = 'provider-address-result';
         button.textContent = result.formattedAddress;
         button.addEventListener('click', () => {
-          selectedProviderAddress = {placeId: result.id, formattedAddress: result.formattedAddress, postalCode: result.postalCode};
+          selectedProviderAddress = {...result};
           setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
         });
         els.providerAddressResults.append(button);
@@ -1008,7 +1008,10 @@
       try {
         const result = await api('/api/lineuparr/alias-index/run', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({action, batchSize: action === 'refresh' ? 1 : action === 'postal' ? 0 : 25, ranks})
+          body: JSON.stringify({
+            action, batchSize: action === 'refresh' ? 1 : action === 'postal' ? 0 : 25, ranks,
+            providerAddress: action === 'postal' ? (selectedProviderAddress || {}) : {}
+          })
         });
         setMarketMessage(result?.queued ? 'Scan queued until the guide is ready. Click the queued button to cancel.' : 'Scan started. Progress is saved after every lineup.', 'success');
       } catch (error) {
@@ -1094,8 +1097,7 @@
     }
 
     function categories() {
-      const defaults = ['Local','News','Sports','Regional Sports','Movies','Kids','Entertainment','Reality & Lifestyle','Comedy','Discovery','Crime','Faith','Music','Shopping','Spanish','International','Outdoors','Food & Travel','Adult & PPV','Uncategorized'];
-      return [...new Set([...defaults, ...draft.channels.map(channel => channel.category).filter(Boolean)])].sort((a,b) => a.localeCompare(b));
+      return draft.categories || ['Local & Public','News & Weather','Sports','Movies','Entertainment','Kids & Family','Music','Faith','International','PPV & Events','Other','Uncategorized'];
     }
 
     function renderCategoryOptions() {
