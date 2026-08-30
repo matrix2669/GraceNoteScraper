@@ -345,7 +345,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	}
 	providers := []web.Provider{}
 	if runErr == nil {
-		providers = uniqueProviders(result.Providers)
+		providers = uniquePostalProviders(result.Providers)
 		s.updatePostalJob(key, func(record *PostalScanRecord) {
 			record.ProviderCount = len(providers)
 		})
@@ -358,6 +358,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	}
 
 	seed := MarketSeed{Name: "Configured postal code " + postalCode, Country: country, PostalCode: postalCode}
+	seenLineupIDs := make(map[string]bool)
 	for _, provider := range providers {
 		if err := ctx.Err(); err != nil {
 			runErr = err
@@ -367,7 +368,13 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		s.job.CurrentProvider = strings.TrimSpace(provider.Name)
 		s.mu.Unlock()
 
-		lineup, _, _, err := s.prepareLineup(seed, provider, true)
+		lineupKey := lineupStorageKey(seed, provider)
+		lineupIDKey := strings.ToUpper(strings.TrimSpace(provider.LineupID))
+		if seenLineupIDs[lineupIDKey] {
+			lineupKey = lineupVariantStorageKey(seed, provider)
+		}
+		seenLineupIDs[lineupIDKey] = true
+		lineup, _, _, err := s.prepareLineupWithKey(seed, provider, true, lineupKey)
 		if err != nil {
 			runErr = err
 			break
@@ -710,6 +717,40 @@ func uniqueProviders(providers []web.Provider) []web.Provider {
 	return result
 }
 
+// uniquePostalProviders retains Gracenote device variants as distinct
+// configured-ZIP lineups. Gracenote commonly returns basic cable, digital,
+// digital-rebuild, and generic digital grids with one shared lineup ID; each
+// grid can contain different station IDs and provider positions.
+func uniquePostalProviders(providers []web.Provider) []web.Provider {
+	byVariant := make(map[string]web.Provider)
+	for _, provider := range providers {
+		provider.LineupID = strings.TrimSpace(provider.LineupID)
+		provider.HeadendID = strings.TrimSpace(provider.HeadendID)
+		provider.Device = strings.TrimSpace(provider.Device)
+		if provider.LineupID == "" || provider.HeadendID == "" {
+			continue
+		}
+		key := strings.ToUpper(provider.LineupID) + "\x00" + strings.ToUpper(provider.Device)
+		if _, exists := byVariant[key]; !exists {
+			byVariant[key] = provider
+		}
+	}
+	result := make([]web.Provider, 0, len(byVariant))
+	for _, provider := range byVariant {
+		result = append(result, provider)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].LineupID != result[j].LineupID {
+			return result[i].LineupID < result[j].LineupID
+		}
+		if result[i].Device != result[j].Device {
+			return result[i].Device < result[j].Device
+		}
+		return result[i].Name < result[j].Name
+	})
+	return result
+}
+
 func lineupPreferences(lineup *LineupRecord) web.Preferences {
 	return web.Preferences{
 		Country:  lineup.Country,
@@ -754,9 +795,12 @@ func (s *Service) replaceMarketRecord(rank int, record *MarketRecord) error {
 }
 
 func (s *Service) prepareLineup(seed MarketSeed, provider web.Provider, force bool) (*LineupRecord, bool, bool, error) {
+	return s.prepareLineupWithKey(seed, provider, force, lineupStorageKey(seed, provider))
+}
+
+func (s *Service) prepareLineupWithKey(seed MarketSeed, provider web.Provider, force bool, key string) (*LineupRecord, bool, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := lineupStorageKey(seed, provider)
 	lineup, exists := s.index.Lineups[key]
 	if !exists {
 		lineup = &LineupRecord{Key: key, LineupID: provider.LineupID, Status: StatusPending}
@@ -796,6 +840,23 @@ func lineupStorageKey(seed MarketSeed, provider web.Provider) string {
 		return lineupID + "@" + seed.PostalCode
 	}
 	return lineupID
+}
+
+func lineupVariantStorageKey(seed MarketSeed, provider web.Provider) string {
+	device := strings.ToUpper(strings.TrimSpace(provider.Device))
+	if device == "" {
+		device = "NONE"
+	}
+	device = strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) || character == '-' {
+			return character
+		}
+		return -1
+	}, device)
+	if device == "" {
+		device = "NONE"
+	}
+	return lineupStorageKey(seed, provider) + "@device=" + device
 }
 
 func (s *Service) failLineup(lineupKey string, scanErr error) error {

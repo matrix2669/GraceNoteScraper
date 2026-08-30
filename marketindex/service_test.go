@@ -34,6 +34,11 @@ type fakeGrids struct {
 	calls     map[string]int
 }
 
+type variantGrids struct {
+	mu    sync.Mutex
+	calls map[string]int
+}
+
 type blockingGrid struct {
 	started chan struct{}
 }
@@ -85,6 +90,20 @@ func (f *fakeGrids) FetchGrid(_ context.Context, preferences web.Preferences, _ 
 		return nil, errors.New("temporary grid failure")
 	}
 	return f.responses[preferences.LineupId], nil
+}
+
+func (f *variantGrids) FetchGrid(_ context.Context, preferences web.Preferences, _ int64) (*web.GridResponse, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := preferences.LineupId + "@" + preferences.Device
+	f.calls[key]++
+	stationID := "STATION-" + preferences.Device
+	if preferences.Device == "" {
+		stationID = "STATION-NONE"
+	}
+	return &web.GridResponse{Channels: []web.JSONChannel{{
+		ChannelID: stationID, ChannelNo: "1", CallSign: stationID,
+	}}}, nil
 }
 
 func testCatalog(markets ...MarketSeed) SeedCatalog {
@@ -177,6 +196,75 @@ func TestPostalScanEnrichesEveryProviderBeforeCrossLineupReuse(t *testing.T) {
 	category, ok := service.CategoriesForStations([]string{"S1"})["S1"]
 	if !ok || category.Value != "Sports" || len(category.SourceIDs) != 1 || category.SourceIDs[0] != "provider-one" {
 		t.Fatalf("category = %+v, %v", category, ok)
+	}
+}
+
+func TestPostalScanKeepsGracenoteDeviceVariantsSeparate(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "market_index.json")
+	base := web.Provider{
+		Type: "CABLE", LineupID: "USA-NY58806-DEFAULT", HeadendID: "NY58806",
+		Name: "Optimum of Woodbury", PostalCode: "11743",
+	}
+	providers := &fakeProviders{responses: map[string][]web.Provider{"11743": {
+		base,
+		func() web.Provider { value := base; value.Device = "D"; value.Name += " - Digital"; return value }(),
+		func() web.Provider {
+			value := base
+			value.Device = "L"
+			value.Name += " - Digital Rebuild"
+			return value
+		}(),
+		func() web.Provider { value := base; value.Device = "X"; value.Name += " - Digital"; return value }(),
+		func() web.Provider { value := base; value.Device = "D"; value.Name += " - duplicate"; return value }(),
+	}}}
+	grids := &variantGrids{calls: make(map[string]int)}
+	service, err := NewService(ServiceConfig{
+		Path: path, SnapshotDir: filepath.Join(directory, "snapshots"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: providers, Grids: grids,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(RunRequest{Action: "postal", Country: "USA", PostalCode: "11743", Language: "en-us"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForPostal(t, service, "USA", "11743")
+	if snapshot.PostalScan.Status != StatusComplete || snapshot.PostalScan.ProviderCount != 4 || snapshot.PostalScan.LineupsScanned != 4 {
+		t.Fatalf("postal device variants = %+v", snapshot.PostalScan)
+	}
+	for _, device := range []string{"", "D", "L", "X"} {
+		if grids.calls["USA-NY58806-DEFAULT@"+device] != 1 {
+			t.Fatalf("grid calls = %+v", grids.calls)
+		}
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var persisted Index
+	if err := json.Unmarshal(data, &persisted); err != nil {
+		t.Fatal(err)
+	}
+	wantKeys := []string{
+		"USA-NY58806-DEFAULT",
+		"USA-NY58806-DEFAULT@device=D",
+		"USA-NY58806-DEFAULT@device=L",
+		"USA-NY58806-DEFAULT@device=X",
+	}
+	for _, key := range wantKeys {
+		if persisted.Lineups[key] == nil {
+			t.Fatalf("missing lineup variant %q in %+v", key, persisted.Lineups)
+		}
+	}
+	files, err := filepath.Glob(filepath.Join(directory, "snapshots", "USA", "11743", "*.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) != 4 {
+		t.Fatalf("snapshot files = %d, want 4: %v", len(files), files)
 	}
 }
 

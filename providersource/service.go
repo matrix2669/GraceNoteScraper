@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -262,23 +263,28 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 	matches := make([]matchedEntry, 0, len(source.Entries))
 	aliasOwners := make(map[string]map[string]bool)
 	for _, entry := range source.Entries {
-		channel, method, ok := matchEntry(entry, byNumber, byIdentity)
-		if !ok || strings.TrimSpace(channel.ChannelID) == "" {
+		channels, method, ok := matchEntry(entry, byNumber, byIdentity)
+		if !ok {
 			continue
 		}
-		matchedStations[channel.ChannelID] = true
-		matches = append(matches, matchedEntry{channel: channel, entry: entry, method: method})
-		aliases := append([]string{entry.Name}, entry.Aliases...)
-		aliases = append(aliases, entry.CallSigns...)
-		for _, alias := range aliases {
-			key := identityKey(alias)
-			if key == "" {
+		for _, channel := range channels {
+			if strings.TrimSpace(channel.ChannelID) == "" {
 				continue
 			}
-			if aliasOwners[key] == nil {
-				aliasOwners[key] = make(map[string]bool)
+			matchedStations[channel.ChannelID] = true
+			matches = append(matches, matchedEntry{channel: channel, entry: entry, method: method})
+			aliases := append([]string{entry.Name}, entry.Aliases...)
+			aliases = append(aliases, entry.CallSigns...)
+			for _, alias := range aliases {
+				key := identityKey(alias)
+				if key == "" {
+					continue
+				}
+				if aliasOwners[key] == nil {
+					aliasOwners[key] = make(map[string]bool)
+				}
+				aliasOwners[key][channel.ChannelID] = true
 			}
-			aliasOwners[key][channel.ChannelID] = true
 		}
 	}
 	seenFacts := make(map[string]bool)
@@ -366,11 +372,36 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 	return result
 }
 
-func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel) (web.JSONChannel, string, bool) {
+func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel) ([]web.JSONChannel, string, bool) {
 	for _, number := range entry.Numbers {
 		matches := byNumber[normalizeNumber(number)]
 		if len(matches) == 1 {
-			return matches[0], "exact provider channel number", true
+			return matches, "exact provider channel number", true
+		}
+		if len(matches) > 1 {
+			entryIdentities := make(map[string]bool)
+			for _, value := range append(append([]string{entry.Name}, entry.Aliases...), entry.CallSigns...) {
+				if key := identityKey(value); key != "" {
+					entryIdentities[key] = true
+				}
+			}
+			exact := make(map[string]web.JSONChannel)
+			for _, channel := range matches {
+				for _, value := range channelIdentityValues(channel) {
+					if entryIdentities[identityKey(value)] {
+						exact[channel.ChannelID] = channel
+						break
+					}
+				}
+			}
+			if len(exact) > 0 {
+				result := make([]web.JSONChannel, 0, len(exact))
+				for _, channel := range exact {
+					result = append(result, channel)
+				}
+				sort.Slice(result, func(i, j int) bool { return result[i].ChannelID < result[j].ChannelID })
+				return result, "exact provider channel number plus exact identity across same-number variants", true
+			}
 		}
 	}
 	identities := append([]string{entry.Name}, entry.Aliases...)
@@ -384,10 +415,10 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 	}
 	if len(unique) == 1 {
 		for _, channel := range unique {
-			return channel, "unique exact provider callsign or name", true
+			return []web.JSONChannel{channel}, "unique exact provider callsign or name", true
 		}
 	}
-	return web.JSONChannel{}, "", false
+	return nil, "", false
 }
 
 func channelIdentityValues(channel web.JSONChannel) []string {
