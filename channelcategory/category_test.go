@@ -40,6 +40,8 @@ func TestResolveUsesCanonicalAliasesAndConservativeFuzzyMatching(t *testing.T) {
 		{value: "News & Information", want: NewsWeather, method: MethodAlias, matched: true},
 		{value: "Family & Kids", want: KidsFamily, method: MethodAlias, matched: true},
 		{value: "Information and education", want: Entertainment, method: MethodAlias, matched: true},
+		{value: "Networks", want: Entertainment, method: MethodAlias, matched: true},
+		{value: "Premiums", want: Movies, method: MethodAlias, matched: true},
 		{value: "PPV and subscription events", want: PPVEvents, method: MethodAlias, matched: true},
 		{value: "International Sports", matched: false},
 		{value: "unknown package", matched: false},
@@ -49,6 +51,24 @@ func TestResolveUsesCanonicalAliasesAndConservativeFuzzyMatching(t *testing.T) {
 		if ok != test.matched || match.Category != test.want || (ok && match.Method != test.method) {
 			t.Errorf("Resolve(%q) = %+v, %v", test.value, match, ok)
 		}
+	}
+}
+
+func TestOnDemandAndPPVDisambiguation(t *testing.T) {
+	onDemand, ok := Resolve("On Demand & PPV", "HBO On Demand")
+	if !ok || onDemand.Category != Other {
+		t.Fatalf("on-demand match = %+v, %v", onDemand, ok)
+	}
+	adult, ok := Resolve("On Demand & PPV", "Adult Programming")
+	if !ok || adult.Category != Other {
+		t.Fatalf("adult service match = %+v, %v", adult, ok)
+	}
+	event, ok := Resolve("On Demand & PPV", "Sports PPV Event Feed 1")
+	if !ok || event.Category != PPVEvents {
+		t.Fatalf("event match = %+v, %v", event, ok)
+	}
+	if match, ok := Resolve("On Demand & PPV", "Unknown channel"); ok {
+		t.Fatalf("ambiguous mixed category resolved = %+v", match)
 	}
 }
 

@@ -66,11 +66,11 @@ var definitions = []definition{
 		"sports overflow", "sports multidiffusion", "sports multi diffusion",
 	}},
 	{name: Movies, aliases: []string{
-		"movie", "cinema", "cine", "cine y series", "premium", "premium movies", "movies premium",
+		"movie", "cinema", "cine", "cine y series", "premium", "premiums", "premium movies", "movies premium",
 		"movies and premium", "movie channels",
 	}},
 	{name: Entertainment, aliases: []string{
-		"general entertainment", "general", "generalistas", "classic", "series", "comedy", "crime",
+		"general entertainment", "general", "generalistas", "network", "networks", "network channels", "classic", "series", "comedy", "crime",
 		"discovery", "documentary", "documentaries", "documentales", "science", "culture", "education",
 		"reality", "reality lifestyle", "reality and lifestyle", "reality game shows", "reality and game shows",
 		"food", "travel", "food travel", "food and travel", "cooking", "shopping", "shop",
@@ -158,10 +158,10 @@ func IsCanonical(value string) bool {
 }
 
 // Resolve maps a provider-supplied category label to the master taxonomy. The
-// optional identities are used only to disambiguate a mixed "Adult & PPV"
-// label: an explicit PPV/event marker selects PPV & Events, an explicit adult
-// identity selects Other, and an unknown mixed identity remains unresolved.
-// Channel names are never generally fuzzy-classified.
+// optional identities disambiguate mixed Adult/PPV and On Demand/PPV labels:
+// explicit event markers select PPV & Events, while explicit adult or service
+// markers select Other. Unknown mixed identities remain unresolved. Channel
+// names are never generally fuzzy-classified.
 func Resolve(value string, identities ...string) (Match, bool) {
 	parts := categoryParts(value)
 	if len(parts) > 1 {
@@ -195,6 +195,15 @@ func resolveOne(value string, identities ...string) (Match, bool) {
 		}
 		if hasAdultIdentity(identities) {
 			return Match{Category: Other, MatchedAlias: strings.TrimSpace(value), Method: MethodAlias + "; mixed Adult/PPV label disambiguated by explicit adult identity", Confidence: 1}, true
+		}
+		return Match{}, false
+	}
+	if isMixedOnDemandPPV(normalized) {
+		if hasEventIdentity(identities) {
+			return Match{Category: PPVEvents, MatchedAlias: strings.TrimSpace(value), Method: MethodAlias + "; mixed On Demand/PPV label disambiguated by explicit event identity", Confidence: 1}, true
+		}
+		if hasOnDemandIdentity(identities) || hasAdultIdentity(identities) {
+			return Match{Category: Other, MatchedAlias: strings.TrimSpace(value), Method: MethodAlias + "; mixed On Demand/PPV label disambiguated by explicit service identity", Confidence: 1}, true
 		}
 		return Match{}, false
 	}
@@ -257,6 +266,11 @@ func isMixedAdultPPV(value string) bool {
 	return tokens["adult"] && (tokens["ppv"] || (tokens["pay"] && tokens["view"]))
 }
 
+func isMixedOnDemandPPV(value string) bool {
+	tokens := tokenSet(value)
+	return tokens["on"] && tokens["demand"] && (tokens["ppv"] || (tokens["pay"] && tokens["view"]))
+}
+
 func hasEventIdentity(identities []string) bool {
 	for _, identity := range identities {
 		key := compact(identity)
@@ -278,6 +292,18 @@ func hasAdultIdentity(identities []string) bool {
 		for _, marker := range []string{
 			"adult", "playboy", "penthouse", "hustler", "redlight", "hardcore", "xtsy", "fresh", "vivid",
 		} {
+			if strings.Contains(key, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasOnDemandIdentity(identities []string) bool {
+	for _, identity := range identities {
+		key := compact(identity)
+		for _, marker := range []string{"ondemand", "vod", "playback", "interactive"} {
 			if strings.Contains(key, marker) {
 				return true
 			}
