@@ -67,6 +67,39 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 	}
 }
 
+func TestOfficialCategoryCoversSameNumberVariantsWithExactIdentity(t *testing.T) {
+	request := marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "MTV-SD", ChannelNo: "160", CallSign: "MTV", Events: []web.JSONEvent{{CallSign: "MTV"}}},
+		{ChannelID: "MTV-HD", ChannelNo: "160", CallSign: "MTVHD", Events: []web.JSONEvent{{CallSign: "MTV"}}},
+		{ChannelID: "UNRELATED", ChannelNo: "160", CallSign: "OTHER", Events: []web.JSONEvent{{CallSign: "OTHER"}}},
+	}}}
+	result := matchCatalog(request, catalogSource{
+		ID: "provider", Label: "Provider", Method: "official provider row",
+		Entries: []catalogEntry{{Numbers: []string{"160"}, Name: "MTV", Category: "Music"}},
+	})
+	categories := make(map[string]string)
+	aliases := make(map[string]bool)
+	for _, fact := range result.Facts {
+		if fact.Kind == marketindex.FactCategory {
+			categories[fact.StationID] = fact.Value
+		} else if fact.Kind == marketindex.FactAlias {
+			aliases[fact.StationID] = true
+		}
+		if !strings.Contains(fact.Method, "exact provider channel number plus exact identity") {
+			t.Fatalf("fact method = %q", fact.Method)
+		}
+	}
+	if categories["MTV-SD"] != "Music" || categories["MTV-HD"] != "Music" || categories["UNRELATED"] != "" {
+		t.Fatalf("categories = %+v", categories)
+	}
+	if len(aliases) != 0 {
+		t.Fatalf("shared alias should remain suppressed across station IDs: %+v", aliases)
+	}
+	if len(result.Sources) != 1 || result.Sources[0].Matched != 2 || result.Sources[0].Categories != 2 {
+		t.Fatalf("source status = %+v", result.Sources)
+	}
+}
+
 func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("offline test")
