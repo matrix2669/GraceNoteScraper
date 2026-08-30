@@ -41,6 +41,47 @@ func TestWeekdayEPGBlocksUseProviderLocalTime(t *testing.T) {
 	}
 }
 
+func TestWeekdayEPGBlocksUseGracenoteMinuteOffsets(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
+	blocks, timezone, err := weekdayEPGBlocks(now, nil, &web.ProviderResponse{
+		StdUTCOffset: "-300",
+		DSTUTCOffset: "-240",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if timezone != "America/New_York" || len(blocks) != 4 {
+		t.Fatalf("timezone=%q blocks=%+v", timezone, blocks)
+	}
+	location, _ := time.LoadLocation("America/New_York")
+	if got := blocks[0].Start.In(location); got.Weekday() != time.Tuesday || got.Hour() != 20 {
+		t.Fatalf("primary prime block = %s", got)
+	}
+}
+
+func TestParseUTCOffsetSupportsGracenoteMinutesAndConventionalHours(t *testing.T) {
+	tests := []struct {
+		value string
+		want  int
+		ok    bool
+	}{
+		{value: "-300", want: -300, ok: true},
+		{value: "-240", want: -240, ok: true},
+		{value: "-5", want: -300, ok: true},
+		{value: "+05:30", want: 330, ok: true},
+		{value: "840", want: 840, ok: true},
+		{value: "841", ok: false},
+		{value: "15:00", ok: false},
+		{value: "05:30:00", ok: false},
+	}
+	for _, test := range tests {
+		got, ok := parseUTCOffset(test.value)
+		if got != test.want || ok != test.ok {
+			t.Errorf("parseUTCOffset(%q) = %d, %v; want %d, %v", test.value, got, ok, test.want, test.ok)
+		}
+	}
+}
+
 func TestEPGMatchingRequiresPairLevelIdentityAndConfirmsSemanticSchedules(t *testing.T) {
 	blocks := testEPGBlocks()
 	leftPrime := testEPGChannel("LEFT", "WCBSDT", "CBS", blocks[0], []string{"News", "Prime 1", "Prime 2", "Prime 3", "Prime 4", "Late News"}, "LEFT")
