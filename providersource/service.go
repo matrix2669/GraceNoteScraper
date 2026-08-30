@@ -281,6 +281,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 			aliasOwners[key][channel.ChannelID] = true
 		}
 	}
+	seenFacts := make(map[string]bool)
 	for _, match := range matches {
 		entry := match.entry
 		channel := match.channel
@@ -299,6 +300,11 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 				continue
 			}
 			seenAliases[key] = true
+			factKey := channel.ChannelID + "\x00" + marketindex.FactAlias + "\x00" + key
+			if seenFacts[factKey] {
+				continue
+			}
+			seenFacts[factKey] = true
 			result.Facts = append(result.Facts, marketindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: marketindex.FactAlias, Value: strings.TrimSpace(alias),
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod,
@@ -315,6 +321,11 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 			if entry.CategoryMethod != "" {
 				categoryMethod = entry.CategoryMethod + "; " + categoryMethod
 			}
+			factKey := channel.ChannelID + "\x00" + marketindex.FactCategory + "\x00" + identityKey(category.Category)
+			if seenFacts[factKey] {
+				continue
+			}
+			seenFacts[factKey] = true
 			result.Facts = append(result.Facts, marketindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: marketindex.FactCategory, Value: category.Category,
 				RawValue: strings.TrimSpace(entry.Category), MatchMethod: category.Method, MatchConfidence: category.Confidence,

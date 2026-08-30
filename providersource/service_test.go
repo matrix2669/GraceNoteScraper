@@ -200,6 +200,112 @@ func TestPDFRowParsersPreserveNamesNumbersAndRenames(t *testing.T) {
 	}
 }
 
+func TestOptimumPDFRowsRetainSectionCategoriesAndResetAtPageBoundary(t *testing.T) {
+	pairs := []pdfPair{
+		{nameStart: 20, numberStart: 200, end: 250},
+		{nameStart: 300, numberStart: 480, end: 530},
+	}
+	lines := []pdfLine{
+		{Page: 1, Y: 100, Words: []pdfWord{{Text: "Networks", X: 20, W: 50}, {Text: "Ch.", X: 200, W: 12}}},
+		{Page: 1, Y: 95, Words: []pdfWord{{Text: "A&E", X: 300, W: 20}, {Text: "46", X: 480, W: 12}}},
+		{Page: 1, Y: 90, Words: []pdfWord{{Text: "AMC", X: 20, W: 20}, {Text: "43", X: 200, W: 12}}},
+		{Page: 1, Y: 80, Words: []pdfWord{{Text: "Kids", X: 300, W: 25}, {Text: "Ch.", X: 480, W: 12}}},
+		{Page: 1, Y: 70, Words: []pdfWord{{Text: "Nickelodeon", X: 300, W: 60}, {Text: "121", X: 480, W: 18}}},
+		{Page: 1, Y: 60, Words: []pdfWord{{Text: "Sports", X: 20, W: 35}, {Text: "Ch.", X: 200, W: 12}}},
+		{Page: 1, Y: 50, Words: []pdfWord{{Text: "ESPN", X: 20, W: 25}, {Text: "210", X: 200, W: 18}}},
+		{Page: 1, Y: 40, Words: []pdfWord{{Text: "On Demand & PPV", X: 300, W: 100}, {Text: "Ch.", X: 480, W: 12}}},
+		{Page: 1, Y: 30, Words: []pdfWord{{Text: "HBO On Demand", X: 300, W: 80}, {Text: "300", X: 480, W: 18}}},
+		{Page: 1, Y: 20, Words: []pdfWord{{Text: "Networks", X: 20, W: 50}, {Text: "Ch.", X: 200, W: 12}}},
+		{Page: 1, Y: 10, Words: []pdfWord{{Text: "132", X: 200, W: 18}}},
+		{Page: 2, Y: 100, Words: []pdfWord{{Text: "Alphabetical Only", X: 20, W: 90}, {Text: "999", X: 200, W: 18}}},
+	}
+	entries := parseOptimumLines(lines, pairs)
+	byNumber := make(map[string]catalogEntry)
+	for _, entry := range entries {
+		byNumber[entry.Numbers[0]] = entry
+	}
+	want := map[string]string{"43": "Networks", "46": "Networks", "121": "Kids", "132": "Networks", "210": "Sports", "300": "On Demand & PPV", "999": ""}
+	for number, category := range want {
+		entry, ok := byNumber[number]
+		if !ok || entry.Category != category {
+			t.Errorf("channel %s = %+v, want category %q", number, entry, category)
+		}
+		if (category == "") != (entry.CategoryMethod == "") {
+			t.Errorf("channel %s category method = %q for category %q", number, entry.CategoryMethod, category)
+		}
+	}
+}
+
+func TestOptimumCategorizedPagesRequireMultipleSectionHeadings(t *testing.T) {
+	pairs := []pdfPair{{nameStart: 20, numberStart: 200, end: 250}}
+	lines := []pdfLine{
+		{Page: 1, Y: 100, Words: []pdfWord{{Text: "Networks", X: 20, W: 50}}},
+		{Page: 1, Y: 90, Words: []pdfWord{{Text: "Kids", X: 20, W: 25}}},
+		{Page: 1, Y: 80, Words: []pdfWord{{Text: "Sports", X: 20, W: 35}}},
+		{Page: 2, Y: 100, Words: []pdfWord{{Text: "Networks", X: 20, W: 50}}},
+		{Page: 2, Y: 90, Words: []pdfWord{{Text: "AMC", X: 20, W: 20}, {Text: "43", X: 200, W: 12}}},
+	}
+	filtered := optimumCategorizedPages(lines, pairs)
+	if len(filtered) != 3 {
+		t.Fatalf("categorized page lines = %+v", filtered)
+	}
+	for _, line := range filtered {
+		if line.Page != 1 {
+			t.Fatalf("flat index page was accepted as categorized: %+v", line)
+		}
+	}
+}
+
+func TestMergeOptimumCategoryEvidenceUsesExactNumbersAndExpandsPositions(t *testing.T) {
+	flat := []catalogEntry{
+		{Numbers: []string{"2", "702"}, Name: "WCBS"},
+		{Numbers: []string{"210"}, Name: "ESPN"},
+		{Numbers: []string{"999"}, Name: "Uncategorized"},
+	}
+	categorized := []catalogEntry{
+		{Numbers: []string{"2"}, Name: "CBS", Category: "Networks", CategoryMethod: "Optimum PDF section heading"},
+		{Numbers: []string{"702"}, Name: "CBS HD", Category: "Networks", CategoryMethod: "Optimum PDF section heading"},
+		{Numbers: []string{"210"}, Name: "ESPN", Category: "Sports", CategoryMethod: "Optimum PDF section heading"},
+		{Numbers: []string{"850"}, Name: "Stingray Music", Category: "Music", CategoryMethod: "Optimum PDF section heading"},
+	}
+	entries := mergeOptimumCategoryEvidence(flat, categorized)
+	byNumber := make(map[string]catalogEntry)
+	for _, entry := range entries {
+		if len(entry.Numbers) != 1 {
+			t.Fatalf("entry was not expanded by provider position: %+v", entry)
+		}
+		byNumber[entry.Numbers[0]] = entry
+	}
+	for _, number := range []string{"2", "702"} {
+		entry := byNumber[number]
+		if entry.Name != "WCBS" || entry.Category != "Networks" {
+			t.Errorf("channel %s = %+v", number, entry)
+		}
+	}
+	if entry := byNumber["210"]; entry.Name != "ESPN" || entry.Category != "Sports" {
+		t.Errorf("channel 210 = %+v", entry)
+	}
+	if entry := byNumber["850"]; entry.Name != "Stingray Music" || entry.Category != "Music" {
+		t.Errorf("categorized-only range position = %+v", entry)
+	}
+	if entry := byNumber["999"]; entry.Name != "Uncategorized" || entry.Category != "" {
+		t.Errorf("unclassified channel = %+v", entry)
+	}
+}
+
+func TestOptimumCategoryEvidenceRejectsConflictingNumber(t *testing.T) {
+	entries := mergeOptimumCategoryEvidence(
+		[]catalogEntry{{Numbers: []string{"100"}, Name: "Example"}},
+		[]catalogEntry{
+			{Numbers: []string{"100"}, Name: "Example", Category: "Networks"},
+			{Numbers: []string{"100"}, Name: "Example", Category: "Sports"},
+		},
+	)
+	if len(entries) != 1 || entries[0].Category != "" {
+		t.Fatalf("conflicting evidence was applied: %+v", entries)
+	}
+}
+
 func TestXfinityErrorsNeverExposeServiceAddress(t *testing.T) {
 	const address = "123 Private Street, Huntington, NY 11743"
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
@@ -314,6 +420,29 @@ func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing
 	}
 	if aliases != 0 || categories != 2 {
 		t.Fatalf("facts = %+v", result.Facts)
+	}
+}
+
+func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.T) {
+	result := matchCatalog(marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "WCBS", ChannelNo: "2"}, {ChannelID: "WCBS", ChannelNo: "702"},
+	}}}, catalogSource{
+		ID: "optimum", Label: "Optimum official lineup", Entries: []catalogEntry{
+			{Numbers: []string{"2"}, Name: "CBS", Category: "Networks"},
+			{Numbers: []string{"702"}, Name: "CBS", Category: "Networks"},
+		},
+	})
+	aliases := 0
+	categories := 0
+	for _, fact := range result.Facts {
+		if fact.Kind == marketindex.FactAlias {
+			aliases++
+		} else if fact.Kind == marketindex.FactCategory {
+			categories++
+		}
+	}
+	if aliases != 1 || categories != 1 || result.Sources[0].Matched != 1 {
+		t.Fatalf("facts = %+v, source = %+v", result.Facts, result.Sources)
 	}
 }
 

@@ -21,6 +21,7 @@ const (
 
 var (
 	channelNumberPattern    = regexp.MustCompile(`^\d+(?:\s*/\s*\d+)*(?:\s*(?:HD|SD))?$`)
+	optimumNumberRange      = regexp.MustCompile(`^(\d{1,4})\s*-\s*(\d{1,4})$`)
 	broadstarCellPattern    = regexp.MustCompile(`^\s*(\d+(?:\s*/\s*\d+)?)\s*(.+?)\s*$`)
 	parentheticalPattern    = regexp.MustCompile(`\s*\(([^()]*)\)\s*`)
 	looseChannelLinePattern = regexp.MustCompile(`(?m)^\s*(\d{1,4}(?:\s*/\s*\d{1,4})?)\s+(.{2,80}?)\s*$`)
@@ -109,7 +110,7 @@ func (s *Service) fetchAFN(ctx context.Context) providerResult {
 }
 
 func parseOptimumPDF(data []byte) ([]catalogEntry, error) {
-	lines, err := extractPDFLines(data)
+	flatLines, err := extractPDFLines(data)
 	if err != nil {
 		return nil, err
 	}
@@ -128,15 +129,221 @@ func parseOptimumPDF(data []byte) ([]catalogEntry, error) {
 	}
 	var best []catalogEntry
 	for _, layout := range layouts {
-		entries := parsePairedLines(lines, layout)
+		entries := parsePairedLines(flatLines, layout)
 		if len(entries) > len(best) {
 			best = entries
 		}
+	}
+	if categorizedLines, categoryErr := extractPDFLinesWithXObjects(data); categoryErr == nil {
+		categoryLayout := []pdfPair{
+			{nameStart: 45, numberStart: 175, end: 218},
+			{nameStart: 285, numberStart: 415, end: 452},
+			{nameStart: 545, numberStart: 670, end: 721},
+			{nameStart: 790, numberStart: 915, end: 1018},
+			{nameStart: 1050, numberStart: 1175, end: 1215},
+		}
+		categorized := parseOptimumLines(optimumCategorizedPages(categorizedLines, categoryLayout), categoryLayout)
+		best = mergeOptimumCategoryEvidence(best, categorized)
 	}
 	if len(best) == 0 {
 		return nil, errors.New("Optimum PDF contained no recognizable channel rows")
 	}
 	return best, nil
+}
+
+func optimumCategorizedPages(lines []pdfLine, pairs []pdfPair) []pdfLine {
+	pageSections := make(map[int]map[string]bool)
+	for _, line := range lines {
+		for _, pair := range pairs {
+			if section, ok := optimumPDFSection(textInRange(line, pair.nameStart, pair.numberStart)); ok {
+				if pageSections[line.Page] == nil {
+					pageSections[line.Page] = make(map[string]bool)
+				}
+				pageSections[line.Page][section] = true
+			}
+		}
+	}
+	var result []pdfLine
+	for _, line := range lines {
+		if len(pageSections[line.Page]) >= 3 {
+			result = append(result, line)
+		}
+	}
+	return result
+}
+
+func parseOptimumLines(lines []pdfLine, pairs []pdfPair) []catalogEntry {
+	pageOrder := make([]int, 0)
+	pageLines := make(map[int][]pdfLine)
+	for _, line := range lines {
+		if _, exists := pageLines[line.Page]; !exists {
+			pageOrder = append(pageOrder, line.Page)
+		}
+		pageLines[line.Page] = append(pageLines[line.Page], line)
+	}
+
+	var entries []catalogEntry
+	for _, page := range pageOrder {
+		category := ""
+		for _, pair := range pairs {
+			for _, line := range pageLines[page] {
+				nameStart := pair.nameStart
+				numberStart := pair.numberStart
+				var name, number string
+				if nameStart < numberStart {
+					name = textInRange(line, nameStart, numberStart)
+					number = textInRange(line, numberStart, pair.end)
+				} else {
+					number = textInRange(line, numberStart, nameStart)
+					name = textInRange(line, nameStart, pair.end)
+				}
+				if heading, ok := optimumPDFSection(name); ok && !isOptimumChannelNumberValue(number) {
+					category = heading
+					continue
+				}
+				if !isOptimumChannelNumberValue(number) {
+					continue
+				}
+				var aliases, callSigns []string
+				if plausibleChannelName(name) {
+					name, aliases, callSigns = deriveNameEvidence(name)
+				} else {
+					name = ""
+				}
+				if name == "" && category == "" {
+					continue
+				}
+				categoryMethod := ""
+				if category != "" {
+					categoryMethod = "Optimum PDF section heading"
+				}
+				for _, channelNumber := range splitOptimumChannelNumbers(number) {
+					entries = append(entries, catalogEntry{
+						Numbers: []string{channelNumber}, Name: name, Aliases: aliases, CallSigns: callSigns,
+						Category: category, CategoryMethod: categoryMethod,
+					})
+				}
+			}
+		}
+	}
+	return dedupeOptimumRows(entries)
+}
+
+func dedupeOptimumRows(entries []catalogEntry) []catalogEntry {
+	result := make([]catalogEntry, 0, len(entries))
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		if len(entry.Numbers) == 0 || (entry.Name == "" && entry.Category == "") {
+			continue
+		}
+		key := strings.Join(entry.Numbers, ",") + "\x00" + identityKey(entry.Name) + "\x00" + identityKey(entry.Category)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		result = append(result, entry)
+	}
+	return result
+}
+
+func mergeOptimumCategoryEvidence(flat, categorized []catalogEntry) []catalogEntry {
+	type categoryEvidence struct {
+		category  string
+		method    string
+		ambiguous bool
+	}
+
+	byNumber := make(map[string]categoryEvidence)
+	for _, entry := range categorized {
+		if strings.TrimSpace(entry.Category) == "" {
+			continue
+		}
+		for _, number := range entry.Numbers {
+			key := normalizeNumber(number)
+			if key == "" {
+				continue
+			}
+			current, exists := byNumber[key]
+			switch {
+			case !exists:
+				byNumber[key] = categoryEvidence{category: entry.Category, method: entry.CategoryMethod}
+			case current.category != entry.Category:
+				current.ambiguous = true
+				byNumber[key] = current
+			}
+		}
+	}
+
+	result := make([]catalogEntry, 0, len(flat))
+	flatNumbers := make(map[string]bool)
+	for _, entry := range flat {
+		for _, number := range entry.Numbers {
+			key := normalizeNumber(number)
+			if key == "" {
+				continue
+			}
+			flatNumbers[key] = true
+			copy := entry
+			copy.Numbers = []string{number}
+			if evidence, ok := byNumber[key]; ok && !evidence.ambiguous {
+				copy.Category = evidence.category
+				copy.CategoryMethod = evidence.method
+			}
+			result = append(result, copy)
+		}
+	}
+
+	// The alphabetical index can omit compact range rows such as Stingray
+	// Music 850-899. Retain categorized-page rows only when their exact channel
+	// number is absent from the canonical index.
+	for _, entry := range categorized {
+		if strings.TrimSpace(entry.Category) == "" || strings.TrimSpace(entry.Name) == "" || len(entry.Numbers) != 1 {
+			continue
+		}
+		key := normalizeNumber(entry.Numbers[0])
+		if key == "" || flatNumbers[key] {
+			continue
+		}
+		flatNumbers[key] = true
+		result = append(result, entry)
+	}
+	return dedupeEntries(result)
+}
+
+func optimumPDFSection(value string) (string, bool) {
+	sections := map[string]string{
+		"NETWORKS":      "Networks",
+		"KIDS":          "Kids",
+		"SPORTS":        "Sports",
+		"PREMIUMS":      "Premiums",
+		"ONDEMANDPPV":   "On Demand & PPV",
+		"INTERACTIVE":   "Interactive",
+		"MUSIC":         "Music",
+		"INTERNATIONAL": "International",
+	}
+	section, ok := sections[identityKey(value)]
+	return section, ok
+}
+
+func isOptimumChannelNumberValue(value string) bool {
+	return isChannelNumberValue(value) || optimumNumberRange.MatchString(strings.TrimSpace(value))
+}
+
+func splitOptimumChannelNumbers(value string) []string {
+	match := optimumNumberRange.FindStringSubmatch(strings.TrimSpace(value))
+	if len(match) != 3 {
+		return splitChannelNumbers(value)
+	}
+	start, startErr := strconv.Atoi(match[1])
+	end, endErr := strconv.Atoi(match[2])
+	if startErr != nil || endErr != nil || end < start || end-start > 200 {
+		return nil
+	}
+	result := make([]string, 0, end-start+1)
+	for number := start; number <= end; number++ {
+		result = append(result, strconv.Itoa(number))
+	}
+	return result
 }
 
 func parsePairedPDF(data []byte, pairs []pdfPair) ([]catalogEntry, error) {
@@ -231,6 +438,9 @@ func textInRange(line pdfLine, start, end float64) string {
 	var builder strings.Builder
 	previousEnd := 0.0
 	for _, word := range line.Words {
+		if word.Size > 0 && word.Size < 6 {
+			continue
+		}
 		if word.X < start || word.X >= end {
 			continue
 		}

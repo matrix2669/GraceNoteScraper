@@ -149,7 +149,7 @@ Provider coverage is intentionally explicit about source limitations:
 | Provider | Runtime public source | Current limitation |
 | --- | --- | --- |
 | Verizon FiOS | Official national PDF | National channels and provider-published channel-range categories; local positions still come from Gracenote |
-| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Western service areas require a user-selected address for an exact local lineup |
+| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Eastern PDFs contribute their explicit section categories by exact channel number, including column continuations and compact ranges; western service areas require a user-selected address for an exact local lineup |
 | DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
 | DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
 | AFN | Official guide PDF format | AFN's CDN may reject automated downloads; that source reports an isolated error when unavailable |

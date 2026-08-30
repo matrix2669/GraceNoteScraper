@@ -7,6 +7,15 @@ Runtime parsing of public provider PDF guides uses
 `go.mod`. The package is distributed under the BSD 3-Clause License. Its full
 license text is included with the module source and remains authoritative.
 
+## razvandimescu/gopdf
+
+Optimum PDFs can place their categorized channel table inside a Form XObject,
+which the primary PDF parser does not traverse. The focused Optimum adapter
+uses [`github.com/razvandimescu/gopdf`](https://github.com/razvandimescu/gopdf),
+pinned in `go.mod`, to recover positioned text recursively from that table.
+The package is distributed under the MIT License. Its full license text is
+included with the module source and remains authoritative.
+
 ## PrismCast channel registry
 
 This compatibility snapshot is disabled by default and is used only when

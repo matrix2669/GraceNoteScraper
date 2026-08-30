@@ -2,3 +2,5 @@ github.com/joho/godotenv v1.5.1 h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=
 github.com/joho/godotenv v1.5.1/go.mod h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=
 github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728 h1:QwWKgMY28TAXaDl+ExRDqGQltzXqN/xypdKP86niVn8=
 github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728/go.mod h1:1fEHWurg7pvf5SG6XNE5Q8UZmOwex51Mkx3SLhrW5B4=
+github.com/razvandimescu/gopdf v0.0.0-20260820104035-9a7404bd8341 h1:o3dDh69hfOxHaWj9QXBZ34+JyruuMtUVc0hSLF4G5Rk=
+github.com/razvandimescu/gopdf v0.0.0-20260820104035-9a7404bd8341/go.mod h1:9VUqgIPixEscL2mJ4GrFLhhFE8z/6qld9/tiyQKdMZQ=
