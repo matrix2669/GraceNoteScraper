@@ -483,7 +483,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode string, inputs 
 	snapshot := s.marketIndex.SnapshotForPostal(country, postalCode)
 	statuses := []lineuparrbuilder.SourceStatus{{
 		ID: "gracenote-market-index", Label: "Gracenote market alias index", Status: "local", Matched: matched,
-		Message: fmt.Sprintf("%d markets and %d unique lineups scanned; exact station-ID aliases only", snapshot.Summary.CompletedMarkets, snapshot.Summary.Lineups),
+		Message: fmt.Sprintf("%d markets and %d unique lineups scanned; exact station-ID aliases plus confirmed pair-level weekday EPG evidence", snapshot.Summary.CompletedMarkets, snapshot.Summary.Lineups),
 	}}
 	if snapshot.PostalScan != nil {
 		for _, source := range snapshot.PostalScan.Sources {
