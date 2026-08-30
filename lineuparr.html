@@ -293,7 +293,7 @@
       <div class="alias-header">
         <p class="eyebrow">Alias discovery</p>
         <h2>Build a reusable station-name index</h2>
-        <p>Start with every provider lineup available in the configured ZIP. Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared with this lineup only through an exact Gracenote station ID. Broader ranked-market scans remain available for additional callsign coverage.</p>
+        <p>Start with every provider lineup available in the configured ZIP. Official provider facts are joined to their own Gracenote grid. Exact station IDs are reused directly; plausible cross-ID identities are confirmed only when two strong, non-concurrent weekday programme blocks agree. Broader ranked-market scans remain available for additional callsign coverage.</p>
       </div>
       <div class="metric-grid" aria-live="polite">
         <div class="metric"><div class="metric-value" id="markets-metric">—</div><div class="metric-label">Markets completed</div></div>
@@ -530,7 +530,7 @@
       if (job.lastError && !job.running) {
         setMarketMessage(job.lastError, 'error');
       } else if (!job.running && postalScan?.status === 'complete' && !marketWasRunning) {
-        setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} of ${postalScan.providerCount} provider lineups, ${postalScan.aliases} official aliases, and ${postalScan.categories} official categories captured for exact station-ID reuse.`, 'success');
+        setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} of ${postalScan.providerCount} provider lineups and ${postalScan.gridRequests} grids. ${postalScan.aliases} aliases and ${postalScan.categories} categories were captured; weekday EPG evidence confirmed ${postalScan.epgMatches || 0} cross-ID pairs, left ${postalScan.epgQuestionable || 0} questionable, and rejected ${postalScan.epgRejected || 0}.`, 'success');
       } else if (!job.running && completed > 0 && !summary.meaningfulAliases) {
         setMarketMessage(`Gracenote returned one canonical callsign per station across ${completed} completed market${completed === 1 ? '' : 's'}, so this index has no cross-lineup aliases yet. More markets may add station coverage; provider guides, exact catalogs, and confirmed M3U names are the useful alternate-name sources.`);
       } else if (!job.running && !marketWasRunning) {
@@ -570,7 +570,7 @@
       if (!job.running && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) {
         if (job.action === 'postal' && postalScan?.status === 'complete') {
-          setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} provider lineups contributed ${postalScan.aliases} official aliases and ${postalScan.categories} official categories.`, 'success');
+          setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} provider lineups and ${postalScan.gridRequests} grids contributed ${postalScan.aliases} aliases and ${postalScan.categories} categories. Weekday EPG evidence confirmed ${postalScan.epgMatches || 0} cross-ID pairs.`, 'success');
         } else if (summary.meaningfulAliases) {
           setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
         }
