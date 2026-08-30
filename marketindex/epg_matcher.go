@@ -209,17 +209,31 @@ func parseUTCOffset(value string) (int, bool) {
 	} else if value[0] == '+' {
 		value = value[1:]
 	}
+	if !strings.Contains(value, ":") {
+		amount, err := strconv.Atoi(value)
+		if err != nil || amount > 14*60 {
+			return 0, false
+		}
+		// Gracenote provider discovery returns offsets as signed minutes
+		// (for example, -300 standard and -240 daylight time). Retain the
+		// existing whole-hour shorthand for values within the timezone range.
+		if amount <= 14 {
+			amount *= 60
+		}
+		return sign * amount, true
+	}
 	parts := strings.Split(value, ":")
+	if len(parts) != 2 {
+		return 0, false
+	}
 	hours, err := strconv.Atoi(parts[0])
 	if err != nil {
 		return 0, false
 	}
 	minutes := 0
-	if len(parts) > 1 {
-		minutes, err = strconv.Atoi(parts[1])
-		if err != nil {
-			return 0, false
-		}
+	minutes, err = strconv.Atoi(parts[1])
+	if err != nil {
+		return 0, false
 	}
 	if hours > 14 || minutes > 59 {
 		return 0, false
