@@ -84,15 +84,28 @@
     .stat-label { margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
     .stat.warning .stat-value { color: var(--warning); }
 
-    .panel { border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
-    .source-panel { margin-bottom: 18px; padding: 19px 21px; }
+    .panel { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
+    .collapsible-panel { margin-bottom: 18px; }
+    .collapsible-panel > .panel-summary {
+      display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18px;
+      margin: 0; padding: 19px 21px; color: var(--text); list-style: none; cursor: pointer;
+    }
+    .collapsible-panel > .panel-summary::-webkit-details-marker { display: none; }
+    .panel-summary-copy { min-width: 0; }
+    .panel-summary-copy > .panel-title, .panel-summary-copy > .panel-help, .panel-summary-copy > .eyebrow { display: block; }
+    .panel-summary-copy h2 { margin: 0; }
+    .panel-chevron { flex: 0 0 auto; color: var(--accent); font-size: 18px; line-height: 1; transition: transform .15s ease; }
+    .collapsible-panel[open] > .panel-summary .panel-chevron { transform: rotate(90deg); }
+    .collapsible-panel > .panel-body { min-width: 0; padding: 0 21px 21px; }
+    .source-panel { overflow: hidden; }
     .panel-title { margin: 0; font-size: 15px; }
     .panel-help { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .sources { display: grid; gap: 9px; margin-top: 15px; }
-    .source-row { justify-content: space-between; gap: 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
-    .source-name { min-width: 0; font-size: 13px; font-weight: 700; }
-    .source-message { overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-    .source-state { flex: 0 0 auto; color: var(--muted); font-size: 11px; text-align: right; }
+    .sources { display: grid; min-width: 0; gap: 9px; margin-top: 15px; }
+    .source-row { width: 100%; min-width: 0; max-width: 100%; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .source-copy { min-width: 0; flex: 1 1 440px; overflow-wrap: anywhere; }
+    .source-name { min-width: 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+    .source-message { min-width: 0; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .source-state { max-width: 100%; flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; white-space: normal; overflow-wrap: anywhere; }
     .source-state.good { color: var(--accent); }
     .source-state.bad { color: var(--danger); }
     .provider-address {
@@ -112,7 +125,7 @@
     .provider-address-status.good { color: var(--accent); }
     .provider-address-status.bad { color: var(--danger); }
 
-    .alias-panel { margin-bottom: 18px; padding: 24px 21px; }
+    .alias-panel > .panel-summary { padding-top: 24px; padding-bottom: 18px; }
     .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
     .alias-header p { max-width: 760px; margin: 9px 0 0; color: var(--muted); line-height: 1.55; }
     .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
@@ -151,6 +164,9 @@
     .status-pill.running { color: var(--warning); }
     .market-refresh { min-height: 34px; padding: 0 10px; font-size: 11px; }
     .market-provenance { margin: 14px 2px 0; color: #789087; font-size: 11px; line-height: 1.5; }
+    .advanced-scanner { margin-top: 18px; padding-top: 4px; border-top: 1px solid rgba(43,70,59,.72); }
+    .advanced-scanner > summary { width: 100%; padding: 14px 0 2px; color: var(--muted); font-size: 12px; font-weight: 720; cursor: pointer; }
+    .advanced-scanner-copy { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
     .dispatch-panel { margin-bottom: 18px; padding: 20px 21px; }
     .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
@@ -201,6 +217,9 @@
     .dispatch-panel details { margin: 14px 0 0; }
 
     .builder-panel { overflow: hidden; }
+    .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
+    .builder-panel[open] > .panel-summary { border-bottom-color: var(--line); }
+    .builder-panel > .builder-body { padding: 0; }
     .toolbar { flex-wrap: wrap; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); }
     .field { display: grid; gap: 6px; min-width: 150px; }
     .field.search { flex: 1 1 250px; }
@@ -242,8 +261,8 @@
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
     .category-input { height: 38px; font-size: 13px; }
-    details { margin: 11px 0 0 103px; }
-    summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+    .channel-card > details { margin: 11px 0 0 103px; }
+    .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
     .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
     .alias { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
     .alias.removed { border-style: dashed; color: #899d94; text-decoration: line-through; }
@@ -291,9 +310,8 @@
       .channel-number { flex-basis: 48px; }
       .channel-copy { flex-basis: calc(100% - 96px); }
       .channel-actions { margin-left: 83px; }
-      details { margin-left: 83px; }
+      .channel-card > details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
-      .source-message { white-space: normal; }
       .dispatch-form { grid-template-columns: 1fr; }
       .dispatch-head, .dispatch-connection { align-items: flex-start; flex-direction: column; }
       .match-summary { grid-template-columns: repeat(2, 1fr); }
@@ -340,66 +358,86 @@
       <div class="stat warning"><div class="stat-value" id="stat-unresolved">—</div><div class="stat-label">Needs category</div></div>
     </section>
 
-    <section class="panel source-panel" id="source-panel" hidden>
-      <h2 class="panel-title">Enrichment sources</h2>
-      <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
-      <div class="sources" id="sources"></div>
-      <section class="provider-address" id="provider-address" hidden>
-        <div>
-          <h3 id="provider-address-title">Official provider location</h3>
-          <p id="provider-address-help"></p>
-        </div>
-        <div>
-          <form class="provider-address-input" id="provider-address-form">
-            <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
-            <button type="submit" id="provider-address-search">Search</button>
-          </form>
-          <div class="provider-address-results" id="provider-address-results"></div>
-          <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
-          <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
-        </div>
-      </section>
-    </section>
+    <details class="panel source-panel collapsible-panel" id="source-panel" data-section-key="sources" hidden>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Enrichment sources</span>
+          <span class="panel-help">Inspect the evidence used to build this lineup.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
+        <div class="sources" id="sources"></div>
+        <section class="provider-address" id="provider-address" hidden>
+          <div>
+            <h3 id="provider-address-title">Official provider location</h3>
+            <p id="provider-address-help"></p>
+          </div>
+          <div>
+            <form class="provider-address-input" id="provider-address-form">
+              <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
+              <button type="submit" id="provider-address-search">Search</button>
+            </form>
+            <div class="provider-address-results" id="provider-address-results"></div>
+            <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
+            <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
+          </div>
+        </section>
+      </div>
+    </details>
 
-    <section class="panel alias-panel" id="alias-panel">
-      <div class="alias-header">
-        <p class="eyebrow">Alias discovery</p>
-        <h2>Build a reusable station-name index</h2>
-        <p>Start with every provider lineup available in the configured ZIP. Official provider facts are joined to their own Gracenote grid. Exact station IDs are reused directly; plausible cross-ID identities are confirmed only when two strong, non-concurrent weekday programme blocks agree. Broader ranked-market scans remain available for additional callsign coverage.</p>
-      </div>
-      <div class="metric-grid" aria-live="polite">
-        <div class="metric"><div class="metric-value" id="markets-metric">—</div><div class="metric-label">Markets completed</div></div>
-        <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
-        <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
-        <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
-        <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
-      </div>
-      <div class="scan-progress">
-        <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
-        <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
-        <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
-        <div class="action-row">
-          <button id="postal-scan" type="button">Scan providers in this ZIP</button>
-          <button id="continue-scan" type="button">Scan next 25 markets</button>
-          <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
-          <button class="secondary danger" id="rebuild-index" type="button">Rebuild index</button>
+    <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
+      <summary class="panel-summary alias-header">
+        <span class="panel-summary-copy">
+          <span class="eyebrow">Alias discovery</span>
+          <h2>Build a reusable station-name index</h2>
+          <span class="panel-help">Scan provider lineups in the configured ZIP and reuse only attributable provider or weekday EPG evidence.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <p class="panel-help">Official provider facts reuse exact station IDs directly. Plausible cross-ID identities are accepted only when two strong, non-concurrent weekday programme blocks agree.</p>
+        <div class="scan-progress">
+          <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
+          <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
+          <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
+          <div class="action-row">
+            <button id="postal-scan" type="button">Scan providers in this ZIP</button>
+            <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
+          </div>
         </div>
+        <details class="advanced-scanner">
+          <summary>Advanced: ranked major-market scanner</summary>
+          <p class="advanced-scanner-copy">Existing ranked scans found one canonical callsign per station and no reusable aliases. This optional scanner remains available for station-coverage audits and future data-source changes.</p>
+          <div class="metric-grid" aria-live="polite">
+            <div class="metric"><div class="metric-value" id="markets-metric">—</div><div class="metric-label">Markets completed</div></div>
+            <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
+            <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
+            <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
+            <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
+          </div>
+          <div class="action-row">
+            <button id="continue-scan" type="button">Scan next 25 markets</button>
+            <button class="secondary danger" id="rebuild-index" type="button">Rebuild index</button>
+          </div>
+          <section class="batch-section">
+            <h3>Marginal yield by batch</h3>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Markets</th><th>New lineups</th><th>New stations</th><th>Names on known IDs</th><th>Callsign aliases</th><th>Affiliate names</th><th>Cosmetic only</th><th>Current lineup</th><th>Conflicts</th><th>Errors</th></tr></thead>
+                <tbody id="batch-rows"><tr><td colspan="10">No market batches have run yet.</td></tr></tbody>
+              </table>
+            </div>
+          </section>
+          <details class="market-details">
+            <summary id="market-list-summary">View curated market ZIP list</summary>
+            <div class="market-list" id="market-list"></div>
+          </details>
+          <p class="market-provenance" id="market-provenance"></p>
+        </details>
       </div>
-      <section class="batch-section">
-        <h3>Marginal yield by batch</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Markets</th><th>New lineups</th><th>New stations</th><th>Names on known IDs</th><th>Callsign aliases</th><th>Affiliate names</th><th>Cosmetic only</th><th>Current lineup</th><th>Conflicts</th><th>Errors</th></tr></thead>
-            <tbody id="batch-rows"><tr><td colspan="10">No market batches have run yet.</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-      <details class="market-details">
-        <summary id="market-list-summary">View curated market ZIP list</summary>
-        <div class="market-list" id="market-list"></div>
-      </details>
-      <p class="market-provenance" id="market-provenance"></p>
-    </section>
+    </details>
 
     <section class="panel dispatch-panel" id="dispatch-panel">
       <div class="dispatch-head">
@@ -462,7 +500,15 @@
       <div class="match-list" id="dispatch-loading"></div>
     </section>
 
-    <section class="panel builder-panel">
+    <details class="panel builder-panel collapsible-panel" data-section-key="channels" open>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Channels</span>
+          <span class="panel-help">Filter, categorize, include, or exclude channels before export.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body builder-body">
       <div class="toolbar" id="toolbar" hidden>
         <div class="field search">
           <label for="search">Find a channel</label>
@@ -491,7 +537,8 @@
       <div class="channel-list" id="channel-list">
         <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
       </div>
-    </section>
+      </div>
+    </details>
   </main>
 
   <script>
@@ -825,6 +872,7 @@
         if (!config.required) return;
         providerAddressConfig = config;
         els.providerAddress.hidden = false;
+        els.sourcePanel.open = true;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
         els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
         if (!config.enabled) {
@@ -908,15 +956,14 @@
       const postalScan = data.postalScan;
       const completed = summary.completedMarkets || 0;
       const total = catalog.marketCount || 0;
-      const overallPercent = total ? Math.round(completed * 100 / total) : 0;
-      const batchPercent = job.running && job.totalCount ? Math.round(job.completedCount * 100 / job.totalCount) : overallPercent;
+      const batchPercent = job.running && job.totalCount ? Math.round(job.completedCount * 100 / job.totalCount) : postalScan?.status === 'complete' ? 100 : 0;
 
       els.marketsMetric.textContent = `${completed} / ${total}`;
       els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
       els.stationsMetric.textContent = (summary.stations || 0).toLocaleString();
       els.aliasesMetric.textContent = (summary.meaningfulAliases || 0).toLocaleString();
       els.currentAliasesMetric.textContent = summary.currentLineupStations ? (summary.currentLineupAliases || 0).toLocaleString() : '—';
-      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : aliasQueue.queued ? 'Waiting for guide' : `${overallPercent}% overall`;
+      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : aliasQueue.queued ? 'Waiting for guide' : postalScan?.status === 'complete' ? `${postalScan.lineupsScanned} lineups` : '';
       els.scanProgressBar.style.width = `${aliasQueue.queued ? 0 : batchPercent}%`;
 
       if (job.running && job.action === 'postal') {
@@ -925,12 +972,10 @@
         els.scanStatus.textContent = `Scanning #${job.currentRank || '—'} ${job.currentMarket || 'next market'}`;
       } else if (aliasQueue.queued) {
         els.scanStatus.textContent = `Alias scan queued until the guide is ready`;
-      } else if (completed === total && total > 0) {
-        els.scanStatus.textContent = 'All curated markets have been processed';
-      } else if (summary.errorMarkets) {
-        els.scanStatus.textContent = `${summary.errorMarkets} market${summary.errorMarkets === 1 ? '' : 's'} will be retried before continuing`;
+      } else if (postalScan?.status === 'complete') {
+        els.scanStatus.textContent = `Provider lineup scan for ZIP ${postalScan.postalCode} complete`;
       } else {
-        els.scanStatus.textContent = completed ? 'Ready for the next 25-market checkpoint' : 'Ready to scan the first 25 markets';
+        els.scanStatus.textContent = 'Ready to scan provider lineups in the configured ZIP';
       }
 
       const noContinuation = completed === total && !summary.errorMarkets;
@@ -1082,7 +1127,7 @@
       els.sources.replaceChildren();
       for (const source of draft.sources) {
         const row = document.createElement('div'); row.className = 'source-row';
-        const copy = document.createElement('div'); copy.style.minWidth = '0';
+        const copy = document.createElement('div'); copy.className = 'source-copy';
         const name = source.url ? document.createElement('a') : document.createElement('div');
         name.className = 'source-name'; name.textContent = source.label;
         if (source.url) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
@@ -1251,6 +1296,19 @@
       finally { saving = false; renderSummary(); renderChannels(); }
     }
 
+    function initCollapsibleSections() {
+      for (const section of document.querySelectorAll('.collapsible-panel[data-section-key]')) {
+        const storageKey = `lineuparr-section-${section.dataset.sectionKey}`;
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved !== null) section.open = saved === 'open';
+          section.addEventListener('toggle', () => localStorage.setItem(storageKey, section.open ? 'open' : 'closed'));
+        } catch (_) {
+          // Browser storage is optional; native details behavior still works.
+        }
+      }
+    }
+
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
     els.categoryFilter.addEventListener('change', renderChannels);
@@ -1280,6 +1338,7 @@
     els.rebuildIndex.addEventListener('click', () => {
       if (confirm('Rebuild the alias index from the beginning? The current index will be kept as a .bak file.')) startAliasScan('rebuild');
     });
+    initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
     loadDraft();

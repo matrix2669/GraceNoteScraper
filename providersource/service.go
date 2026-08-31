@@ -57,6 +57,7 @@ type catalogEntry struct {
 	CallSigns      []string `json:"callSigns,omitempty"`
 	Category       string   `json:"category,omitempty"`
 	CategoryMethod string   `json:"-"`
+	EventFeed      bool     `json:"-"`
 }
 
 type dishResponse struct {
@@ -255,6 +256,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 
 	result := marketindex.ProviderEvidenceResult{}
 	matchedStations := make(map[string]bool)
+	ambiguousNumbers := ambiguousCatalogNumbers(source.Entries)
 	type matchedEntry struct {
 		channel web.JSONChannel
 		entry   catalogEntry
@@ -263,7 +265,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 	matches := make([]matchedEntry, 0, len(source.Entries))
 	aliasOwners := make(map[string]map[string]bool)
 	for _, entry := range source.Entries {
-		channels, method, ok := matchEntry(entry, byNumber, byIdentity)
+		channels, method, ok := matchEntry(entry, byNumber, byIdentity, ambiguousNumbers)
 		if !ok {
 			continue
 		}
@@ -372,10 +374,17 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 	return result
 }
 
-func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel) ([]web.JSONChannel, string, bool) {
+func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel, ambiguousNumbers map[string]bool) ([]web.JSONChannel, string, bool) {
+	if entry.EventFeed {
+		if channel, ok := uniqueIdentityMatch(entry, byIdentity); ok {
+			return []web.JSONChannel{channel}, "unique exact event-feed identity", true
+		}
+		return nil, "", false
+	}
 	for _, number := range entry.Numbers {
-		matches := byNumber[normalizeNumber(number)]
-		if len(matches) == 1 {
+		normalizedNumber := normalizeNumber(number)
+		matches := byNumber[normalizedNumber]
+		if len(matches) == 1 && !ambiguousNumbers[normalizedNumber] {
 			return matches, "exact provider channel number", true
 		}
 		if len(matches) > 1 {
@@ -404,6 +413,41 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 			}
 		}
 	}
+	if channel, ok := uniqueIdentityMatch(entry, byIdentity); ok {
+		return []web.JSONChannel{channel}, "unique exact provider callsign or name", true
+	}
+	return nil, "", false
+}
+
+func ambiguousCatalogNumbers(entries []catalogEntry) map[string]bool {
+	identities := make(map[string]map[string]bool)
+	for _, entry := range entries {
+		if entry.EventFeed {
+			continue
+		}
+		identity := identityKey(entry.Name)
+		if identity == "" {
+			continue
+		}
+		for _, number := range entry.Numbers {
+			number = normalizeNumber(number)
+			if number == "" {
+				continue
+			}
+			if identities[number] == nil {
+				identities[number] = make(map[string]bool)
+			}
+			identities[number][identity] = true
+		}
+	}
+	result := make(map[string]bool)
+	for number, owners := range identities {
+		result[number] = len(owners) > 1
+	}
+	return result
+}
+
+func uniqueIdentityMatch(entry catalogEntry, byIdentity map[string][]web.JSONChannel) (web.JSONChannel, bool) {
 	identities := append([]string{entry.Name}, entry.Aliases...)
 	identities = append(identities, entry.CallSigns...)
 	unique := make(map[string]web.JSONChannel)
@@ -413,12 +457,13 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 			unique[matches[0].ChannelID] = matches[0]
 		}
 	}
-	if len(unique) == 1 {
-		for _, channel := range unique {
-			return []web.JSONChannel{channel}, "unique exact provider callsign or name", true
-		}
+	if len(unique) != 1 {
+		return web.JSONChannel{}, false
 	}
-	return nil, "", false
+	for _, channel := range unique {
+		return channel, true
+	}
+	return web.JSONChannel{}, false
 }
 
 func channelIdentityValues(channel web.JSONChannel) []string {
