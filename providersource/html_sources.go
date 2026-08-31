@@ -29,11 +29,12 @@ const (
 )
 
 var (
-	nextDataPattern   = regexp.MustCompile(`(?is)<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>(.*?)</script>`)
-	tableRowPattern   = regexp.MustCompile(`(?is)<tr\b[^>]*>(.*?)</tr>`)
-	tableCellPattern  = regexp.MustCompile(`(?is)<td\b[^>]*>(.*?)</td>`)
-	tagPattern        = regexp.MustCompile(`(?is)<[^>]+>`)
-	optimumPDFPattern = regexp.MustCompile(`(?is)<h3\b[^>]*>\s*<a\b[^>]*href=["']([^"']+\.pdf(?:\?[^"']*)?)["'][^>]*>(.*?)</a>(.*?)</h3>`)
+	nextDataPattern            = regexp.MustCompile(`(?is)<script[^>]*\bid=["']__NEXT_DATA__["'][^>]*>(.*?)</script>`)
+	tableRowPattern            = regexp.MustCompile(`(?is)<tr\b[^>]*>(.*?)</tr>`)
+	tableCellPattern           = regexp.MustCompile(`(?is)<td\b[^>]*>(.*?)</td>`)
+	tagPattern                 = regexp.MustCompile(`(?is)<[^>]+>`)
+	optimumPDFPattern          = regexp.MustCompile(`(?is)<h3\b[^>]*>\s*<a\b[^>]*href=["']([^"']+\.pdf(?:\?[^"']*)?)["'][^>]*>(.*?)</a>(.*?)</h3>`)
+	numberedSportsEventPattern = regexp.MustCompile(`(?i)\b(wnba|nba|nfl|nhl|mlb|mls|ncaa|ufc|boxing|wwe)\b.*\b(on|at|vs)\b.*\b[0-9]+\s*$`)
 )
 
 type directvChannel struct {
@@ -78,9 +79,29 @@ func parseDIRECTV(data []byte) ([]catalogEntry, error) {
 			continue
 		}
 		category := directvCategory(channel.Category, channel.Categories)
-		entries = append(entries, catalogEntry{Numbers: numbers, Name: name, Category: category})
+		eventFeed := isEventFeedName(name)
+		if eventFeed {
+			category = channelcategory.PPVEvents
+		}
+		entries = append(entries, catalogEntry{Numbers: numbers, Name: name, Category: category, EventFeed: eventFeed})
 	}
 	return dedupeEntries(entries), nil
+}
+
+func isEventFeedName(value string) bool {
+	value = strings.ToLower(cleanText(value))
+	if value == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"pay per view", "pay-per-view", " ppv", "ppv ", "special event", "event channel",
+		"overflow", "alternate", " alt feed", "league pass", "sunday ticket", "extra innings", "center ice",
+	} {
+		if strings.Contains(" "+value+" ", marker) {
+			return true
+		}
+	}
+	return numberedSportsEventPattern.MatchString(value)
 }
 
 func directvCategory(primary string, categories []string) string {

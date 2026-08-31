@@ -167,10 +167,13 @@ func TestEmbeddedCatalogOmitsObsoleteRegisteredPlaceholders(t *testing.T) {
 }
 
 func TestPublicHTMLParsers(t *testing.T) {
-	directv := []byte(`<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":[{"props":{"channelData":{"channels":[{"name":"ESPN","chnlNum":"206","category":"Sports Channels"}]}}}]}}}</script>`)
+	directv := []byte(`<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"data":[{"props":{"channelData":{"channels":[{"name":"ESPN","chnlNum":"206","category":"Sports Channels"},{"name":"WNBA on ION 1","chnlNum":"305","category":"Sports Channels"}]}}}]}}}</script>`)
 	entries, err := parseDIRECTV(directv)
-	if err != nil || len(entries) != 1 || entries[0].Name != "ESPN" || entries[0].Category != "Sports" {
+	if err != nil || len(entries) != 2 || entries[0].Name != "ESPN" || entries[0].Category != "Sports" {
 		t.Fatalf("DIRECTV entries = %+v, error = %v", entries, err)
+	}
+	if entries[1].Name != "WNBA on ION 1" || !entries[1].EventFeed || entries[1].Category != "PPV & Events" {
+		t.Fatalf("DIRECTV event entry = %+v", entries[1])
 	}
 	glorystar := parseGlorystar([]byte(`<table><tr><td>101</td><td><img alt="TBN"></td><td><a>Trinity Broadcasting<br>Network</a></td><td>English</td></tr></table>`))
 	if len(glorystar) != 1 || glorystar[0].Name != "Trinity Broadcasting Network" || glorystar[0].Category != "Faith" {
@@ -179,6 +182,40 @@ func TestPublicHTMLParsers(t *testing.T) {
 	xfinity, err := parseXfinity([]byte(`{"channels":[{"channelNumber":"205","channelName":"FOX News","category":"News"}]}`))
 	if err != nil || len(xfinity) != 1 || xfinity[0].Numbers[0] != "205" {
 		t.Fatalf("Xfinity entries = %+v, error = %v", xfinity, err)
+	}
+}
+
+func TestEventFeedDoesNotAttachToPermanentChannelByNumber(t *testing.T) {
+	request := marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "ION", ChannelNo: "305", CallSign: "IONDHD", AffiliateName: "ION: INDEPENDENT TELEVISION"},
+	}}}
+	result := matchCatalog(request, catalogSource{
+		ID: "directv", Label: "DIRECTV", Entries: []catalogEntry{
+			{Numbers: []string{"305"}, Name: "ION Television East HD", Category: "Entertainment"},
+			{Numbers: []string{"305"}, Name: "WNBA on ION 1", Category: "PPV & Events", EventFeed: true},
+			{Numbers: []string{"305"}, Name: "WNBA on ION 2", Category: "PPV & Events", EventFeed: true},
+		},
+	})
+	for _, fact := range result.Facts {
+		if strings.Contains(fact.Value, "WNBA") || fact.Value == "PPV & Events" {
+			t.Fatalf("event evidence contaminated permanent ION station: %+v", result.Facts)
+		}
+	}
+	if len(result.Sources) != 1 || result.Sources[0].Matched != 1 {
+		t.Fatalf("source status = %+v", result.Sources)
+	}
+}
+
+func TestAmbiguousProviderNumberRequiresExactIdentity(t *testing.T) {
+	request := marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "ONE", ChannelNo: "50", CallSign: "FIRST"},
+	}}}
+	result := matchCatalog(request, catalogSource{ID: "provider", Label: "Provider", Entries: []catalogEntry{
+		{Numbers: []string{"50"}, Name: "First Network"},
+		{Numbers: []string{"50"}, Name: "Second Network"},
+	}})
+	if len(result.Facts) != 0 || result.Sources[0].Matched != 0 {
+		t.Fatalf("ambiguous provider number produced evidence: %+v", result)
 	}
 }
 
