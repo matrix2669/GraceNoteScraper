@@ -287,7 +287,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			switch fact.Kind {
 			case FactAlias:
 				value := strings.TrimSpace(fact.Value)
-				if normalized := normalizeEPGCallSign(value); !ignoredName(normalized) {
+				if normalized := normalizeEPGCallSign(value); !ignoredName(normalized) && !isEPGEventFeedName(value) {
 					station.ProviderNames[normalized] = value
 				}
 			case FactCategory:
@@ -349,6 +349,9 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 	result := make([]epgCandidatePair, 0, len(pairs))
 	for _, pair := range pairs {
 		sort.Strings(pair.Evidence)
+		if !hasStrongEPGIdentityEvidence(pair.Evidence) {
+			continue
+		}
 		result = append(result, *pair)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -358,6 +361,15 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 		return result[i].RightID < result[j].RightID
 	})
 	return stations, result
+}
+
+func hasStrongEPGIdentityEvidence(evidence []string) bool {
+	for _, value := range evidence {
+		if strings.HasPrefix(value, "identity-name:") || strings.HasPrefix(value, "provider-position:") {
+			return true
+		}
+	}
+	return false
 }
 
 func ensureEPGIdentityStation(stations map[string]*epgIdentityStation, stationID string) *epgIdentityStation {
@@ -821,7 +833,7 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 		aliases[normalized] = value
 	}
 	for normalized, value := range aliases {
-		if ignoredName(normalized) {
+		if ignoredName(normalized) || isEPGEventFeedName(value) {
 			continue
 		}
 		key := target.StationID + "\x00" + FactAlias + "\x00" + normalized
@@ -842,6 +854,33 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 			Method: method + "; category carried from " + strings.TrimSpace(category.SourceLabel),
 		}, LineupKeys: lineups}
 	}
+}
+
+func isEPGEventFeedName(value string) bool {
+	normalized := normalizeName(value)
+	if normalized == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"PAYPERVIEW", "PPV", "SPECIALEVENT", "EVENTCHANNEL", "OVERFLOW", "ALTERNATE", "ALTFEED",
+		"LEAGUEPASS", "SUNDAYTICKET", "EXTRAINNINGS", "CENTERICE",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	last := normalized[len(normalized)-1]
+	if last < '0' || last > '9' {
+		return false
+	}
+	for _, league := range []string{"WNBA", "NBA", "NFL", "NHL", "MLB", "MLS", "NCAA", "UFC", "BOXING", "WWE"} {
+		for _, relation := range []string{"ON", "AT", "VS"} {
+			if strings.Contains(normalized, league+relation) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func unionStringKeys(values ...map[string]bool) []string {

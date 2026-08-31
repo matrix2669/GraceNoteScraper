@@ -136,6 +136,46 @@ func TestEPGMatchingRequiresPairLevelIdentityAndConfirmsSemanticSchedules(t *tes
 	}
 }
 
+func TestEPGMatchingRejectsAffiliateOnlyIdentity(t *testing.T) {
+	blocks := testEPGBlocks()
+	scans := []*postalLineupScan{
+		testEPGScan("L1", "Optimum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+			testEPGChannel("WPXN", "WPXN", "ION: INDEPENDENT TELEVISION", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "WPXN"),
+		}}}),
+		testEPGScan("L2", "DIRECTV", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+			testEPGChannel("IOND", "IONDHD", "ION: INDEPENDENT TELEVISION", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "IOND"),
+		}}}),
+	}
+	_, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	if len(pairs) != 0 {
+		t.Fatalf("affiliate-only identity created candidate pairs: %+v", pairs)
+	}
+}
+
+func TestEPGDerivedFactsExcludeTemporaryEventAliases(t *testing.T) {
+	stations := map[string]*epgIdentityStation{
+		"WPXN": {
+			StationID: "WPXN", CallSigns: map[string]string{"WPXN": "WPXN"}, Affiliates: map[string]string{},
+			ProviderNames: map[string]string{}, Positions: map[string]map[string]bool{}, LineupKeys: map[string]bool{"L1": true},
+		},
+		"IOND": {
+			StationID: "IOND", CallSigns: map[string]string{"IOND": "IONDHD"}, Affiliates: map[string]string{},
+			ProviderNames: map[string]string{"WNBAONION1": "WNBA on ION 1", "ION": "ION"},
+			Positions:     map[string]map[string]bool{}, LineupKeys: map[string]bool{"L2": true},
+		},
+	}
+	facts := buildEPGDerivedFacts(stations, []epgPairResult{{
+		Pair:   epgCandidatePair{LeftID: "WPXN", RightID: "IOND", Evidence: []string{"identity-name:ION"}},
+		Status: "confirmed", Occurrences: 12, MatchedMinutes: 720,
+	}}, "test-epg", "America/New_York")
+	if hasEPGAlias(facts, "WPXN", "WNBA on ION 1") {
+		t.Fatalf("temporary event alias was transferred: %+v", facts)
+	}
+	if !hasEPGAlias(facts, "WPXN", "ION") {
+		t.Fatalf("permanent alias was not transferred: %+v", facts)
+	}
+}
+
 func TestEPGMatchingRejectsPlaceholderGuides(t *testing.T) {
 	blocks := testEPGBlocks()
 	placeholder := func(stationID string, block epgBlock) web.JSONChannel {
