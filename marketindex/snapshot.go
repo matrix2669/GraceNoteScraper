@@ -3,6 +3,7 @@ package marketindex
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
@@ -159,6 +160,17 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 // official sources. Conflicting provider classifications remain visible in the
 // persisted evidence but are not applied automatically.
 func (s *Service) CategoriesForStations(stationIDs []string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, "")
+}
+
+// CategoriesForStationsWithPreferredSource prefers one unambiguous category
+// from the selected provider's own official source. If that source has no
+// category evidence for a station, all other official sources must still agree.
+func (s *Service) CategoriesForStationsWithPreferredSource(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, strings.TrimSpace(preferredSourceID))
+}
+
+func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := make(map[string]CategoryCandidate)
@@ -172,7 +184,8 @@ func (s *Service) CategoriesForStations(stationIDs []string) map[string]Category
 		if station == nil {
 			continue
 		}
-		byCategory := make(map[string][]StationFact)
+		allCategories := make(map[string][]StationFact)
+		preferredCategories := make(map[string][]StationFact)
 		for _, fact := range station.Facts {
 			if fact.Kind != FactCategory {
 				continue
@@ -186,7 +199,14 @@ func (s *Service) CategoriesForStations(stationIDs []string) map[string]Category
 			if match.Method != channelcategory.MethodCanonical {
 				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
 			}
-			byCategory[fact.Normalized] = append(byCategory[fact.Normalized], fact)
+			allCategories[fact.Normalized] = append(allCategories[fact.Normalized], fact)
+			if preferredSourceID != "" && fact.SourceID == preferredSourceID {
+				preferredCategories[fact.Normalized] = append(preferredCategories[fact.Normalized], fact)
+			}
+		}
+		byCategory := allCategories
+		if len(preferredCategories) > 0 {
+			byCategory = preferredCategories
 		}
 		if len(byCategory) != 1 {
 			continue

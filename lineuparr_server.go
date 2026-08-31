@@ -20,6 +20,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 )
 
 //go:embed lineuparr.html
@@ -317,7 +318,12 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	}
 	additionalSources := lineuparrbuilder.ApplyProviderGuideAliasesForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode, inputs)
 	additionalSources = append(additionalSources, s.builder.ApplyEmbeddedCatalogs(inputs)...)
-	additionalSources = append(additionalSources, s.applyMarketAliases(config.Gracenote.Country, config.Gracenote.PostalCode, inputs)...)
+	additionalSources = append(additionalSources, s.applyMarketAliases(
+		config.Gracenote.Country,
+		config.Gracenote.PostalCode,
+		providersource.OfficialSourceID(config.Gracenote.ProviderName),
+		inputs,
+	)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),
 		Country:           config.Gracenote.Country,
@@ -338,7 +344,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	return draft, config, inputs, true
 }
 
-func (s *lineuparrServer) applyMarketAliases(country, postalCode string, inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
+func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourceID string, inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
 	if s.marketIndex == nil {
 		return nil
 	}
@@ -349,7 +355,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode string, inputs 
 		}
 	}
 	candidates := s.marketIndex.AliasesForStations(stationIDs)
-	categories := s.marketIndex.CategoriesForStations(stationIDs)
+	categories := s.marketIndex.CategoriesForStationsWithPreferredSource(stationIDs, preferredSourceID)
 	matched := 0
 	providerMatched := make(map[string]map[int]bool)
 	providerConflicts := make(map[string]int)
