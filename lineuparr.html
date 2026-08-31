@@ -84,7 +84,18 @@
     .stat-label { margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
     .stat.warning .stat-value { color: var(--warning); }
 
-    .panel { border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
+    .panel { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
+    .collapsible-panel { margin-bottom: 18px; }
+    .collapsible-panel > .panel-summary {
+      display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18px;
+      margin: 0; padding: 19px 21px; color: var(--text); list-style: none; cursor: pointer;
+    }
+    .collapsible-panel > .panel-summary::-webkit-details-marker { display: none; }
+    .panel-summary-copy { min-width: 0; }
+    .panel-summary-copy > .panel-title, .panel-summary-copy > .panel-help { display: block; }
+    .panel-chevron { flex: 0 0 auto; color: var(--accent); font-size: 18px; line-height: 1; transition: transform .15s ease; }
+    .collapsible-panel[open] > .panel-summary .panel-chevron { transform: rotate(90deg); }
+    .collapsible-panel > .panel-body { min-width: 0; padding: 0 21px 21px; }
     .source-panel { margin-bottom: 18px; padding: 19px 21px; }
     .panel-title { margin: 0; font-size: 15px; }
     .panel-help { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
@@ -96,7 +107,7 @@
     .source-state.good { color: var(--accent); }
     .source-state.bad { color: var(--danger); }
 
-    .dispatch-panel { margin-bottom: 18px; padding: 20px 21px; }
+    .dispatch-panel > .panel-summary { padding-top: 20px; padding-bottom: 16px; }
     .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
     .dispatch-form {
       display: grid; grid-template-columns: minmax(220px, 2fr) minmax(135px, .8fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
@@ -154,6 +165,9 @@
     .dispatch-panel details { margin: 14px 0 0; }
 
     .builder-panel { overflow: hidden; }
+    .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
+    .builder-panel[open] > .panel-summary { border-bottom-color: var(--line); }
+    .builder-panel > .builder-body { padding: 0; }
     .toolbar { flex-wrap: wrap; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); }
     .field { display: grid; gap: 6px; min-width: 150px; }
     .field.search { flex: 1 1 250px; }
@@ -193,8 +207,8 @@
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
     .category-input { height: 38px; font-size: 13px; }
-    details { margin: 11px 0 0 103px; }
-    summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+    .channel-card > details { margin: 11px 0 0 103px; }
+    .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
     .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
     .alias { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
     .alias.removed { border-style: dashed; color: #899d94; text-decoration: line-through; }
@@ -282,13 +296,16 @@
       <div class="sources" id="sources"></div>
     </section>
 
-    <section class="panel dispatch-panel" id="dispatch-panel">
-      <div class="dispatch-head">
-        <div>
-          <h2 class="panel-title">Dispatcharr M3U matching</h2>
-          <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias.</p>
-        </div>
-      </div>
+    <details class="panel dispatch-panel collapsible-panel" id="dispatch-panel" data-section-key="dispatcharr" open>
+      <summary class="panel-summary dispatch-head">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Dispatcharr M3U matching</span>
+          <span class="panel-help">Review grouped aliases from every active M3U stream.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+      <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias group.</p>
       <form class="dispatch-form" id="dispatch-form">
         <div class="field">
           <label for="dispatch-url">Dispatcharr address</label>
@@ -341,9 +358,18 @@
         </details>
       </div>
       <div class="match-list" id="dispatch-loading"></div>
-    </section>
+      </div>
+    </details>
 
-    <section class="panel builder-panel">
+    <details class="panel builder-panel collapsible-panel" data-section-key="channels" open>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Channels</span>
+          <span class="panel-help">Filter, categorize, include, or exclude channels before export.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body builder-body">
       <div class="toolbar" id="toolbar" hidden>
         <div class="field search">
           <label for="search">Find a channel</label>
@@ -371,7 +397,8 @@
       <div class="channel-list" id="channel-list">
         <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
       </div>
-    </section>
+      </div>
+    </details>
   </main>
 
   <script>
@@ -915,6 +942,19 @@
       finally { saving = false; renderSummary(); renderChannels(); }
     }
 
+    function initCollapsibleSections() {
+      for (const section of document.querySelectorAll('.collapsible-panel[data-section-key]')) {
+        const storageKey = `lineuparr-section-${section.dataset.sectionKey}`;
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved !== null) section.open = saved === 'open';
+          section.addEventListener('toggle', () => localStorage.setItem(storageKey, section.open ? 'open' : 'closed'));
+        } catch (_) {
+          // Browser storage is optional; native details behavior still works.
+        }
+      }
+    }
+
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
     els.categoryFilter.addEventListener('change', renderChannels);
@@ -925,6 +965,7 @@
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
+    initCollapsibleSections();
     loadDispatchConfig();
     loadDraft();
   </script>
