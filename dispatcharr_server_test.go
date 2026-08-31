@@ -218,9 +218,55 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 		t.Fatalf("deny response = %d body %s", recorder.Code, recorder.Body.String())
 	}
 	config, _, _ := server.lineup.store.Get()
-	decision := server.lineup.builder.MatchDecisions(config.Fingerprint())[key]
-	if decision.Decision != "denied" {
-		t.Fatalf("stored denial = %+v", decision)
+	decisions := server.lineup.builder.MatchDecisions(config.Fingerprint())
+	if len(decisions) != 1 {
+		t.Fatalf("stored denials = %+v", decisions)
+	}
+	for _, decision := range decisions {
+		if decision.Decision != "denied" {
+			t.Fatalf("stored denial = %+v", decision)
+		}
+	}
+}
+
+func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) {
+	server, fake := newDispatcharrTestServer(t, true)
+	fake.streams = []dispatcharr.Stream{
+		{ID: 10, Name: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3},
+		{ID: 11, Name: "US: TWO", TVGID: "Two.us", M3UAccountID: 7},
+		{ID: 12, Name: "TWO", TVGID: "Two-East.us", M3UAccountID: 11},
+	}
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	recorder := httptest.NewRecorder()
+	server.handleReview(recorder, request)
+	var review dispatcharrReviewResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
+		t.Fatal(err)
+	}
+	if review.CandidateCount != 1 || review.CandidateStreamCount != 3 || len(review.Candidates) != 1 {
+		t.Fatalf("grouped review = %+v", review)
+	}
+	group := review.Candidates[0]
+	if group.StreamCount != 3 || len(group.TVGIDs) != 2 || len(group.M3UAccountIDs) != 3 {
+		t.Fatalf("group evidence = %+v", group)
+	}
+	payload := `{"key":"` + group.Key + `","decision":"confirmed","tvgIds":["Two.us"]}`
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleDecision(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("group confirm response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	config, _, _ := server.lineup.store.Get()
+	decisions := server.lineup.builder.MatchDecisions(config.Fingerprint())
+	if len(decisions) != 3 {
+		t.Fatalf("group decisions = %+v", decisions)
+	}
+	for _, decision := range decisions {
+		if decision.TVGID != "" && decision.TVGID != "Two.us" {
+			t.Fatalf("unselected TVG ID persisted: %+v", decision)
+		}
 	}
 }
 

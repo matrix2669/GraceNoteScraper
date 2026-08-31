@@ -168,7 +168,7 @@
     .advanced-scanner > summary { width: 100%; padding: 14px 0 2px; color: var(--muted); font-size: 12px; font-weight: 720; cursor: pointer; }
     .advanced-scanner-copy { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
-    .dispatch-panel { margin-bottom: 18px; padding: 20px 21px; }
+    .dispatch-panel > .panel-summary { padding-top: 20px; padding-bottom: 16px; }
     .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
     .dispatch-form {
       display: grid; grid-template-columns: minmax(220px, 2fr) minmax(135px, .8fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
@@ -200,6 +200,15 @@
     }
     .match-name { font-size: 13px; font-weight: 760; overflow-wrap: anywhere; }
     .match-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .match-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .match-evidence summary { cursor: pointer; }
+    .match-evidence-list { display: grid; gap: 4px; margin-top: 7px; overflow-wrap: anywhere; }
+    .match-tier { display: inline-flex; margin-right: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(124,230,166,.1); color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .match-tier.contained { color: var(--warning); background: rgba(255,203,92,.1); }
+    .match-tier.fuzzy { color: var(--danger); background: rgba(255,95,87,.1); }
+    .match-tvg-options { display: grid; gap: 5px; margin-top: 8px; }
+    .match-tvg-option { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
+    .match-tvg-option input { width: 15px; height: 15px; }
     .match-arrow { color: var(--accent); font-size: 18px; }
     .match-score { color: var(--accent); font-weight: 850; }
     .match-buttons { display: flex; gap: 7px; }
@@ -439,13 +448,16 @@
       </div>
     </details>
 
-    <section class="panel dispatch-panel" id="dispatch-panel">
-      <div class="dispatch-head">
-        <div>
-          <h2 class="panel-title">Dispatcharr M3U matching</h2>
-          <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias.</p>
-        </div>
-      </div>
+    <details class="panel dispatch-panel collapsible-panel" id="dispatch-panel" data-section-key="dispatcharr" open>
+      <summary class="panel-summary dispatch-head">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Dispatcharr M3U matching</span>
+          <span class="panel-help">Review grouped aliases from every active M3U stream.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+      <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias group.</p>
       <form class="dispatch-form" id="dispatch-form">
         <div class="field">
           <label for="dispatch-url">Dispatcharr address</label>
@@ -486,7 +498,7 @@
       <div id="match-review" hidden>
         <div class="match-summary">
           <div class="match-stat"><strong id="match-streams">—</strong><span>M3U streams</span></div>
-          <div class="match-stat"><strong id="match-candidates">—</strong><span>To review</span></div>
+          <div class="match-stat"><strong id="match-candidates">—</strong><span>Alias groups to review</span></div>
           <div class="match-stat"><strong id="match-confirmed">—</strong><span>Confirmed</span></div>
           <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
         </div>
@@ -498,7 +510,8 @@
         </details>
       </div>
       <div class="match-list" id="dispatch-loading"></div>
-    </section>
+      </div>
+    </details>
 
     <details class="panel builder-panel collapsible-panel" data-section-key="channels" open>
       <summary class="panel-summary">
@@ -737,7 +750,8 @@
       els.matchConfirmed.textContent = matchReview.confirmedCount.toLocaleString();
       els.matchDenied.textContent = matchReview.deniedCount.toLocaleString();
       const fetched = matchReview.fetchedAt ? new Date(matchReview.fetchedAt).toLocaleString() : '';
-      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}.`;
+      const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
+      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} matching stream${grouped === 1 ? '' : 's'} are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       if (!(matchReview.candidates || []).length) {
@@ -756,21 +770,42 @@
     function matchCard(candidate) {
       const card = document.createElement('article'); card.className = 'match-card'; card.dataset.key = candidate.key;
       const stream = document.createElement('div');
-      const streamName = document.createElement('div'); streamName.className = 'match-name'; streamName.textContent = candidate.streamName;
+      const streamName = document.createElement('div'); streamName.className = 'match-name'; streamName.textContent = candidate.alias;
       const streamMeta = document.createElement('div'); streamMeta.className = 'match-meta';
-      streamMeta.textContent = [`M3U account ${candidate.m3uAccountId}`, candidate.tvgId && `TVG ${candidate.tvgId}`, candidate.streamChannelNumber != null && `provider #${candidate.streamChannelNumber}`].filter(Boolean).join(' · ');
+      const accounts = (candidate.m3uAccountIds || []).join(', ');
+      streamMeta.textContent = `${candidate.streamCount.toLocaleString()} stream${candidate.streamCount === 1 ? '' : 's'}${accounts ? ` · M3U accounts ${accounts}` : ''}`;
       stream.append(streamName, streamMeta);
+      const evidence = document.createElement('details'); evidence.className = 'match-evidence';
+      const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = `View ${(candidate.streamNames || []).length} raw name variant${(candidate.streamNames || []).length === 1 ? '' : 's'}`;
+      const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
+      for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
+      evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
+      if ((candidate.tvgIds || []).length) {
+        const options = document.createElement('div'); options.className = 'match-tvg-options';
+        const help = document.createElement('div'); help.className = 'match-meta';
+        help.textContent = candidate.tvgIds.length === 1 ? 'The matching TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
+        options.append(help);
+        for (const tvgId of candidate.tvgIds) {
+          const label = document.createElement('label'); label.className = 'match-tvg-option';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = tvgId; input.checked = candidate.tvgIds.length === 1;
+          label.append(input, document.createTextNode(tvgId)); options.append(label);
+        }
+        stream.append(options);
+      }
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
       const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
       const channelMeta = document.createElement('div'); channelMeta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
-      channelMeta.append(score, document.createTextNode(` · ${candidate.reason}`)); channel.append(channelName, channelMeta);
+      const scoreText = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      score.textContent = scoreText;
+      channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
-      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
+      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed', [...card.querySelectorAll('.match-tvg-option input:checked')].map(input => input.value)));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
-      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
+      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied', []));
       buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
@@ -779,13 +814,13 @@
       const row = document.createElement('div'); row.className = 'decision-row';
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
-      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.score}%`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
       copy.append(title, meta);
       const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
       row.append(copy, undo); return row;
     }
 
-    async function decideMatch(key, decision) {
+    async function decideMatch(key, decision, tvgIds = []) {
       if (pendingDecisions.has(key) || !matchReview) return;
       const candidate = (matchReview.candidates || []).find(item => item.key === key);
       if (!candidate) return;
@@ -794,19 +829,21 @@
       matchReview = {
         ...matchReview,
         candidateCount: Math.max(0, matchReview.candidateCount - 1),
+        candidateStreamCount: Math.max(0, (matchReview.candidateStreamCount || matchReview.candidateCount) - candidate.streamCount),
         confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
         deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
-        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.streamName, score: candidate.score}, ...(matchReview.decisions || [])]
+        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
       };
       renderMatchReview();
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision})
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds})
         });
         showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. The next candidate can now be reviewed.');
       } catch (error) {
         matchReview.candidateCount++;
+        matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
         matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
         matchReview.candidates = [candidate, ...(matchReview.candidates || [])];
@@ -1325,6 +1362,7 @@
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
+    initCollapsibleSections();
     loadDispatchConfig();
     els.continueScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('continue'));
     els.postalScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('postal'));
@@ -1338,7 +1376,6 @@
     els.rebuildIndex.addEventListener('click', () => {
       if (confirm('Rebuild the alias index from the beginning? The current index will be kept as a .bak file.')) startAliasScan('rebuild');
     });
-    initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
     loadDraft();

@@ -276,6 +276,26 @@ func (s *Service) MatchDecisions(fingerprint string) map[string]MatchDecision {
 }
 
 func (s *Service) SetMatchDecision(fingerprint string, decision MatchDecision) error {
+	return s.SetMatchDecisions(fingerprint, []MatchDecision{decision})
+}
+
+func (s *Service) SetMatchDecisions(fingerprint string, decisions []MatchDecision) error {
+	if len(decisions) == 0 {
+		return errors.New("at least one match decision is required")
+	}
+	now := time.Now().UTC()
+	normalized := make([]MatchDecision, 0, len(decisions))
+	for _, decision := range decisions {
+		cleaned, err := normalizeMatchDecision(decision, now)
+		if err != nil {
+			return err
+		}
+		normalized = append(normalized, cleaned)
+	}
+	return s.store.SetMatchDecisions(fingerprint, normalized)
+}
+
+func normalizeMatchDecision(decision MatchDecision, updatedAt time.Time) (MatchDecision, error) {
 	decision.Key = strings.TrimSpace(decision.Key)
 	decision.Decision = strings.ToLower(strings.TrimSpace(decision.Decision))
 	decision.DispatcharrFingerprint = strings.TrimSpace(decision.DispatcharrFingerprint)
@@ -288,20 +308,30 @@ func (s *Service) SetMatchDecision(fingerprint string, decision MatchDecision) e
 	decision.ChannelNumber = cleanText(decision.ChannelNumber)
 	decision.Reason = cleanText(decision.Reason)
 	if decision.Decision != "confirmed" && decision.Decision != "denied" {
-		return errors.New("match decision must be confirmed or denied")
+		return MatchDecision{}, errors.New("match decision must be confirmed or denied")
 	}
 	if decision.Key == "" || decision.DispatcharrFingerprint == "" || decision.StreamFingerprint == "" || decision.StreamKey == "" || decision.ChannelID == "" || decision.StreamName == "" {
-		return errors.New("match decision is incomplete")
+		return MatchDecision{}, errors.New("match decision is incomplete")
 	}
 	if len(decision.StreamName) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
-		return errors.New("match decision metadata is too long")
+		return MatchDecision{}, errors.New("match decision metadata is too long")
 	}
-	decision.UpdatedAt = time.Now().UTC()
-	return s.store.SetMatchDecision(fingerprint, decision)
+	decision.UpdatedAt = updatedAt
+	return decision, nil
 }
 
 func (s *Service) ClearMatchDecision(fingerprint, key string) error {
 	return s.store.ClearMatchDecision(fingerprint, strings.TrimSpace(key))
+}
+
+func (s *Service) ClearMatchDecisions(fingerprint string, keys []string) error {
+	cleaned := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key = strings.TrimSpace(key); key != "" {
+			cleaned = append(cleaned, key)
+		}
+	}
+	return s.store.ClearMatchDecisions(fingerprint, cleaned)
 }
 
 func applyAliasSuppressions(channel *DraftChannel, suppressed []string) {

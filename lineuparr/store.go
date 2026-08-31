@@ -170,39 +170,61 @@ func (s *StateStore) SetAliasSuppressed(fingerprint, channelID, alias string, su
 }
 
 func (s *StateStore) SetMatchDecision(fingerprint string, decision MatchDecision) error {
-	if fingerprint == "" || decision.Key == "" {
-		return errors.New("source fingerprint and match decision key are required")
+	return s.SetMatchDecisions(fingerprint, []MatchDecision{decision})
+}
+
+func (s *StateStore) SetMatchDecisions(fingerprint string, decisions []MatchDecision) error {
+	if fingerprint == "" || len(decisions) == 0 {
+		return errors.New("source fingerprint and match decisions are required")
+	}
+	for _, decision := range decisions {
+		if decision.Key == "" {
+			return errors.New("match decision key is required")
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureSourceLocked(fingerprint)
-	s.state.MatchDecisions[decision.Key] = decision
-	if decision.Decision == "confirmed" && decision.ChannelID != "" && decision.StreamName != "" {
-		override := s.state.Channels[decision.ChannelID]
-		filtered := override.SuppressedAliases[:0]
-		for _, alias := range override.SuppressedAliases {
-			if !strings.EqualFold(alias, decision.StreamName) {
-				filtered = append(filtered, alias)
+	for _, decision := range decisions {
+		s.state.MatchDecisions[decision.Key] = decision
+		if decision.Decision == "confirmed" && decision.ChannelID != "" && decision.StreamName != "" {
+			override := s.state.Channels[decision.ChannelID]
+			filtered := override.SuppressedAliases[:0]
+			for _, alias := range override.SuppressedAliases {
+				if !strings.EqualFold(alias, decision.StreamName) {
+					filtered = append(filtered, alias)
+				}
 			}
-		}
-		override.SuppressedAliases = filtered
-		if override.Included != nil || override.Category != "" || len(override.SuppressedAliases) > 0 {
-			s.state.Channels[decision.ChannelID] = override
-		} else {
-			delete(s.state.Channels, decision.ChannelID)
+			override.SuppressedAliases = filtered
+			if override.Included != nil || override.Category != "" || len(override.SuppressedAliases) > 0 {
+				s.state.Channels[decision.ChannelID] = override
+			} else {
+				delete(s.state.Channels, decision.ChannelID)
+			}
 		}
 	}
 	return s.saveLocked()
 }
 
 func (s *StateStore) ClearMatchDecision(fingerprint, key string) error {
-	if fingerprint == "" || key == "" {
-		return errors.New("source fingerprint and match decision key are required")
+	return s.ClearMatchDecisions(fingerprint, []string{key})
+}
+
+func (s *StateStore) ClearMatchDecisions(fingerprint string, keys []string) error {
+	if fingerprint == "" || len(keys) == 0 {
+		return errors.New("source fingerprint and match decision keys are required")
+	}
+	for _, key := range keys {
+		if key == "" {
+			return errors.New("match decision key is required")
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureSourceLocked(fingerprint)
-	delete(s.state.MatchDecisions, key)
+	for _, key := range keys {
+		delete(s.state.MatchDecisions, key)
+	}
 	return s.saveLocked()
 }
 

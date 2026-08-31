@@ -171,3 +171,49 @@ func TestDecisionsSurviveAuthenticationSourceChange(t *testing.T) {
 		t.Fatalf("authentication change restored reviewed candidates: %+v", got)
 	}
 }
+
+func TestGroupCandidatesCombinesEquivalentProviderStreams(t *testing.T) {
+	candidates := []Candidate{
+		{Key: "one", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US: ION", TVGID: "ION.us", M3UAccountID: 3, Score: 98, Reason: "Exact normalized name or alias"},
+		{Key: "two", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US| ION HD", TVGID: "ION.us", M3UAccountID: 7, Score: 98, Reason: "Exact normalized name or alias"},
+		{Key: "three", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "ION", TVGID: "ION-East.us", M3UAccountID: 11, Score: 99, Reason: "Exact normalized channel name"},
+	}
+	groups := GroupCandidates(candidates)
+	if len(groups) != 1 {
+		t.Fatalf("groups = %+v", groups)
+	}
+	group := groups[0]
+	if group.StreamCount != 3 || len(group.StreamNames) != 3 || len(group.TVGIDs) != 2 || len(group.M3UAccountIDs) != 3 {
+		t.Fatalf("group evidence = %+v", group)
+	}
+	if group.NormalizedAlias != "ion" || group.Tier != "exact" || group.MinimumScore != 98 || group.MaximumScore != 99 {
+		t.Fatalf("group identity = %+v", group)
+	}
+}
+
+func TestAliasDecisionSuppressesEquivalentStreamsAcrossAccounts(t *testing.T) {
+	channels := []MatchChannel{{ID: "ION", Number: "3", Name: "WPXN", Aliases: []string{"ION"}}}
+	first := Stream{ID: 1, M3UAccountID: 3, Name: "US: ION"}
+	decisions := map[string]Decision{
+		"confirmed": {Decision: "confirmed", StreamHash: first.Fingerprint(), ChannelID: "ION", StreamName: first.Name},
+	}
+	got := MatchStreams("dispatch", channels, []Stream{
+		first,
+		{ID: 2, M3UAccountID: 7, Name: "US| ION HD"},
+	}, decisions)
+	if len(got) != 0 {
+		t.Fatalf("equivalent confirmed alias returned candidates: %+v", got)
+	}
+}
+
+func TestTemporaryEventStreamDoesNotMatchPermanentNetworkAlias(t *testing.T) {
+	channels := []MatchChannel{{ID: "ION", Number: "3", Name: "WPXN", Category: "Entertainment", Aliases: []string{"ION", "WNBA on ION 1"}}}
+	got := MatchStreams("dispatch", channels, []Stream{{ID: 1, M3UAccountID: 3, Name: "WNBA on ION 1"}}, nil)
+	if len(got) != 0 {
+		t.Fatalf("temporary event stream matched permanent channel: %+v", got)
+	}
+	channels[0].Category = "PPV & Events"
+	if got := MatchStreams("dispatch", channels, []Stream{{ID: 1, M3UAccountID: 3, Name: "WNBA on ION 1"}}, nil); len(got) != 1 {
+		t.Fatalf("event channel did not retain event candidate: %+v", got)
+	}
+}
