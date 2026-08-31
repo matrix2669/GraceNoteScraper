@@ -495,6 +495,88 @@ func TestCategoriesForStationsRejectsConflictingOfficialSources(t *testing.T) {
 	}
 }
 
+func TestCategoriesForStationsPrefersSelectedOfficialSource(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Entertainment", SourceID: "optimum-official-lineup", SourceLabel: "Optimum official lineup", Method: "exact provider channel number"},
+		{Kind: FactCategory, Value: "Music", SourceID: "verizon-fios-official-lineup", SourceLabel: "Verizon FiOS official lineup", Method: "exact provider channel number"},
+	}}
+	service.mu.Unlock()
+
+	category, ok := service.CategoriesForStationsWithPreferredSource([]string{"S1"}, "optimum-official-lineup")["S1"]
+	if !ok || category.Value != "Entertainment" {
+		t.Fatalf("preferred category = %+v, %v", category, ok)
+	}
+	if len(category.SourceIDs) != 1 || category.SourceIDs[0] != "optimum-official-lineup" {
+		t.Fatalf("preferred category sources = %v", category.SourceIDs)
+	}
+	if _, ok := service.CategoriesForStations([]string{"S1"})["S1"]; ok {
+		t.Fatal("legacy all-source lookup stopped rejecting the conflict")
+	}
+}
+
+func TestCategoriesForStationsRejectsPreferredSourceConflict(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Entertainment", SourceID: "optimum-official-lineup"},
+		{Kind: FactCategory, Value: "Movies", SourceID: "optimum-official-lineup"},
+		{Kind: FactCategory, Value: "Entertainment", SourceID: "verizon-fios-official-lineup"},
+	}}
+	service.mu.Unlock()
+
+	if _, ok := service.CategoriesForStationsWithPreferredSource([]string{"S1"}, "optimum-official-lineup")["S1"]; ok {
+		t.Fatal("conflicting categories within the preferred source were applied")
+	}
+}
+
+func TestCategoriesForStationsRequiresAgreementWithoutPreferredEvidence(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Sports", SourceID: "dish-official-lineup"},
+		{Kind: FactCategory, Value: "Sports", SourceID: "verizon-fios-official-lineup"},
+	}}
+	service.index.Stations["S2"] = &Station{StationID: "S2", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Sports", SourceID: "dish-official-lineup"},
+		{Kind: FactCategory, Value: "News", SourceID: "verizon-fios-official-lineup"},
+	}}
+	service.mu.Unlock()
+
+	categories := service.CategoriesForStationsWithPreferredSource([]string{"S1", "S2"}, "optimum-official-lineup")
+	if category, ok := categories["S1"]; !ok || category.Value != "Sports" || len(category.SourceIDs) != 2 {
+		t.Fatalf("agreed fallback category = %+v, %v", category, ok)
+	}
+	if _, ok := categories["S2"]; ok {
+		t.Fatal("conflicting fallback categories were applied")
+	}
+}
+
 func TestServiceDeduplicatesLineupsAndReportsAliasYield(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "market_index.json")
 	providers := &fakeProviders{responses: map[string][]web.Provider{

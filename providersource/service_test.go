@@ -18,6 +18,30 @@ func (function roundTripFunc) RoundTrip(request *http.Request) (*http.Response, 
 	return function(request)
 }
 
+func TestOfficialSourceID(t *testing.T) {
+	tests := map[string]string{
+		"Optimum of Woodbury - Digital": "optimum-official-lineup",
+		"Cablevision":                   "optimum-official-lineup",
+		"Verizon FiOS":                  "verizon-fios-official-lineup",
+		"DIRECTV New York":              "directv-official-lineup",
+		"DISH Network":                  "dish-official-lineup",
+		"AFN Satellite":                 "afn-official-guide",
+		"GLORYSTAR":                     "glorystar-official-lineup",
+		"AT&T U-Verse":                  "att-uverse-official-lineup",
+		"Comcast Xfinity":               "xfinity-official-lineup",
+		"Charter Spectrum":              "spectrum-official-lineup",
+		"Broadstream":                   "broadstar-official-lineup",
+		"Unknown Cable":                 "",
+	}
+	for providerName, want := range tests {
+		t.Run(providerName, func(t *testing.T) {
+			if got := OfficialSourceID(providerName); got != want {
+				t.Fatalf("OfficialSourceID(%q) = %q, want %q", providerName, got, want)
+			}
+		})
+	}
+}
+
 type failingBody struct {
 	message string
 }

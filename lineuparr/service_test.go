@@ -282,11 +282,69 @@ func TestDuplicateSuggestionRecognizesLocalDigitalCallsign(t *testing.T) {
 
 func TestDuplicateSuggestionRequiresSharedAttributableSource(t *testing.T) {
 	suggestions := findDuplicateSuggestions([]DraftChannel{
-		{ID: "sd", Number: "2", Name: "Example", OriginalName: "EXAMPLE", CallSign: "EXAMPLE", NameSource: "source one", MatchedSources: []string{"gracenote", "source-one"}},
-		{ID: "hd", Number: "502", Name: "Example", OriginalName: "EXAMPLEHD", CallSign: "EXAMPLEHD", NameSource: "source two", MatchedSources: []string{"gracenote", "source-two"}},
+		{ID: "sd", Number: "2", Name: "Example", OriginalName: "EXAMPLEA", CallSign: "EXAMPLEA", NameSource: "source one", MatchedSources: []string{"gracenote", "source-one"}},
+		{ID: "hd", Number: "502", Name: "Example", OriginalName: "EXAMPLEBHD", CallSign: "EXAMPLEBHD", NameSource: "source two", MatchedSources: []string{"gracenote", "source-two"}},
 	})
 	if len(suggestions) != 0 {
 		t.Fatalf("cross-source duplicate suggestion = %+v", suggestions)
+	}
+}
+
+func TestDuplicateSuggestionRecognizesExactQualitySuffixWithGracenoteNames(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{ID: "vice-sd", Number: "161", Name: "VICE", OriginalName: "VICE", CallSign: "VICE", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "vice-hd", Number: "661", Name: "VICEHD", OriginalName: "VICEHD", CallSign: "VICEHD", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "reelz-sd", Number: "128", Name: "REELZ", OriginalName: "REELZ", CallSign: "REELZ", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "reelz-hd", Number: "628", Name: "REELZHD", OriginalName: "REELZHD", CallSign: "REELZHD", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+	})
+	if len(suggestions) != 2 {
+		t.Fatalf("quality-suffix duplicate suggestions = %+v", suggestions)
+	}
+	want := map[string]string{"reelz-sd": "reelz-hd", "vice-sd": "vice-hd"}
+	for _, suggestion := range suggestions {
+		if want[suggestion.RemoveID] != suggestion.KeepID {
+			t.Fatalf("quality-suffix duplicate suggestion = %+v", suggestion)
+		}
+		if !strings.Contains(suggestion.Reason, "HD/SD suffix") {
+			t.Fatalf("quality-suffix duplicate reason = %q", suggestion.Reason)
+		}
+	}
+}
+
+func TestQualitySuffixDuplicateSuggestionPreservesSubchannelsAndAmbiguity(t *testing.T) {
+	tests := []struct {
+		name     string
+		channels []DraftChannel
+	}{
+		{
+			name: "digital subchannel suffix",
+			channels: []DraftChannel{
+				{ID: "main", Number: "7", CallSign: "WABC", NameSource: "gracenote"},
+				{ID: "subchannel", Number: "7.2", CallSign: "WABCDT2", NameSource: "gracenote"},
+			},
+		},
+		{
+			name: "short base",
+			channels: []DraftChannel{
+				{ID: "short", Number: "1", CallSign: "MT", NameSource: "gracenote"},
+				{ID: "short-hd", Number: "501", CallSign: "MTHD", NameSource: "gracenote"},
+			},
+		},
+		{
+			name: "equal strongest variants",
+			channels: []DraftChannel{
+				{ID: "base", Number: "161", CallSign: "VICE", NameSource: "gracenote"},
+				{ID: "hd-one", Number: "661", CallSign: "VICEHD", NameSource: "gracenote"},
+				{ID: "hd-two", Number: "1661", CallSign: "VICE HD", NameSource: "gracenote"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if suggestions := findDuplicateSuggestions(test.channels); len(suggestions) != 0 {
+				t.Fatalf("duplicate suggestions = %+v", suggestions)
+			}
+		})
 	}
 }
 

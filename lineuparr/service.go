@@ -751,18 +751,18 @@ func addScores(scores map[int]int, candidates []int, score int) {
 }
 
 func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
-	groups := make(map[string][]int)
+	nameGroups := make(map[string][]int)
 	for index, channel := range channels {
 		if channel.NameSource == "gracenote" {
 			continue
 		}
 		key := identityKey(channel.Name)
 		if key != "" {
-			groups[key] = append(groups[key], index)
+			nameGroups[key] = append(nameGroups[key], index)
 		}
 	}
-	var suggestions []DuplicateSuggestion
-	for _, indexes := range groups {
+	suggestionByRemoveID := make(map[string]DuplicateSuggestion)
+	for _, indexes := range nameGroups {
 		if len(indexes) < 2 {
 			continue
 		}
@@ -787,14 +787,69 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				continue
 			}
 			reason := fmt.Sprintf("Exact source identity maps both positions to %s; %s carries the stronger HD/digital marker", keep.Name, keep.CallSign)
-			suggestions = append(suggestions, DuplicateSuggestion{
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
 				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
 				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-			})
+			}
 		}
 	}
+
+	suffixGroups := make(map[string][]int)
+	groupsWithSuffix := make(map[string]bool)
+	for index, channel := range channels {
+		base, hasSuffix := qualitySuffixBase(channel.CallSign)
+		if base == "" {
+			continue
+		}
+		suffixGroups[base] = append(suffixGroups[base], index)
+		groupsWithSuffix[base] = groupsWithSuffix[base] || hasSuffix
+	}
+	for base, indexes := range suffixGroups {
+		if len(indexes) < 2 || !groupsWithSuffix[base] {
+			continue
+		}
+		bestRank := -1
+		keepIndexes := make([]int, 0, 1)
+		for _, index := range indexes {
+			rank := qualityRank(channels[index])
+			if rank > bestRank {
+				bestRank = rank
+				keepIndexes = []int{index}
+			} else if rank == bestRank {
+				keepIndexes = append(keepIndexes, index)
+			}
+		}
+		if len(keepIndexes) != 1 || bestRank <= 1 {
+			continue
+		}
+		keep := channels[keepIndexes[0]]
+		for _, index := range indexes {
+			remove := channels[index]
+			if remove.ID == keep.ID || qualityRank(remove) >= bestRank {
+				continue
+			}
+			if _, exists := suggestionByRemoveID[remove.ID]; exists {
+				continue
+			}
+			reason := fmt.Sprintf("Callsigns differ only by an HD/SD suffix; %s carries the stronger HD/digital marker", keep.CallSign)
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
+				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+			}
+		}
+	}
+	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
+	for _, suggestion := range suggestionByRemoveID {
+		suggestions = append(suggestions, suggestion)
+	}
 	sort.SliceStable(suggestions, func(i, j int) bool {
-		return numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber)
+		if numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber) {
+			return true
+		}
+		if numberLess(suggestions[j].RemoveNumber, suggestions[i].RemoveNumber) {
+			return false
+		}
+		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
 	return suggestions
 }
@@ -812,6 +867,24 @@ func sharesAttributableSource(left, right DraftChannel) bool {
 		}
 	}
 	return false
+}
+
+func qualitySuffixBase(value string) (string, bool) {
+	key := identityKey(value)
+	if key == "" {
+		return "", false
+	}
+	for _, suffix := range []string{"hd", "sd"} {
+		if !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		base := strings.TrimSuffix(key, suffix)
+		if len(base) < 3 {
+			return "", false
+		}
+		return base, true
+	}
+	return key, false
 }
 
 func qualityRank(channel DraftChannel) int {
