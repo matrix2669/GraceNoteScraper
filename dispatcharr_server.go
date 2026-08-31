@@ -38,6 +38,7 @@ type dispatcharrCandidateCache struct {
 	dispatcharrFingerprint string
 	lineupFingerprint      string
 	candidates             map[string]dispatcharr.Candidate
+	groups                 map[string][]string
 }
 
 type dispatcharrStreamCache struct {
@@ -64,21 +65,26 @@ type dispatcharrReviewDecision struct {
 	StreamName    string    `json:"streamName"`
 	TVGID         string    `json:"tvgId,omitempty"`
 	M3UAccountID  int64     `json:"m3uAccountId"`
+	M3UAccountIDs []int64   `json:"m3uAccountIds,omitempty"`
+	StreamCount   int       `json:"streamCount"`
+	StreamNames   []string  `json:"streamNames,omitempty"`
+	TVGIDs        []string  `json:"tvgIds,omitempty"`
 	Score         int       `json:"score"`
 	Reason        string    `json:"reason"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type dispatcharrReviewResponse struct {
-	StreamCount    int                         `json:"streamCount"`
-	CandidateCount int                         `json:"candidateCount"`
-	ConfirmedCount int                         `json:"confirmedCount"`
-	DeniedCount    int                         `json:"deniedCount"`
-	FetchedAt      time.Time                   `json:"fetchedAt"`
-	Cached         bool                        `json:"cached"`
-	Warning        string                      `json:"warning,omitempty"`
-	Candidates     []dispatcharr.Candidate     `json:"candidates"`
-	Decisions      []dispatcharrReviewDecision `json:"decisions"`
+	StreamCount          int                          `json:"streamCount"`
+	CandidateCount       int                          `json:"candidateCount"`
+	CandidateStreamCount int                          `json:"candidateStreamCount"`
+	ConfirmedCount       int                          `json:"confirmedCount"`
+	DeniedCount          int                          `json:"deniedCount"`
+	FetchedAt            time.Time                    `json:"fetchedAt"`
+	Cached               bool                         `json:"cached"`
+	Warning              string                       `json:"warning,omitempty"`
+	Candidates           []dispatcharr.CandidateGroup `json:"candidates"`
+	Decisions            []dispatcharrReviewDecision  `json:"decisions"`
 }
 
 type dispatcharrReviewBuild struct {
@@ -189,8 +195,9 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var body struct {
-		Key      string `json:"key"`
-		Decision string `json:"decision,omitempty"`
+		Key      string   `json:"key"`
+		Decision string   `json:"decision,omitempty"`
+		TVGIDs   []string `json:"tvgIds"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -211,13 +218,21 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		if !ok {
 			return
 		}
-		existing := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())[body.Key]
+		stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
+		existing := stored[body.Key]
 		if existing.Key == "" {
 			http.Error(w, "match decision does not belong to the active sources", http.StatusNotFound)
 			return
 		}
+		alias := dispatcharr.NormalizeAliasName(existing.StreamName)
+		keys := make([]string, 0)
+		for key, decision := range stored {
+			if decision.Decision == existing.Decision && decision.ChannelID == existing.ChannelID && dispatcharr.NormalizeAliasName(decision.StreamName) == alias {
+				keys = append(keys, key)
+			}
+		}
 		if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
-			return s.lineup.builder.ClearMatchDecision(lineupConfig.Fingerprint(), body.Key)
+			return s.lineup.builder.ClearMatchDecisions(lineupConfig.Fingerprint(), keys)
 		}, w) {
 			return
 		}
@@ -239,7 +254,12 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
-	candidate, found := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+	candidates, found := s.cachedCandidateGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+	if !found {
+		if candidate, candidateFound := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key); candidateFound {
+			candidates, found = []dispatcharr.Candidate{candidate}, true
+		}
+	}
 	if !found {
 		build, built := s.buildReview(w, r, false)
 		if !built {
@@ -247,25 +267,47 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		}
 		dispatchConfig = build.dispatchConfig
 		lineupConfig = build.lineupConfig
-		candidate, found = s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+		candidates, found = s.cachedCandidateGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+		if !found {
+			if candidate, candidateFound := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key); candidateFound {
+				candidates, found = []dispatcharr.Candidate{candidate}, true
+			}
+		}
 	}
 	if !found {
 		http.Error(w, "match candidate is no longer current", http.StatusConflict)
 		return
 	}
-	decision := lineuparrbuilder.MatchDecision{
-		Key: candidate.Key, Decision: body.Decision,
-		DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
-		StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
-		ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
-		StreamName: candidate.StreamName, TVGID: candidate.TVGID, Score: candidate.Score, Reason: candidate.Reason,
+	selectedTVGIDs := make(map[string]bool)
+	for _, value := range body.TVGIDs {
+		if value = strings.ToLower(strings.TrimSpace(value)); value != "" {
+			selectedTVGIDs[value] = true
+		}
+	}
+	decisions := make([]lineuparrbuilder.MatchDecision, 0, len(candidates))
+	for index, candidate := range candidates {
+		tvgID := candidate.TVGID
+		if body.TVGIDs != nil && !selectedTVGIDs[strings.ToLower(strings.TrimSpace(tvgID))] {
+			tvgID = ""
+		}
+		decisionKey := candidate.Key
+		if index == 0 {
+			decisionKey = body.Key
+		}
+		decisions = append(decisions, lineuparrbuilder.MatchDecision{
+			Key: decisionKey, Decision: body.Decision,
+			DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
+			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
+			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
+			StreamName: candidate.StreamName, TVGID: tvgID, Score: candidate.Score, Reason: candidate.Reason,
+		})
 	}
 	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
-		return s.lineup.builder.SetMatchDecision(lineupConfig.Fingerprint(), decision)
+		return s.lineup.builder.SetMatchDecisions(lineupConfig.Fingerprint(), decisions)
 	}, w) {
 		return
 	}
-	s.removeCachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
+	s.removeCachedGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key, candidates)
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
@@ -293,49 +335,108 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	channels := make([]dispatcharr.MatchChannel, 0, len(draft.Channels))
 	for _, channel := range draft.Channels {
 		channels = append(channels, dispatcharr.MatchChannel{
-			ID: channel.ID, Number: channel.Number, Name: channel.Name,
+			ID: channel.ID, Number: channel.Number, Name: channel.Name, Category: channel.Category,
 			Aliases: append([]string(nil), channel.Aliases...), EPGIDs: append([]string(nil), channel.EPGIDs...),
 		})
 	}
 	stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
 	matcherDecisions := make(map[string]dispatcharr.Decision, len(stored))
-	history := make([]dispatcharrReviewDecision, 0)
-	confirmed := 0
-	denied := 0
 	for key, decision := range stored {
 		matcherDecisions[key] = dispatcharr.Decision{
 			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
-			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID,
+			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID, StreamName: decision.StreamName,
 		}
-		if decision.Decision == "confirmed" {
-			confirmed++
-		} else if decision.Decision == "denied" {
-			denied++
-		}
-		history = append(history, dispatcharrReviewDecision{
-			Key: decision.Key, Decision: decision.Decision,
-			ChannelID: decision.ChannelID, ChannelNumber: decision.ChannelNumber, ChannelName: decision.ChannelName,
-			StreamID: decision.StreamID, StreamName: decision.StreamName, TVGID: decision.TVGID,
-			M3UAccountID: decision.M3UAccountID, Score: decision.Score, Reason: decision.Reason, UpdatedAt: decision.UpdatedAt,
-		})
 	}
-	sort.SliceStable(history, func(i, j int) bool { return history[i].UpdatedAt.After(history[j].UpdatedAt) })
+	history, confirmed, denied := groupReviewDecisions(stored)
 	if len(history) > dispatcharrReviewLimit {
 		history = history[:dispatcharrReviewLimit]
 	}
 	candidates := dispatcharr.MatchStreams(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
+	groups := dispatcharr.GroupCandidates(candidates)
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), candidates)
-	visible := candidates
+	visible := groups
 	if len(visible) > dispatcharrReviewLimit {
 		visible = visible[:dispatcharrReviewLimit]
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			StreamCount: len(streams), CandidateCount: len(candidates), ConfirmedCount: confirmed, DeniedCount: denied,
+			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(candidates), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: fetchedAt, Cached: cached, Warning: warning, Candidates: visible, Decisions: history,
 		},
 		candidates: candidates, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
 	}, true
+}
+
+func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]dispatcharrReviewDecision, int, int) {
+	groups := make(map[string]*dispatcharrReviewDecision)
+	for _, decision := range stored {
+		normalized := dispatcharr.NormalizeAliasName(decision.StreamName)
+		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized}, "\x00")
+		group := groups[key]
+		if group == nil {
+			group = &dispatcharrReviewDecision{
+				Key: decision.Key, Decision: decision.Decision,
+				ChannelID: decision.ChannelID, ChannelNumber: decision.ChannelNumber, ChannelName: decision.ChannelName,
+				StreamID: decision.StreamID, StreamName: decision.StreamName, TVGID: decision.TVGID,
+				M3UAccountID: decision.M3UAccountID, Score: decision.Score, Reason: decision.Reason, UpdatedAt: decision.UpdatedAt,
+			}
+			groups[key] = group
+		}
+		group.StreamCount++
+		group.StreamNames = appendUniqueReviewString(group.StreamNames, decision.StreamName)
+		group.TVGIDs = appendUniqueReviewString(group.TVGIDs, decision.TVGID)
+		group.M3UAccountIDs = appendUniqueReviewInt64(group.M3UAccountIDs, decision.M3UAccountID)
+		if decision.UpdatedAt.After(group.UpdatedAt) {
+			group.Key = decision.Key
+			group.StreamID = decision.StreamID
+			group.StreamName = decision.StreamName
+			group.TVGID = decision.TVGID
+			group.M3UAccountID = decision.M3UAccountID
+			group.Score = decision.Score
+			group.Reason = decision.Reason
+			group.UpdatedAt = decision.UpdatedAt
+		}
+	}
+	history := make([]dispatcharrReviewDecision, 0, len(groups))
+	confirmed := 0
+	denied := 0
+	for _, group := range groups {
+		sort.Slice(group.M3UAccountIDs, func(i, j int) bool { return group.M3UAccountIDs[i] < group.M3UAccountIDs[j] })
+		sort.Slice(group.StreamNames, func(i, j int) bool {
+			return strings.ToLower(group.StreamNames[i]) < strings.ToLower(group.StreamNames[j])
+		})
+		sort.Slice(group.TVGIDs, func(i, j int) bool { return strings.ToLower(group.TVGIDs[i]) < strings.ToLower(group.TVGIDs[j]) })
+		history = append(history, *group)
+		if group.Decision == "confirmed" {
+			confirmed++
+		} else if group.Decision == "denied" {
+			denied++
+		}
+	}
+	sort.SliceStable(history, func(i, j int) bool { return history[i].UpdatedAt.After(history[j].UpdatedAt) })
+	return history, confirmed, denied
+}
+
+func appendUniqueReviewString(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func appendUniqueReviewInt64(values []int64, value int64) []int64 {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
 }
 
 func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
@@ -343,8 +444,12 @@ func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerpri
 	for _, candidate := range candidates {
 		byKey[candidate.Key] = candidate
 	}
+	groups := make(map[string][]string)
+	for _, group := range dispatcharr.GroupCandidates(candidates) {
+		groups[group.Key] = append([]string(nil), group.CandidateKeys...)
+	}
 	s.reviewMu.Lock()
-	s.review = dispatcharrCandidateCache{dispatcharrFingerprint: dispatchFingerprint, lineupFingerprint: lineupFingerprint, candidates: byKey}
+	s.review = dispatcharrCandidateCache{dispatcharrFingerprint: dispatchFingerprint, lineupFingerprint: lineupFingerprint, candidates: byKey, groups: groups}
 	s.reviewMu.Unlock()
 }
 
@@ -358,11 +463,44 @@ func (s *dispatcharrServer) cachedCandidate(dispatchFingerprint, lineupFingerpri
 	return candidate, ok
 }
 
+func (s *dispatcharrServer) cachedCandidateGroup(dispatchFingerprint, lineupFingerprint, key string) ([]dispatcharr.Candidate, bool) {
+	s.reviewMu.RLock()
+	defer s.reviewMu.RUnlock()
+	if s.review.dispatcharrFingerprint != dispatchFingerprint || s.review.lineupFingerprint != lineupFingerprint {
+		return nil, false
+	}
+	keys, ok := s.review.groups[key]
+	if !ok || len(keys) == 0 {
+		return nil, false
+	}
+	result := make([]dispatcharr.Candidate, 0, len(keys))
+	for _, candidateKey := range keys {
+		candidate, exists := s.review.candidates[candidateKey]
+		if !exists {
+			return nil, false
+		}
+		result = append(result, candidate)
+	}
+	return result, true
+}
+
 func (s *dispatcharrServer) removeCachedCandidate(dispatchFingerprint, lineupFingerprint, key string) {
 	s.reviewMu.Lock()
 	defer s.reviewMu.Unlock()
 	if s.review.dispatcharrFingerprint == dispatchFingerprint && s.review.lineupFingerprint == lineupFingerprint {
 		delete(s.review.candidates, key)
+	}
+}
+
+func (s *dispatcharrServer) removeCachedGroup(dispatchFingerprint, lineupFingerprint, key string, candidates []dispatcharr.Candidate) {
+	s.reviewMu.Lock()
+	defer s.reviewMu.Unlock()
+	if s.review.dispatcharrFingerprint != dispatchFingerprint || s.review.lineupFingerprint != lineupFingerprint {
+		return
+	}
+	delete(s.review.groups, key)
+	for _, candidate := range candidates {
+		delete(s.review.candidates, candidate.Key)
 	}
 }
 

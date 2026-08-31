@@ -40,18 +40,28 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 	prepared, exactIndex, tokenIndex, gramIndex, epgIndex := prepareChannels(channels)
 	confirmedStreams := make(map[string]bool)
 	denied := make(map[string]bool)
+	confirmedAliases := make(map[string]bool)
+	deniedAliases := make(map[string]bool)
 	for _, decision := range decisions {
+		alias := NormalizeAliasName(decision.StreamName)
 		if decision.Decision == "confirmed" {
 			confirmedStreams[decision.StreamHash] = true
+			if alias != "" {
+				confirmedAliases[alias] = true
+			}
 		} else if decision.Decision == "denied" {
 			denied[decisionPairKey(decision.StreamHash, decision.ChannelID)] = true
+			if alias != "" {
+				deniedAliases[aliasDecisionKey(alias, decision.ChannelID)] = true
+			}
 		}
 	}
 
 	result := make([]Candidate, 0)
 	for _, stream := range streams {
 		streamHash := stream.Fingerprint()
-		if confirmedStreams[streamHash] {
+		normalizedAlias := NormalizeAliasName(stream.Name)
+		if confirmedStreams[streamHash] || confirmedAliases[normalizedAlias] {
 			continue
 		}
 		if decorativeStreamName(stream.Name) {
@@ -104,6 +114,10 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 
 		scored := make([]scoredCandidate, 0, len(indexes))
 		for index := range indexes {
+			channel := prepared[index].channel
+			if eventFeedName(stream.Name) && !channelAcceptsEventFeed(channel) {
+				continue
+			}
 			score, reason := scoreStream(stream, streamIdentities, prepared[index])
 			if typoScores[index] > score {
 				score = typoScores[index]
@@ -112,7 +126,7 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 			if score < minimumCandidateScore {
 				continue
 			}
-			if denied[decisionPairKey(streamHash, prepared[index].channel.ID)] {
+			if denied[decisionPairKey(streamHash, channel.ID)] || deniedAliases[aliasDecisionKey(normalizedAlias, channel.ID)] {
 				continue
 			}
 			scored = append(scored, scoredCandidate{channel: index, score: score, reason: reason})
@@ -158,6 +172,174 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 		return strings.ToLower(result[i].StreamName) < strings.ToLower(result[j].StreamName)
 	})
 	return result
+}
+
+func aliasDecisionKey(alias, channelID string) string {
+	return alias + "\x00" + channelID
+}
+
+func NormalizeAliasName(value string) string {
+	identities := prepareIdentities([]string{value})
+	if len(identities) == 0 {
+		return ""
+	}
+	best := identities[0].compact
+	for _, identity := range identities[1:] {
+		if len(identity.compact) < len(best) {
+			best = identity.compact
+		}
+	}
+	return best
+}
+
+func GroupCandidates(candidates []Candidate) []CandidateGroup {
+	groups := make(map[string]*CandidateGroup)
+	for _, candidate := range candidates {
+		normalized := NormalizeAliasName(candidate.StreamName)
+		if normalized == "" {
+			continue
+		}
+		key := candidateGroupKey(candidate.Source, candidate.ChannelID, normalized)
+		group := groups[key]
+		if group == nil {
+			group = &CandidateGroup{
+				Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
+				Alias: strings.TrimSpace(candidate.StreamName), NormalizedAlias: normalized,
+				MinimumScore: candidate.Score, MaximumScore: candidate.Score, Tier: candidateTier(candidate),
+			}
+			groups[key] = group
+		}
+		group.StreamCount++
+		group.MinimumScore = min(group.MinimumScore, candidate.Score)
+		group.MaximumScore = max(group.MaximumScore, candidate.Score)
+		group.Tier = lowerTier(group.Tier, candidateTier(candidate))
+		group.StreamNames = appendUniqueFold(group.StreamNames, strings.TrimSpace(candidate.StreamName))
+		group.TVGIDs = appendUniqueFold(group.TVGIDs, strings.TrimSpace(candidate.TVGID))
+		group.M3UAccountIDs = appendUniqueInt64(group.M3UAccountIDs, candidate.M3UAccountID)
+		group.Reasons = appendUniqueFold(group.Reasons, candidate.Reason)
+		group.CandidateKeys = append(group.CandidateKeys, candidate.Key)
+		if candidateNameLess(candidate.StreamName, group.Alias) {
+			group.Alias = strings.TrimSpace(candidate.StreamName)
+		}
+	}
+	result := make([]CandidateGroup, 0, len(groups))
+	for _, group := range groups {
+		sort.Slice(group.M3UAccountIDs, func(i, j int) bool { return group.M3UAccountIDs[i] < group.M3UAccountIDs[j] })
+		sort.Slice(group.StreamNames, func(i, j int) bool {
+			return strings.ToLower(group.StreamNames[i]) < strings.ToLower(group.StreamNames[j])
+		})
+		sort.Slice(group.TVGIDs, func(i, j int) bool { return strings.ToLower(group.TVGIDs[i]) < strings.ToLower(group.TVGIDs[j]) })
+		sort.Strings(group.CandidateKeys)
+		result = append(result, *group)
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		if tierRank(result[i].Tier) != tierRank(result[j].Tier) {
+			return tierRank(result[i].Tier) < tierRank(result[j].Tier)
+		}
+		if result[i].MaximumScore != result[j].MaximumScore {
+			return result[i].MaximumScore > result[j].MaximumScore
+		}
+		if result[i].ChannelNumber != result[j].ChannelNumber {
+			return channelNumberLess(result[i].ChannelNumber, result[j].ChannelNumber)
+		}
+		return strings.ToLower(result[i].Alias) < strings.ToLower(result[j].Alias)
+	})
+	return result
+}
+
+func candidateGroupKey(source, channelID, normalizedAlias string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{source, channelID, normalizedAlias}, "\x00")))
+	return hex.EncodeToString(sum[:])
+}
+
+func candidateTier(candidate Candidate) string {
+	reason := strings.ToLower(candidate.Reason)
+	if strings.Contains(reason, "fuzzy") || candidate.Score < 88 {
+		return "fuzzy"
+	}
+	if strings.Contains(reason, "contain") || candidate.Score < 98 {
+		return "contained"
+	}
+	return "exact"
+}
+
+func lowerTier(left, right string) string {
+	if tierRank(right) > tierRank(left) {
+		return right
+	}
+	return left
+}
+
+func tierRank(value string) int {
+	switch value {
+	case "exact":
+		return 0
+	case "contained":
+		return 1
+	default:
+		return 2
+	}
+}
+
+func appendUniqueFold(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func appendUniqueInt64(values []int64, value int64) []int64 {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func candidateNameLess(left, right string) bool {
+	left = strings.TrimSpace(left)
+	right = strings.TrimSpace(right)
+	if right == "" || len([]rune(left)) != len([]rune(right)) {
+		return right == "" || len([]rune(left)) < len([]rune(right))
+	}
+	return strings.ToLower(left) < strings.ToLower(right)
+}
+
+func channelAcceptsEventFeed(channel MatchChannel) bool {
+	return strings.EqualFold(strings.TrimSpace(channel.Category), "PPV & Events") || eventFeedName(channel.Name)
+}
+
+func eventFeedName(value string) bool {
+	normalized := NormalizeAliasName(value)
+	if normalized == "" {
+		return false
+	}
+	for _, marker := range []string{
+		"payperview", "ppv", "specialevent", "eventchannel", "overflow", "alternate", "altfeed",
+		"leaguepass", "sundayticket", "extrainnings", "centerice",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	last := normalized[len(normalized)-1]
+	if last < '0' || last > '9' {
+		return false
+	}
+	for _, league := range []string{"wnba", "nba", "nfl", "nhl", "mlb", "mls", "ncaa", "ufc", "boxing", "wwe"} {
+		for _, relation := range []string{"on", "at", "vs"} {
+			if strings.Contains(normalized, league+relation) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func decisionPairKey(streamHash, channelID string) string {

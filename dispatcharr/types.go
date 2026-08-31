@@ -36,11 +36,12 @@ func (s Stream) Fingerprint() string {
 }
 
 type MatchChannel struct {
-	ID      string
-	Number  string
-	Name    string
-	Aliases []string
-	EPGIDs  []string
+	ID       string
+	Number   string
+	Name     string
+	Category string
+	Aliases  []string
+	EPGIDs   []string
 }
 
 type Decision struct {
@@ -49,6 +50,7 @@ type Decision struct {
 	Source     string
 	StreamHash string
 	ChannelID  string
+	StreamName string
 }
 
 type Candidate struct {
@@ -67,4 +69,22 @@ type Candidate struct {
 	Source          string   `json:"-"`
 	Score           int      `json:"score"`
 	Reason          string   `json:"reason"`
+}
+
+type CandidateGroup struct {
+	Key             string   `json:"key"`
+	ChannelID       string   `json:"channelId"`
+	ChannelNumber   string   `json:"channelNumber"`
+	ChannelName     string   `json:"channelName"`
+	Alias           string   `json:"alias"`
+	NormalizedAlias string   `json:"normalizedAlias"`
+	StreamCount     int      `json:"streamCount"`
+	StreamNames     []string `json:"streamNames"`
+	TVGIDs          []string `json:"tvgIds,omitempty"`
+	M3UAccountIDs   []int64  `json:"m3uAccountIds"`
+	MinimumScore    int      `json:"minimumScore"`
+	MaximumScore    int      `json:"maximumScore"`
+	Tier            string   `json:"tier"`
+	Reasons         []string `json:"reasons"`
+	CandidateKeys   []string `json:"-"`
 }
