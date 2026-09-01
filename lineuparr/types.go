@@ -125,6 +125,7 @@ type MatchDecision struct {
 	ChannelNumber          string    `json:"channelNumber"`
 	ChannelName            string    `json:"channelName"`
 	StreamName             string    `json:"streamName"`
+	NormalizedAlias        string    `json:"normalizedAlias,omitempty"`
 	TVGID                  string    `json:"tvgId,omitempty"`
 	Score                  int       `json:"score"`
 	Reason                 string    `json:"reason"`

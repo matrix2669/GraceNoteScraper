@@ -39,6 +39,49 @@ func TestMatchStreamsNormalizesStylizedProviderQualityMarkers(t *testing.T) {
 	}
 }
 
+func TestMatchStreamsNormalizesDelimitedProviderPrefixesAndSpacing(t *testing.T) {
+	channels := []MatchChannel{
+		{ID: "espn2", Number: "574", Name: "ESPN 2"},
+		{ID: "reelz", Number: "692", Name: "REELZ"},
+		{ID: "roku", Number: "800", Name: "The Roku Channel"},
+	}
+	streams := []Stream{
+		{ID: 1, M3UAccountID: 3, Name: "GO: ESPN2 HD"},
+		{ID: 2, M3UAccountID: 3, Name: "Prime| REELZ FHD"},
+		{ID: 3, M3UAccountID: 3, Name: "ROKU: The Roku Channel"},
+	}
+	got := MatchStreams("source", channels, streams, nil)
+	if len(got) != 3 {
+		t.Fatalf("provider-prefix candidates = %+v", got)
+	}
+	for _, candidate := range got {
+		if candidate.Score < 98 {
+			t.Fatalf("provider-prefix candidate = %+v", candidate)
+		}
+	}
+}
+
+func TestMatchStreamsStripsOnlyMatchingDispatcharrChannelNumber(t *testing.T) {
+	number := 502.0
+	got := MatchStreams("source",
+		[]MatchChannel{{ID: "wcbs", Number: "2", Name: "WCBS-DT"}},
+		[]Stream{{ID: 1, M3UAccountID: 12, Name: "502 WCBS-DT", StreamChannelNo: &number}},
+		nil,
+	)
+	if len(got) != 1 || got[0].ChannelID != "wcbs" || got[0].NormalizedAlias != "wcbsdt" || got[0].Score < 98 {
+		t.Fatalf("number-prefixed candidate = %+v", got)
+	}
+
+	wrongNumber := 999.0
+	if got := MatchStreams("source",
+		[]MatchChannel{{ID: "usa", Number: "550", Name: "USA Network"}},
+		[]Stream{{ID: 2, M3UAccountID: 12, Name: "2026 USA BMX Red River National", StreamChannelNo: &wrongNumber}},
+		nil,
+	); len(got) != 0 {
+		t.Fatalf("unverified leading number was stripped: %+v", got)
+	}
+}
+
 func TestMatchStreamsUsesExactEPGID(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "cnn", Number: "600", Name: "Cable News Network", EPGIDs: []string{"CNN.us"}}},
@@ -174,8 +217,8 @@ func TestDecisionsSurviveAuthenticationSourceChange(t *testing.T) {
 
 func TestGroupCandidatesCombinesEquivalentProviderStreams(t *testing.T) {
 	candidates := []Candidate{
-		{Key: "one", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US: ION", TVGID: "ION.us", M3UAccountID: 3, Score: 98, Reason: "Exact normalized name or alias"},
-		{Key: "two", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US| ION HD", TVGID: "ION.us", M3UAccountID: 7, Score: 98, Reason: "Exact normalized name or alias"},
+		{Key: "one", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US: ION", TVGID: "ION.us", KnownEPGID: true, M3UAccountID: 3, Score: 98, Reason: "Exact normalized name or alias"},
+		{Key: "two", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "US| ION HD", TVGID: "ION.us", KnownEPGID: true, M3UAccountID: 7, Score: 98, Reason: "Exact normalized name or alias"},
 		{Key: "three", Source: "dispatch", ChannelID: "ION", ChannelNumber: "3", ChannelName: "WPXN", StreamName: "ION", TVGID: "ION-East.us", M3UAccountID: 11, Score: 99, Reason: "Exact normalized channel name"},
 	}
 	groups := GroupCandidates(candidates)
@@ -188,6 +231,13 @@ func TestGroupCandidatesCombinesEquivalentProviderStreams(t *testing.T) {
 	}
 	if group.NormalizedAlias != "ion" || group.Tier != "exact" || group.MinimumScore != 98 || group.MaximumScore != 99 {
 		t.Fatalf("group identity = %+v", group)
+	}
+	knownByID := make(map[string]bool)
+	for _, evidence := range group.TVGIDEvidence {
+		knownByID[evidence.ID] = evidence.Known
+	}
+	if len(group.TVGIDEvidence) != 2 || !knownByID["ION.us"] || knownByID["ION-East.us"] {
+		t.Fatalf("TVG-ID provenance = %+v", group.TVGIDEvidence)
 	}
 }
 
@@ -203,6 +253,23 @@ func TestAliasDecisionSuppressesEquivalentStreamsAcrossAccounts(t *testing.T) {
 	}, decisions)
 	if len(got) != 0 {
 		t.Fatalf("equivalent confirmed alias returned candidates: %+v", got)
+	}
+}
+
+func TestPersistedSafeNormalizedAliasSuppressesEquivalentNumberedStream(t *testing.T) {
+	channel := MatchChannel{ID: "WCBS", Number: "2", Name: "WCBS-DT"}
+	firstNumber := 502.0
+	first := Stream{ID: 1, M3UAccountID: 12, Name: "502 WCBS-DT", StreamChannelNo: &firstNumber}
+	decisions := map[string]Decision{
+		"confirmed": {Decision: "confirmed", StreamHash: first.Fingerprint(), ChannelID: "WCBS", StreamName: first.Name, NormalizedAlias: NormalizeStreamAlias(first)},
+	}
+	secondNumber := 2.0
+	got := MatchStreams("dispatch", []MatchChannel{channel}, []Stream{
+		first,
+		{ID: 2, M3UAccountID: 7, Name: "GO: WCBS-DT HD", StreamChannelNo: &secondNumber},
+	}, decisions)
+	if len(got) != 0 {
+		t.Fatalf("persisted normalized alias returned candidate: %+v", got)
 	}
 }
 

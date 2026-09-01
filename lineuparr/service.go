@@ -272,6 +272,7 @@ func normalizeMatchDecision(decision MatchDecision, updatedAt time.Time) (MatchD
 	decision.StreamKey = strings.TrimSpace(decision.StreamKey)
 	decision.ChannelID = strings.TrimSpace(decision.ChannelID)
 	decision.StreamName = cleanText(decision.StreamName)
+	decision.NormalizedAlias = cleanText(decision.NormalizedAlias)
 	decision.TVGID = cleanText(decision.TVGID)
 	decision.ChannelName = cleanText(decision.ChannelName)
 	decision.ChannelNumber = cleanText(decision.ChannelNumber)
@@ -282,7 +283,7 @@ func normalizeMatchDecision(decision MatchDecision, updatedAt time.Time) (MatchD
 	if decision.Key == "" || decision.DispatcharrFingerprint == "" || decision.StreamFingerprint == "" || decision.StreamKey == "" || decision.ChannelID == "" || decision.StreamName == "" {
 		return MatchDecision{}, errors.New("match decision is incomplete")
 	}
-	if len(decision.StreamName) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
+	if len(decision.StreamName) > 512 || len(decision.NormalizedAlias) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
 		return MatchDecision{}, errors.New("match decision metadata is too long")
 	}
 	decision.UpdatedAt = updatedAt

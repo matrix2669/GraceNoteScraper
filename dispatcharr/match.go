@@ -43,7 +43,10 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 	confirmedAliases := make(map[string]bool)
 	deniedAliases := make(map[string]bool)
 	for _, decision := range decisions {
-		alias := NormalizeAliasName(decision.StreamName)
+		alias := strings.TrimSpace(decision.NormalizedAlias)
+		if alias == "" {
+			alias = NormalizeAliasName(decision.StreamName)
+		}
 		if decision.Decision == "confirmed" {
 			confirmedStreams[decision.StreamHash] = true
 			if alias != "" {
@@ -60,14 +63,14 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 	result := make([]Candidate, 0)
 	for _, stream := range streams {
 		streamHash := stream.Fingerprint()
-		normalizedAlias := NormalizeAliasName(stream.Name)
+		normalizedAlias := NormalizeStreamAlias(stream)
 		if confirmedStreams[streamHash] || confirmedAliases[normalizedAlias] {
 			continue
 		}
 		if decorativeStreamName(stream.Name) {
 			continue
 		}
-		streamIdentities := prepareIdentities([]string{stream.Name})
+		streamIdentities := prepareStreamIdentities(stream)
 		if len(streamIdentities) == 0 {
 			continue
 		}
@@ -163,6 +166,8 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 			Source:          sourceFingerprint,
 			Score:           best.score,
 			Reason:          best.reason,
+			NormalizedAlias: normalizedAlias,
+			KnownEPGID:      strings.TrimSpace(stream.TVGID) != "" && prepared[best.channel].epgIDs[strings.ToLower(strings.TrimSpace(stream.TVGID))],
 		})
 	}
 	sort.SliceStable(result, func(i, j int) bool {
@@ -192,10 +197,30 @@ func NormalizeAliasName(value string) string {
 	return best
 }
 
+// NormalizeStreamAlias applies only stream-specific cleanup that can be
+// proven from Dispatcharr metadata. In particular, a leading number is
+// removed only when it exactly equals that stream's channel-number field.
+func NormalizeStreamAlias(stream Stream) string {
+	identities := prepareStreamIdentities(stream)
+	if len(identities) == 0 {
+		return ""
+	}
+	best := identities[0].compact
+	for _, identity := range identities[1:] {
+		if len(identity.compact) < len(best) {
+			best = identity.compact
+		}
+	}
+	return best
+}
+
 func GroupCandidates(candidates []Candidate) []CandidateGroup {
 	groups := make(map[string]*CandidateGroup)
 	for _, candidate := range candidates {
-		normalized := NormalizeAliasName(candidate.StreamName)
+		normalized := strings.TrimSpace(candidate.NormalizedAlias)
+		if normalized == "" {
+			normalized = NormalizeAliasName(candidate.StreamName)
+		}
 		if normalized == "" {
 			continue
 		}
@@ -215,6 +240,7 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		group.Tier = lowerTier(group.Tier, candidateTier(candidate))
 		group.StreamNames = appendUniqueFold(group.StreamNames, strings.TrimSpace(candidate.StreamName))
 		group.TVGIDs = appendUniqueFold(group.TVGIDs, strings.TrimSpace(candidate.TVGID))
+		group.TVGIDEvidence = appendTVGIDEvidence(group.TVGIDEvidence, candidate)
 		group.M3UAccountIDs = appendUniqueInt64(group.M3UAccountIDs, candidate.M3UAccountID)
 		group.Reasons = appendUniqueFold(group.Reasons, candidate.Reason)
 		group.CandidateKeys = append(group.CandidateKeys, candidate.Key)
@@ -229,6 +255,17 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 			return strings.ToLower(group.StreamNames[i]) < strings.ToLower(group.StreamNames[j])
 		})
 		sort.Slice(group.TVGIDs, func(i, j int) bool { return strings.ToLower(group.TVGIDs[i]) < strings.ToLower(group.TVGIDs[j]) })
+		sort.Slice(group.TVGIDEvidence, func(i, j int) bool {
+			return strings.ToLower(group.TVGIDEvidence[i].ID) < strings.ToLower(group.TVGIDEvidence[j].ID)
+		})
+		for index := range group.TVGIDEvidence {
+			sort.Slice(group.TVGIDEvidence[index].StreamNames, func(i, j int) bool {
+				return strings.ToLower(group.TVGIDEvidence[index].StreamNames[i]) < strings.ToLower(group.TVGIDEvidence[index].StreamNames[j])
+			})
+			sort.Slice(group.TVGIDEvidence[index].M3UAccountIDs, func(i, j int) bool {
+				return group.TVGIDEvidence[index].M3UAccountIDs[i] < group.TVGIDEvidence[index].M3UAccountIDs[j]
+			})
+		}
 		sort.Strings(group.CandidateKeys)
 		result = append(result, *group)
 	}
@@ -245,6 +282,23 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		return strings.ToLower(result[i].Alias) < strings.ToLower(result[j].Alias)
 	})
 	return result
+}
+
+func appendTVGIDEvidence(values []TVGIDEvidence, candidate Candidate) []TVGIDEvidence {
+	id := strings.TrimSpace(candidate.TVGID)
+	if id == "" {
+		return values
+	}
+	for index := range values {
+		if !strings.EqualFold(values[index].ID, id) {
+			continue
+		}
+		values[index].Known = values[index].Known || candidate.KnownEPGID
+		values[index].StreamNames = appendUniqueFold(values[index].StreamNames, strings.TrimSpace(candidate.StreamName))
+		values[index].M3UAccountIDs = appendUniqueInt64(values[index].M3UAccountIDs, candidate.M3UAccountID)
+		return values
+	}
+	return append(values, TVGIDEvidence{ID: id, Known: candidate.KnownEPGID, StreamNames: []string{strings.TrimSpace(candidate.StreamName)}, M3UAccountIDs: []int64{candidate.M3UAccountID}})
 }
 
 func candidateGroupKey(source, channelID, normalizedAlias string) string {
@@ -585,8 +639,36 @@ func prepareIdentities(values []string) []preparedIdentity {
 	return result
 }
 
+func prepareStreamIdentities(stream Stream) []preparedIdentity {
+	values := []string{stream.Name}
+	if stripped := stripMatchingStreamChannelNumber(stream); stripped != "" && !strings.EqualFold(stripped, strings.TrimSpace(stream.Name)) {
+		values = append(values, stripped)
+	}
+	return prepareIdentities(values)
+}
+
+func stripMatchingStreamChannelNumber(stream Stream) string {
+	if stream.StreamChannelNo == nil {
+		return ""
+	}
+	value := strings.TrimSpace(stream.Name)
+	separator := strings.IndexFunc(value, unicode.IsSpace)
+	if separator <= 0 {
+		return ""
+	}
+	number, err := strconv.ParseFloat(value[:separator], 64)
+	if err != nil || math.Abs(number-*stream.StreamChannelNo) >= 0.0001 {
+		return ""
+	}
+	rest := strings.TrimSpace(value[separator:])
+	rest = strings.TrimLeftFunc(rest, func(character rune) bool {
+		return unicode.IsSpace(character) || strings.ContainsRune("|:-/", character)
+	})
+	return strings.TrimSpace(rest)
+}
+
 func normalizedTokens(value string, stripQuality bool) []string {
-	value = stripDelimitedCountryPrefix(strings.TrimSpace(value))
+	value = stripDelimitedProviderPrefix(strings.TrimSpace(value))
 	var builder strings.Builder
 	for _, r := range strings.ToLower(value) {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
@@ -609,9 +691,9 @@ func normalizedTokens(value string, stripQuality bool) []string {
 	return result
 }
 
-func stripDelimitedCountryPrefix(value string) string {
+func stripDelimitedProviderPrefix(value string) string {
 	lower := strings.ToLower(value)
-	for _, prefix := range []string{"usa", "us", "ca", "can", "uk", "gb"} {
+	for _, prefix := range []string{"prime", "tubi", "roku", "usa", "can", "go", "us", "ca", "uk", "gb"} {
 		if !strings.HasPrefix(lower, prefix) || len(value) <= len(prefix) {
 			continue
 		}
