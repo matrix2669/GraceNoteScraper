@@ -92,15 +92,28 @@ type DuplicateSuggestion struct {
 }
 
 type SourceStatus struct {
-	ID           string `json:"id"`
-	Label        string `json:"label"`
-	URL          string `json:"url,omitempty"`
-	Status       string `json:"status"`
-	Access       string `json:"access,omitempty"`
-	LocationMode string `json:"locationMode,omitempty"`
-	Matched      int    `json:"matched"`
-	Ambiguous    int    `json:"ambiguous,omitempty"`
-	Message      string `json:"message,omitempty"`
+	ID           string        `json:"id"`
+	Label        string        `json:"label"`
+	URL          string        `json:"url,omitempty"`
+	Status       string        `json:"status"`
+	Access       string        `json:"access,omitempty"`
+	LocationMode string        `json:"locationMode,omitempty"`
+	Matched      int           `json:"matched"`
+	Ambiguous    int           `json:"ambiguous,omitempty"`
+	Message      string        `json:"message,omitempty"`
+	RelatedIDs   []string      `json:"relatedIds,omitempty"`
+	Matches      []SourceMatch `json:"matches,omitempty"`
+}
+
+type SourceMatch struct {
+	ChannelID string   `json:"channelId"`
+	Number    string   `json:"number"`
+	CallSign  string   `json:"callSign,omitempty"`
+	Name      string   `json:"name"`
+	Category  string   `json:"category,omitempty"`
+	Aliases   []string `json:"aliases,omitempty"`
+	EPGIDs    []string `json:"epgIds,omitempty"`
+	Methods   []string `json:"methods,omitempty"`
 }
 
 type Draft struct {

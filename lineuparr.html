@@ -103,10 +103,27 @@
     .source-row { width: 100%; min-width: 0; max-width: 100%; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
     .source-copy { min-width: 0; flex: 1 1 440px; overflow-wrap: anywhere; }
     .source-name { min-width: 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+    .source-name-button { display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; text-align: left; text-decoration: underline; }
     .source-message { min-width: 0; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
     .source-state { max-width: 100%; flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; white-space: normal; overflow-wrap: anywhere; }
     .source-state.good { color: var(--accent); }
     .source-state.bad { color: var(--danger); }
+    .source-state-button { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; }
+    .source-state-button:disabled { cursor: default; opacity: 1; text-decoration: none; }
+    .source-evidence-dialog { width: min(1060px, calc(100% - 28px)); max-height: min(82vh, 820px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    .source-evidence-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .source-evidence-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px; border-bottom: 1px solid var(--line); }
+    .source-evidence-header h2 { margin: 0; font-size: 19px; }
+    .source-evidence-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .source-evidence-close { min-height: 34px; padding: 0 10px; }
+    .source-evidence-tools { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+    .source-evidence-tools input { flex: 1 1 280px; }
+    .source-evidence-site { min-height: 42px; }
+    .source-evidence-table-wrap { max-height: 58vh; overflow: auto; }
+    .source-evidence-table { min-width: 760px; }
+    .source-evidence-table th, .source-evidence-table td { vertical-align: top; text-align: left; white-space: normal; }
+    .source-evidence-table td:first-child { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 720; }
+    .source-evidence-detail { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
     .provider-address {
       display: grid; grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr); gap: 18px;
       align-items: center; margin-top: 15px; padding: 15px; border: 1px solid rgba(140,200,255,.26);
@@ -127,6 +144,7 @@
     .alias-panel > .panel-summary { padding-top: 24px; padding-bottom: 18px; }
     .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
     .alias-header p { max-width: 760px; margin: 9px 0 0; color: var(--muted); line-height: 1.55; }
+    .alias-refresh-time { margin: 8px 0 0; color: #8da59c; font-size: 11px; line-height: 1.4; }
     .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
     .metric { min-height: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,17,14,.48); }
     .metric-value { font-size: 24px; font-weight: 820; letter-spacing: -.03em; }
@@ -326,6 +344,7 @@
       </summary>
       <div class="panel-body">
         <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared with this lineup only through an exact station ID.</p>
+        <p class="alias-refresh-time" id="alias-last-refresh">Last provider refresh: never</p>
         <div class="scan-progress">
           <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
           <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
@@ -407,6 +426,24 @@
     </details>
   </main>
 
+  <dialog class="source-evidence-dialog" id="source-evidence-dialog">
+    <div class="source-evidence-header">
+      <div><h2 id="source-evidence-title">Source evidence</h2><p id="source-evidence-summary"></p></div>
+      <button class="secondary source-evidence-close" type="button" id="source-evidence-close">Close</button>
+    </div>
+    <div class="source-evidence-tools">
+      <input id="source-evidence-search" type="search" placeholder="Filter matched channels">
+      <a class="export-button source-evidence-site" id="source-evidence-site" target="_blank" rel="noreferrer" hidden>Provider website</a>
+    </div>
+    <div class="source-evidence-table-wrap">
+      <table class="source-evidence-table">
+        <thead><tr><th>Channel</th><th>Identity</th><th>Category</th><th>Captured evidence</th></tr></thead>
+        <tbody id="source-evidence-rows"></tbody>
+      </table>
+      <div class="empty" id="source-evidence-empty" hidden>No attributable records from this source matched the selected lineup.</div>
+    </div>
+  </dialog>
+
   <script>
     const els = {
       message: document.getElementById('message'), stats: document.getElementById('stats'),
@@ -416,6 +453,10 @@
       providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
       providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
       providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
+      sourceEvidenceDialog: document.getElementById('source-evidence-dialog'), sourceEvidenceTitle: document.getElementById('source-evidence-title'),
+      sourceEvidenceSummary: document.getElementById('source-evidence-summary'), sourceEvidenceSearch: document.getElementById('source-evidence-search'),
+      sourceEvidenceSite: document.getElementById('source-evidence-site'), sourceEvidenceRows: document.getElementById('source-evidence-rows'),
+      sourceEvidenceEmpty: document.getElementById('source-evidence-empty'), sourceEvidenceClose: document.getElementById('source-evidence-close'),
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
       includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
@@ -429,7 +470,8 @@
       postalScan: document.getElementById('postal-scan'),
       stopScan: document.getElementById('stop-scan'), rebuildIndex: document.getElementById('rebuild-index'),
       batchRows: document.getElementById('batch-rows'), marketList: document.getElementById('market-list'),
-      marketListSummary: document.getElementById('market-list-summary'), marketProvenance: document.getElementById('market-provenance')
+      marketListSummary: document.getElementById('market-list-summary'), marketProvenance: document.getElementById('market-provenance'),
+      aliasLastRefresh: document.getElementById('alias-last-refresh')
     };
 
     let draft = null;
@@ -438,6 +480,7 @@
     let marketWasRunning = false;
     let selectedProviderAddress = null;
     let providerAddressConfig = null;
+    let sourceEvidence = null;
     const providerAddressCache = new Map();
 
     function showMessage(text, error = false) {
@@ -555,6 +598,16 @@
       els.currentAliasesMetric.textContent = summary.currentLineupStations ? (summary.currentLineupAliases || 0).toLocaleString() : '—';
       els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : postalScan?.status === 'complete' ? `${postalScan.lineupsScanned} lineups` : '';
       els.scanProgressBar.style.width = `${batchPercent}%`;
+      if (postalScan?.completedAt) {
+        const completed = new Date(postalScan.completedAt);
+        const suffix = postalScan.status === 'complete' ? '' : ' · incomplete';
+        els.aliasLastRefresh.textContent = `Last provider refresh: ${Number.isNaN(completed.getTime()) ? postalScan.completedAt : completed.toLocaleString()}${suffix}`;
+      } else if (job.running && job.action === 'postal' && job.startedAt) {
+        const started = new Date(job.startedAt);
+        els.aliasLastRefresh.textContent = `Provider refresh started: ${Number.isNaN(started.getTime()) ? job.startedAt : started.toLocaleString()}`;
+      } else {
+        els.aliasLastRefresh.textContent = 'Last provider refresh: never';
+      }
 
       if (job.running && job.action === 'postal') {
         els.scanStatus.textContent = `Scanning ${job.currentProvider || `provider lineups in ${job.currentMarket}`}`;
@@ -702,17 +755,60 @@
       for (const source of draft.sources) {
         const row = document.createElement('div'); row.className = 'source-row';
         const copy = document.createElement('div'); copy.className = 'source-copy';
-        const name = source.url ? document.createElement('a') : document.createElement('div');
+        const directDocument = sourceIsDirectDocument(source.url);
+        const name = directDocument ? document.createElement('a') : document.createElement('button');
         name.className = 'source-name'; name.textContent = source.label;
-        if (source.url) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
+        if (directDocument) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
+        else { name.type = 'button'; name.classList.add('source-name-button'); name.addEventListener('click', () => openSourceEvidence(source)); }
         const message = document.createElement('div'); message.className = 'source-message'; message.textContent = source.message || '';
         copy.append(name, message);
-        const state = document.createElement('div');
+        const state = document.createElement('button'); state.type = 'button';
         const good = !['error'].includes(source.status);
-        state.className = 'source-state ' + (good ? 'good' : 'bad');
+        state.className = 'source-state source-state-button ' + (good ? 'good' : 'bad');
         state.textContent = source.id === 'gracenote' ? `${source.matched} positions` : `${source.matched} matched${source.ambiguous ? ` · ${source.ambiguous} ambiguous` : ''}`;
+        state.disabled = !(source.matches || []).length;
+        if (!state.disabled) state.addEventListener('click', () => openSourceEvidence(source));
         row.append(copy, state); els.sources.append(row);
       }
+    }
+
+    function sourceIsDirectDocument(url) {
+      if (!url) return false;
+      try { return new URL(url, location.href).pathname.toLowerCase().endsWith('.pdf'); }
+      catch (_) { return false; }
+    }
+
+    function openSourceEvidence(source) {
+      sourceEvidence = source;
+      els.sourceEvidenceTitle.textContent = source.label;
+      const count = (source.matches || []).length;
+      els.sourceEvidenceSummary.textContent = `${count.toLocaleString()} attributable selected-lineup match${count === 1 ? '' : 'es'}. ${source.message || ''}`.trim();
+      els.sourceEvidenceSearch.value = '';
+      els.sourceEvidenceSite.hidden = !source.url || sourceIsDirectDocument(source.url);
+      if (!els.sourceEvidenceSite.hidden) els.sourceEvidenceSite.href = source.url;
+      renderSourceEvidenceRows();
+      els.sourceEvidenceDialog.showModal();
+    }
+
+    function renderSourceEvidenceRows() {
+      const query = els.sourceEvidenceSearch.value.trim().toLowerCase();
+      const matches = (sourceEvidence?.matches || []).filter(item => !query || [item.number, item.callSign, item.name, item.category, ...(item.aliases || []), ...(item.epgIds || [])].join(' ').toLowerCase().includes(query));
+      els.sourceEvidenceRows.replaceChildren();
+      for (const item of matches) {
+        const row = document.createElement('tr');
+        const number = document.createElement('td'); number.textContent = item.number || '—';
+        const identity = document.createElement('td');
+        const identityName = document.createElement('strong'); identityName.textContent = [item.callSign, item.name && item.name !== item.callSign ? item.name : ''].filter(Boolean).join(' · ') || 'Unnamed channel';
+        const ids = document.createElement('div'); ids.className = 'source-evidence-detail'; ids.textContent = (item.epgIds || []).length ? `EPG IDs: ${item.epgIds.join(', ')}` : '';
+        identity.append(identityName, ids);
+        const category = document.createElement('td'); category.textContent = item.category || 'Uncategorized';
+        const evidence = document.createElement('td');
+        const aliases = document.createElement('div'); aliases.textContent = (item.aliases || []).length ? `Aliases: ${item.aliases.join(', ')}` : 'Matched identity/category';
+        const methods = document.createElement('div'); methods.className = 'source-evidence-detail'; methods.textContent = (item.methods || []).join(' · ');
+        evidence.append(aliases, methods);
+        row.append(number, identity, category, evidence); els.sourceEvidenceRows.append(row);
+      }
+      els.sourceEvidenceEmpty.hidden = matches.length !== 0;
     }
 
     function categories() {
@@ -731,7 +827,7 @@
     }
 
     function sourceLabel(id) {
-      return draft.sources.find(source => source.id === id)?.label || id;
+      return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
     function renderChannels() {
@@ -860,6 +956,8 @@
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
+    els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
+    els.sourceEvidenceClose.addEventListener('click', () => els.sourceEvidenceDialog.close());
     els.continueScan.addEventListener('click', () => startAliasScan('continue'));
     els.postalScan.addEventListener('click', () => startAliasScan('postal'));
     els.stopScan.addEventListener('click', async () => {

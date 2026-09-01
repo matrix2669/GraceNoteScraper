@@ -180,6 +180,8 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			resultChannels[index].DuplicateReason = suggestion.Reason
 		}
 	}
+	statuses = consolidateSourceStatuses(statuses)
+	populateSourceMatches(statuses, resultChannels)
 
 	draft := &Draft{
 		GeneratedAt:          time.Now().UTC(),
@@ -208,6 +210,191 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 	}
 	return draft, nil
+}
+
+func consolidateSourceStatuses(statuses []SourceStatus) []SourceStatus {
+	result := make([]SourceStatus, 0, len(statuses))
+	byKey := make(map[string]int)
+	for _, status := range statuses {
+		status.ID = strings.TrimSpace(status.ID)
+		if status.ID == "" {
+			continue
+		}
+		status.RelatedIDs = appendUniqueStringFold(status.RelatedIDs, status.ID)
+		key := sourceStatusFamily(status.ID)
+		index, exists := byKey[key]
+		if !exists {
+			byKey[key] = len(result)
+			result = append(result, status)
+			continue
+		}
+		current := &result[index]
+		current.RelatedIDs = appendUniqueStringFold(current.RelatedIDs, status.ID)
+		for _, id := range status.RelatedIDs {
+			current.RelatedIDs = appendUniqueStringFold(current.RelatedIDs, id)
+		}
+		replacingRegistration := strings.HasPrefix(current.ID, "provider-guide-") && !strings.HasPrefix(status.ID, "provider-guide-")
+		if replacingRegistration {
+			current.ID = status.ID
+			current.Label = status.Label
+			current.Status = status.Status
+		}
+		if sourceURLIsDocument(status.URL) || current.URL == "" {
+			current.URL = status.URL
+		}
+		if !replacingRegistration && sourceStatusRank(status.Status) > sourceStatusRank(current.Status) {
+			current.Status = status.Status
+		}
+		current.Matched = max(current.Matched, status.Matched)
+		current.Ambiguous = max(current.Ambiguous, status.Ambiguous)
+		if current.Access == "" {
+			current.Access = status.Access
+		}
+		if current.LocationMode == "" {
+			current.LocationMode = status.LocationMode
+		}
+		current.Message = appendUniqueMessage(current.Message, status.Message)
+	}
+	return result
+}
+
+func sourceStatusFamily(id string) string {
+	value := strings.ToLower(strings.TrimSpace(id))
+	provider := strings.TrimPrefix(value, "provider-guide-")
+	provider = strings.TrimSuffix(provider, "-official-lineup")
+	provider = strings.TrimSuffix(provider, "-official-guide")
+	switch provider {
+	case "verizon-fios", "directv", "dish", "optimum", "afn", "glorystar", "att-uverse", "xfinity", "spectrum", "broadstar":
+		return "provider:" + provider
+	default:
+		return value
+	}
+}
+
+func sourceStatusRank(status string) int {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active", "complete", "saved", "live", "cached", "local":
+		return 4
+	case "derived", "maintained":
+		return 3
+	case "registered", "no-matches":
+		return 2
+	case "error":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func sourceURLIsDocument(rawURL string) bool {
+	clean := strings.ToLower(strings.TrimSpace(rawURL))
+	if index := strings.IndexByte(clean, '?'); index >= 0 {
+		clean = clean[:index]
+	}
+	return strings.HasSuffix(clean, ".pdf")
+}
+
+func appendUniqueMessage(current, addition string) string {
+	addition = strings.TrimSpace(addition)
+	if addition == "" || strings.Contains(current, addition) {
+		return current
+	}
+	if strings.TrimSpace(current) == "" {
+		return addition
+	}
+	return current + " · " + addition
+}
+
+func appendUniqueStringFold(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func populateSourceMatches(statuses []SourceStatus, channels []DraftChannel) {
+	providerIDs := make(map[string]bool)
+	for _, status := range statuses {
+		if strings.HasPrefix(sourceStatusFamily(status.ID), "provider:") {
+			for _, id := range append(append([]string(nil), status.RelatedIDs...), status.ID) {
+				providerIDs[strings.ToLower(strings.TrimSpace(id))] = true
+			}
+		}
+	}
+	for index := range statuses {
+		ids := make(map[string]bool)
+		for _, id := range append(append([]string(nil), statuses[index].RelatedIDs...), statuses[index].ID) {
+			ids[strings.ToLower(strings.TrimSpace(id))] = true
+		}
+		for _, channel := range channels {
+			match, aliases, epgIDs, methods := sourceMatchForChannel(statuses[index].ID, ids, providerIDs, channel)
+			if !match {
+				continue
+			}
+			statuses[index].Matches = append(statuses[index].Matches, SourceMatch{
+				ChannelID: channel.ID, Number: channel.Number, CallSign: channel.CallSign, Name: channel.Name,
+				Category: channel.Category, Aliases: aliases, EPGIDs: epgIDs, Methods: methods,
+			})
+		}
+		if len(statuses[index].Matches) > 0 {
+			statuses[index].Matched = len(statuses[index].Matches)
+		}
+	}
+}
+
+func sourceMatchForChannel(statusID string, ids, providerIDs map[string]bool, channel DraftChannel) (bool, []string, []string, []string) {
+	if statusID == "gracenote" {
+		return true, nil, append([]string(nil), channel.EPGIDs...), []string{"active Gracenote lineup position"}
+	}
+	matchesID := func(value string) bool { return ids[strings.ToLower(strings.TrimSpace(value))] }
+	marketSummary := statusID == "gracenote-market-index"
+	matched := false
+	aliases := make([]string, 0)
+	epgIDs := make([]string, 0)
+	methods := make([]string, 0)
+	for _, source := range channel.MatchedSources {
+		key := strings.ToLower(strings.TrimSpace(source))
+		if matchesID(source) || (marketSummary && providerIDs[key]) {
+			matched = true
+		}
+	}
+	for _, evidence := range channel.AliasEvidence {
+		for _, source := range evidence.Sources {
+			key := strings.ToLower(strings.TrimSpace(source))
+			if !matchesID(source) && !(marketSummary && providerIDs[key]) {
+				continue
+			}
+			matched = true
+			aliases = appendUniqueStringFold(aliases, evidence.Value)
+			for _, method := range evidence.Methods {
+				methods = appendUniqueStringFold(methods, method)
+			}
+		}
+	}
+	for _, evidence := range channel.EPGIDEvidence {
+		for _, source := range evidence.Sources {
+			key := strings.ToLower(strings.TrimSpace(source))
+			if !matchesID(source) && !(marketSummary && providerIDs[key]) {
+				continue
+			}
+			matched = true
+			epgIDs = appendUniqueStringFold(epgIDs, evidence.Value)
+			for _, method := range evidence.Methods {
+				methods = appendUniqueStringFold(methods, method)
+			}
+		}
+	}
+	if matchesID(channel.CategorySource) {
+		matched = true
+		methods = appendUniqueStringFold(methods, channel.CategoryMethod)
+	}
+	return matched, aliases, epgIDs, methods
 }
 
 func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpdate) error {
