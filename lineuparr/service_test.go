@@ -86,6 +86,42 @@ func TestBuildRetainsEveryProviderPosition(t *testing.T) {
 	}
 }
 
+func TestBuildConsolidatesProviderSourceRowsAndListsMatchedEvidence(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	lineup.AdditionalSources = []SourceStatus{
+		{ID: "provider-guide-dish", Label: "DISH official lineup", URL: "https://example.test/dish", Status: "registered"},
+		{ID: "dish-official-lineup", Label: "DISH official lineup", URL: "https://example.test/dish", Status: "complete", Matched: 10, Message: "provider rows captured"},
+		{ID: "dish-official-lineup", Label: "DISH official lineup", Status: "derived", Matched: 1, Message: "category applied"},
+	}
+	inputs := []InputChannel{{
+		Key: "espn", StationID: "20001", Number: "570", CallSign: "ESPNHD",
+		ExternalAliases: []AttributedAlias{{Value: "ESPN", Source: "dish-official-lineup", Method: "exact provider identity"}},
+		CategoryHint:    &AttributedCategory{Value: "Sports", Source: "dish-official-lineup", Label: "DISH official lineup", Method: "provider category Sports"},
+	}}
+	draft, err := service.Build(context.Background(), lineup, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dishRows := 0
+	for _, status := range draft.Sources {
+		if sourceStatusFamily(status.ID) != "provider:dish" {
+			continue
+		}
+		dishRows++
+		if status.ID != "dish-official-lineup" || status.Matched != 1 || len(status.RelatedIDs) != 2 || len(status.Matches) != 1 {
+			t.Fatalf("consolidated DISH source = %+v", status)
+		}
+		match := status.Matches[0]
+		if match.Number != "570" || !contains(match.Aliases, "ESPN") || match.Category != "Sports" {
+			t.Fatalf("DISH matched evidence = %+v", match)
+		}
+	}
+	if dishRows != 1 {
+		t.Fatalf("DISH source rows = %d; sources = %+v", dishRows, draft.Sources)
+	}
+}
+
 func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	catalog := `{
       "package":"Curated test",

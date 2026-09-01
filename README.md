@@ -180,6 +180,8 @@ The optional **Remove suggested SD** action is conservative: it appears when two
 
 Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
+The enrichment-source panel consolidates registration, capture, and derived-category reports for the same provider into one row. Direct PDF sources open the captured lineup document; other source names and every available matched count open a searchable evidence view of the exact selected-lineup channels, identities, categories, aliases, IDs, and methods contributed by that source. Alias discovery also shows the local date and time of the last configured-ZIP provider refresh.
+
 ### Dispatcharr match review
 
 The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Choose either a normal Dispatcharr username/password or an API key; only the fields for the selected method are shown and enabled. Password authentication uses Dispatcharr's JWT API and keeps access and refresh tokens in memory only. The saved connection settings live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
