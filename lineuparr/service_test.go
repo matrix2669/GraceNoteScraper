@@ -265,6 +265,27 @@ func TestDuplicateSuggestionsAreExplicitAndReversible(t *testing.T) {
 	}
 }
 
+func TestRemoveSuggestedDuplicateIDsAppliesOnlyReviewedSelections(t *testing.T) {
+	service := newTestService(t, "", "")
+	draft := &Draft{DuplicateSuggestions: []DuplicateSuggestion{
+		{RemoveID: "sd-one", KeepID: "hd-one"},
+		{RemoveID: "sd-two", KeepID: "hd-two"},
+	}}
+	if err := service.RemoveSuggestedDuplicateIDs("source-one", draft, []string{"sd-two"}); err != nil {
+		t.Fatalf("RemoveSuggestedDuplicateIDs() error = %v", err)
+	}
+	overrides := service.store.Snapshot("source-one")
+	if len(overrides) != 1 || overrides["sd-two"].Included == nil || *overrides["sd-two"].Included {
+		t.Fatalf("selective duplicate overrides = %+v", overrides)
+	}
+	if _, ok := overrides["sd-one"]; ok {
+		t.Fatalf("unselected duplicate was removed = %+v", overrides)
+	}
+	if err := service.RemoveSuggestedDuplicateIDs("source-one", draft, []string{"not-a-suggestion"}); err == nil {
+		t.Fatal("unknown duplicate suggestion was accepted")
+	}
+}
+
 func TestBuildCategorizesExplicitPEGAndBroadcastIdentities(t *testing.T) {
 	service := newTestService(t, "", "")
 	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{

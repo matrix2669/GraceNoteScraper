@@ -99,6 +99,36 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	}
 }
 
+func TestLineuparrDuplicateRemovalAcceptsReviewedSubset(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["1001"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"removed":1`) {
+		t.Fatalf("selective duplicate response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.Channels[0].Included || !draft.Channels[1].Included {
+		t.Fatalf("reviewed duplicate inclusion = %+v", draft.Channels)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["not-a-suggestion"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown duplicate response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestProviderAddressConfigSkipsRegionalOptimumAddress(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	config, _, _ := server.store.Get()
