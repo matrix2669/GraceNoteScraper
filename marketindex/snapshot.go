@@ -186,11 +186,26 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 		}
 		allCategories := make(map[string][]StationFact)
 		preferredCategories := make(map[string][]StationFact)
+		identities := make([]string, 0, len(station.Names))
+		for _, name := range station.Names {
+			identities = append(identities, name.Value)
+		}
 		for _, fact := range station.Facts {
 			if fact.Kind != FactCategory {
 				continue
 			}
-			match, ok := channelcategory.Resolve(fact.Value)
+			categoryValue := fact.Value
+			if strings.TrimSpace(fact.RawValue) != "" {
+				if remapped, ok := channelcategory.Resolve(fact.RawValue, identities...); ok {
+					categoryValue = remapped.Category
+				} else if !strings.EqualFold(strings.TrimSpace(fact.RawValue), strings.TrimSpace(fact.Value)) {
+					// The raw provider label no longer maps to the canonical value.
+					// This primarily protects existing indexes from broad headings
+					// such as Optimum's "Networks" that were mapped too eagerly.
+					continue
+				}
+			}
+			match, ok := channelcategory.Resolve(categoryValue)
 			if !ok {
 				continue
 			}

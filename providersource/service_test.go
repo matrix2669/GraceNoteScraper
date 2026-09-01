@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
@@ -482,7 +483,8 @@ func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing
 
 func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.T) {
 	result := matchCatalog(marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
-		{ChannelID: "WCBS", ChannelNo: "2"}, {ChannelID: "WCBS", ChannelNo: "702"},
+		{ChannelID: "WCBS", ChannelNo: "2", CallSign: "WCBS", AffiliateName: "CBS TELEVISION NETWORK"},
+		{ChannelID: "WCBS", ChannelNo: "702", CallSign: "WCBSDT", AffiliateName: "CBS TELEVISION NETWORK"},
 	}}}, catalogSource{
 		ID: "optimum", Label: "Optimum official lineup", Entries: []catalogEntry{
 			{Numbers: []string{"2"}, Name: "CBS", Category: "Networks"},
@@ -491,15 +493,32 @@ func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.
 	})
 	aliases := 0
 	categories := 0
+	categoryValue := ""
 	for _, fact := range result.Facts {
 		if fact.Kind == marketindex.FactAlias {
 			aliases++
 		} else if fact.Kind == marketindex.FactCategory {
 			categories++
+			categoryValue = fact.Value
 		}
 	}
-	if aliases != 1 || categories != 1 || result.Sources[0].Matched != 1 {
+	if aliases != 1 || categories != 1 || categoryValue != channelcategory.LocalPublic || result.Sources[0].Matched != 1 {
 		t.Fatalf("facts = %+v, source = %+v", result.Facts, result.Sources)
+	}
+}
+
+func TestBroadProviderNetworkGroupDoesNotBecomeEntertainment(t *testing.T) {
+	result := matchCatalog(marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "AETV", ChannelNo: "46", CallSign: "AETVHD"},
+	}}}, catalogSource{
+		ID: "optimum", Label: "Optimum official lineup", Entries: []catalogEntry{
+			{Numbers: []string{"46"}, Name: "A&E", Category: "Networks"},
+		},
+	})
+	for _, fact := range result.Facts {
+		if fact.Kind == marketindex.FactCategory {
+			t.Fatalf("broad Networks heading produced category fact %+v", fact)
+		}
 	}
 }
 

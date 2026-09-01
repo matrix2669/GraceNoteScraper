@@ -40,7 +40,7 @@ func TestResolveUsesCanonicalAliasesAndConservativeFuzzyMatching(t *testing.T) {
 		{value: "News & Information", want: NewsWeather, method: MethodAlias, matched: true},
 		{value: "Family & Kids", want: KidsFamily, method: MethodAlias, matched: true},
 		{value: "Information and education", want: Entertainment, method: MethodAlias, matched: true},
-		{value: "Networks", want: Entertainment, method: MethodAlias, matched: true},
+		{value: "Networks", matched: false},
 		{value: "Premiums", want: Movies, method: MethodAlias, matched: true},
 		{value: "PPV and subscription events", want: PPVEvents, method: MethodAlias, matched: true},
 		{value: "International Sports", matched: false},
@@ -50,6 +50,41 @@ func TestResolveUsesCanonicalAliasesAndConservativeFuzzyMatching(t *testing.T) {
 		match, ok := Resolve(test.value)
 		if ok != test.matched || match.Category != test.want || (ok && match.Method != test.method) {
 			t.Errorf("Resolve(%q) = %+v, %v", test.value, match, ok)
+		}
+	}
+}
+
+func TestBroadNetworkGroupRequiresExplicitLocalIdentity(t *testing.T) {
+	local, ok := Resolve("Networks", "WABC", "AMERICAN BROADCASTING COMPANY")
+	if !ok || local.Category != LocalPublic || local.Method == MethodAlias {
+		t.Fatalf("local network group = %+v, %v", local, ok)
+	}
+	if match, ok := Resolve("Networks", "AETVHD"); ok {
+		t.Fatalf("generic cable network was categorized = %+v", match)
+	}
+	if match, ok := Resolve("Networks", "WORD", "The Word"); ok {
+		t.Fatalf("network name resembling a callsign was categorized = %+v", match)
+	}
+}
+
+func TestIdentityCategoryRecognizesPEGAndBroadcastStationsConservatively(t *testing.T) {
+	tests := []struct {
+		callSign  string
+		affiliate string
+		matched   bool
+	}{
+		{callSign: "PEG024", matched: true},
+		{callSign: "WNJN", affiliate: "PUBLIC BROADCASTING SERVICE", matched: true},
+		{callSign: "WABC", affiliate: "AMERICAN BROADCASTING COMPANY", matched: true},
+		{callSign: "WVVHCA", matched: true},
+		{callSign: "WNBCDT2", matched: true},
+		{callSign: "WORD", matched: false},
+		{callSign: "AETVHD", matched: false},
+	}
+	for _, test := range tests {
+		match, ok := ResolveIdentity(test.callSign, test.affiliate)
+		if ok != test.matched || (ok && match.Category != LocalPublic) {
+			t.Errorf("ResolveIdentity(%q, %q) = %+v, %v", test.callSign, test.affiliate, match, ok)
 		}
 	}
 }
