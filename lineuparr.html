@@ -130,6 +130,7 @@
     .channel-number { flex: 0 0 68px; padding-top: 4px; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 820; }
     .channel-copy { min-width: 0; flex: 1 1 auto; }
     .channel-name { font-weight: 760; overflow-wrap: anywhere; }
+    .channel-detail-name { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 520; }
     .channel-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
     .badges { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .badge { padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); font-size: 10px; }
@@ -149,7 +150,7 @@
     .builder-panel.compact .channel-meta,
     .builder-panel.compact .badges,
     .builder-panel.compact details { display: none; }
-    .builder-panel.compact .channel-name::after { content: attr(data-callsign); margin-left: 8px; color: var(--muted); font-size: 11px; font-weight: 500; }
+    .builder-panel.compact .channel-detail-name { font-size: 11px; }
     .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
     .loading { padding: 70px 20px; color: var(--muted); text-align: center; }
     .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border: 3px solid rgba(124,230,166,.18); border-top-color: var(--accent); border-radius: 50%; animation: spin .85s linear infinite; }
@@ -370,6 +371,11 @@
       return draft.sources.find(source => source.id === id)?.label || id;
     }
 
+    function equivalentChannelNames(left, right) {
+      const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return normalize(left) === normalize(right);
+    }
+
     function renderChannels() {
       const query = els.search.value.trim().toLowerCase();
       const category = els.categoryFilter.value;
@@ -402,7 +408,15 @@
       toggleLabel.append(toggle);
       const number = document.createElement('div'); number.className = 'channel-number'; number.textContent = channel.number || '—';
       const copy = document.createElement('div'); copy.className = 'channel-copy';
-      const name = document.createElement('div'); name.className = 'channel-name'; name.textContent = channel.name; name.dataset.callsign = channel.callSign && channel.callSign !== channel.name ? channel.callSign : '';
+      const name = document.createElement('div'); name.className = 'channel-name';
+      const callSign = String(channel.callSign || channel.name || '').trim();
+      const detailedName = [channel.name, channel.affiliate].map(value => String(value || '').trim()).find(value => value && !equivalentChannelNames(callSign, value)) || '';
+      const callSignText = document.createElement('span'); callSignText.textContent = callSign || 'Unnamed channel';
+      name.append(callSignText);
+      if (detailedName && !equivalentChannelNames(callSign, detailedName)) {
+        const detail = document.createElement('span'); detail.className = 'channel-detail-name'; detail.textContent = `· ${detailedName}`;
+        name.append(detail);
+      }
       const meta = document.createElement('div'); meta.className = 'channel-meta';
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';

@@ -121,6 +121,8 @@ The builder at `/lineuparr` is an extension of the active scraper lineup rather 
 
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`; exact catalog and iptv-org matches may add their attributable EPG identifiers. The builder then applies only unique exact matches from:
 
+Both detailed and compact channel rows lead with the callsign and append the first distinct enriched channel or affiliate name when one is available; punctuation-only and spacing-only duplicates are suppressed.
+
 - Matching provider and country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin). US defaults select a Verizon FiOS, DIRECTV, or DISH provider catalog when applicable and also use the combined US catalog; other currently mapped catalogs cover the UK, Canada, Australia, Spain, France, and the Netherlands.
 - The public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records.
 
