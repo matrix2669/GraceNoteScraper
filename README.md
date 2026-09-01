@@ -178,7 +178,7 @@ The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `
 
 User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 
-The optional **Remove suggested SD** action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD` or `SD` suffix and have one unique strongest variant. Quality-suffix matching requires a base of at least three alphanumeric characters and never strips digital-subchannel suffixes such as `DT2` or `DT3`. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
+The optional SD-duplicate action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD` or `SD` suffix and have one unique strongest variant. Quality-suffix matching requires a base of at least three alphanumeric characters and never strips digital-subchannel suffixes such as `DT2` or `DT3`. Clicking the action opens every proposed remove/keep pair for review; all safe proposals start selected, individual pairs can be unchecked, and only the confirmed subset is excluded. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
 Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
@@ -217,7 +217,7 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `POST /api/lineuparr/alias-index/stop` | Stop or cancel a running alias-index batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
 | `POST /api/lineuparr/alias` | Remove or restore one attributable alias for the active lineup |
-| `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions; the editor button reports only suggestions that remain included |
+| `POST /api/lineuparr/remove-duplicates` | Exclude the reviewed `channelIds` subset, or all current suggestions for backward-compatible requests without that field; counts include only suggestions that remain included |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |

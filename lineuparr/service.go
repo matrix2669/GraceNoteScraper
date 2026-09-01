@@ -446,6 +446,30 @@ func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) er
 	return s.store.SetIncluded(fingerprint, ids, false)
 }
 
+func (s *Service) RemoveSuggestedDuplicateIDs(fingerprint string, draft *Draft, requested []string) error {
+	allowed := make(map[string]bool, len(draft.DuplicateSuggestions))
+	for _, suggestion := range draft.DuplicateSuggestions {
+		allowed[suggestion.RemoveID] = true
+	}
+	ids := make([]string, 0, len(requested))
+	seen := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if !allowed[id] {
+			return fmt.Errorf("channel %q is not a current duplicate suggestion", id)
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.store.SetIncluded(fingerprint, ids, false)
+}
+
 func (s *Service) RestoreAll(fingerprint string) error {
 	return s.store.RestoreAll(fingerprint)
 }
