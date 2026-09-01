@@ -1153,11 +1153,16 @@
       els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
       els.categorized.textContent = categorized.toLocaleString();
       els.unresolved.textContent = (draft.channels.length - categorized).toLocaleString();
-      const count = (draft.duplicateSuggestions || []).length;
+      const count = remainingDuplicateSuggestions().length;
       els.removeDuplicates.textContent = count ? `Remove ${count} suggested SD` : 'No SD duplicates suggested';
       els.removeDuplicates.title = count ? 'Remove only the SD positions identified by exact shared-source evidence.' : 'No SD/HD pair was identified by exact shared-source evidence in this lineup.';
       els.removeDuplicates.disabled = saving || count === 0;
       els.restoreAll.disabled = saving || included === draft.channels.length;
+    }
+
+    function remainingDuplicateSuggestions() {
+      const included = new Set(draft.channels.filter(channel => channel.included).map(channel => channel.id));
+      return (draft.duplicateSuggestions || []).filter(suggestion => included.has(suggestion.removeId));
     }
 
     function renderSources() {
@@ -1313,10 +1318,12 @@
     }
 
     async function removeDuplicates() {
+      const suggestions = remainingDuplicateSuggestions();
+      if (!suggestions.length) return;
       saving = true; renderSummary(); showMessage('Applying the duplicate-SD suggestions…');
       try {
         await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-        const ids = new Set((draft.duplicateSuggestions || []).map(item => item.removeId));
+        const ids = new Set(suggestions.map(item => item.removeId));
         for (const channel of draft.channels) if (ids.has(channel.id)) channel.included = false;
         showMessage(`${ids.size} suggested SD channel${ids.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
       } catch (error) { showMessage(error.message, true); }

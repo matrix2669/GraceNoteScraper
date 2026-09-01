@@ -524,6 +524,40 @@ func TestCategoriesForStationsPrefersSelectedOfficialSource(t *testing.T) {
 	}
 }
 
+func TestCategoriesForStationsReevaluatesBroadProviderGroupsFromRawEvidence(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["local"] = &Station{StationID: "local", Names: []StationName{
+		{Value: "WABC", Kind: NameCallSign}, {Value: "AMERICAN BROADCASTING COMPANY", Kind: NameAffiliateName},
+	}, Facts: []StationFact{{
+		Kind: FactCategory, Value: "Entertainment", RawValue: "Networks", Normalized: "ENTERTAINMENT",
+		SourceID: "optimum-official-lineup", SourceLabel: "Optimum official lineup",
+	}}}
+	service.index.Stations["cable"] = &Station{StationID: "cable", Names: []StationName{
+		{Value: "AETVHD", Kind: NameCallSign},
+	}, Facts: []StationFact{{
+		Kind: FactCategory, Value: "Entertainment", RawValue: "Networks", Normalized: "ENTERTAINMENT",
+		SourceID: "optimum-official-lineup", SourceLabel: "Optimum official lineup",
+	}}}
+	service.mu.Unlock()
+
+	categories := service.CategoriesForStationsWithPreferredSource([]string{"local", "cable"}, "optimum-official-lineup")
+	if local, ok := categories["local"]; !ok || local.Value != "Local & Public" {
+		t.Fatalf("local category = %+v, %v", local, ok)
+	}
+	if _, ok := categories["cable"]; ok {
+		t.Fatal("broad Networks heading categorized an ordinary cable channel")
+	}
+}
+
 func TestCategoriesForStationsRejectsPreferredSourceConflict(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
