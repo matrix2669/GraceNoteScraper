@@ -299,7 +299,8 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
 			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
 			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
-			StreamName: candidate.StreamName, TVGID: tvgID, Score: candidate.Score, Reason: candidate.Reason,
+			StreamName: candidate.StreamName, NormalizedAlias: candidate.NormalizedAlias,
+			TVGID: tvgID, Score: candidate.Score, Reason: candidate.Reason,
 		})
 	}
 	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
@@ -345,6 +346,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		matcherDecisions[key] = dispatcharr.Decision{
 			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
 			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID, StreamName: decision.StreamName,
+			NormalizedAlias: decision.NormalizedAlias,
 		}
 	}
 	history, confirmed, denied := groupReviewDecisions(stored)
@@ -370,7 +372,10 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]dispatcharrReviewDecision, int, int) {
 	groups := make(map[string]*dispatcharrReviewDecision)
 	for _, decision := range stored {
-		normalized := dispatcharr.NormalizeAliasName(decision.StreamName)
+		normalized := strings.TrimSpace(decision.NormalizedAlias)
+		if normalized == "" {
+			normalized = dispatcharr.NormalizeAliasName(decision.StreamName)
+		}
 		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized}, "\x00")
 		group := groups[key]
 		if group == nil {

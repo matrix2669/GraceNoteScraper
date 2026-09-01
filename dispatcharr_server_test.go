@@ -247,7 +247,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) 
 		t.Fatalf("grouped review = %+v", review)
 	}
 	group := review.Candidates[0]
-	if group.StreamCount != 3 || len(group.TVGIDs) != 2 || len(group.M3UAccountIDs) != 3 {
+	if group.StreamCount != 3 || len(group.TVGIDs) != 2 || len(group.TVGIDEvidence) != 2 || len(group.M3UAccountIDs) != 3 {
 		t.Fatalf("group evidence = %+v", group)
 	}
 	payload := `{"key":"` + group.Key + `","decision":"confirmed","tvgIds":["Two.us"]}`
@@ -266,6 +266,9 @@ func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) 
 	for _, decision := range decisions {
 		if decision.TVGID != "" && decision.TVGID != "Two.us" {
 			t.Fatalf("unselected TVG ID persisted: %+v", decision)
+		}
+		if decision.NormalizedAlias != "two" {
+			t.Fatalf("normalized group identity was not persisted: %+v", decision)
 		}
 	}
 }

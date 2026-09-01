@@ -45,12 +45,13 @@ type MatchChannel struct {
 }
 
 type Decision struct {
-	Key        string
-	Decision   string
-	Source     string
-	StreamHash string
-	ChannelID  string
-	StreamName string
+	Key             string
+	Decision        string
+	Source          string
+	StreamHash      string
+	ChannelID       string
+	StreamName      string
+	NormalizedAlias string
 }
 
 type Candidate struct {
@@ -69,22 +70,32 @@ type Candidate struct {
 	Source          string   `json:"-"`
 	Score           int      `json:"score"`
 	Reason          string   `json:"reason"`
+	NormalizedAlias string   `json:"-"`
+	KnownEPGID      bool     `json:"-"`
+}
+
+type TVGIDEvidence struct {
+	ID            string   `json:"id"`
+	Known         bool     `json:"known"`
+	StreamNames   []string `json:"streamNames,omitempty"`
+	M3UAccountIDs []int64  `json:"m3uAccountIds,omitempty"`
 }
 
 type CandidateGroup struct {
-	Key             string   `json:"key"`
-	ChannelID       string   `json:"channelId"`
-	ChannelNumber   string   `json:"channelNumber"`
-	ChannelName     string   `json:"channelName"`
-	Alias           string   `json:"alias"`
-	NormalizedAlias string   `json:"normalizedAlias"`
-	StreamCount     int      `json:"streamCount"`
-	StreamNames     []string `json:"streamNames"`
-	TVGIDs          []string `json:"tvgIds,omitempty"`
-	M3UAccountIDs   []int64  `json:"m3uAccountIds"`
-	MinimumScore    int      `json:"minimumScore"`
-	MaximumScore    int      `json:"maximumScore"`
-	Tier            string   `json:"tier"`
-	Reasons         []string `json:"reasons"`
-	CandidateKeys   []string `json:"-"`
+	Key             string          `json:"key"`
+	ChannelID       string          `json:"channelId"`
+	ChannelNumber   string          `json:"channelNumber"`
+	ChannelName     string          `json:"channelName"`
+	Alias           string          `json:"alias"`
+	NormalizedAlias string          `json:"normalizedAlias"`
+	StreamCount     int             `json:"streamCount"`
+	StreamNames     []string        `json:"streamNames"`
+	TVGIDs          []string        `json:"tvgIds,omitempty"`
+	TVGIDEvidence   []TVGIDEvidence `json:"tvgIdEvidence,omitempty"`
+	M3UAccountIDs   []int64         `json:"m3uAccountIds"`
+	MinimumScore    int             `json:"minimumScore"`
+	MaximumScore    int             `json:"maximumScore"`
+	Tier            string          `json:"tier"`
+	Reasons         []string        `json:"reasons"`
+	CandidateKeys   []string        `json:"-"`
 }

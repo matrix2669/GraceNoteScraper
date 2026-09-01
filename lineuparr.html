@@ -206,6 +206,9 @@
     .danger-button { color: var(--danger); }
     .match-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
     .match-stat { padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .match-stat-button { display: block; width: 100%; min-height: 0; color: var(--text); text-align: left; font-weight: inherit; cursor: pointer; }
+    .match-stat-button:not(:disabled):hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
+    .match-stat-button:disabled { cursor: default; opacity: 1; }
     .match-stat strong { display: block; font-size: 19px; }
     .match-stat span { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
     .match-status { margin: 9px 2px 0; color: var(--muted); font-size: 11px; }
@@ -227,6 +230,10 @@
     .match-tvg-options { display: grid; gap: 5px; margin-top: 8px; }
     .match-tvg-option { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
     .match-tvg-option input { width: 15px; height: 15px; }
+    .match-tvg-copy { min-width: 0; line-height: 1.35; }
+    .match-tvg-id { color: var(--text); font-weight: 720; }
+    .match-tvg-known { margin-left: 6px; color: var(--accent); font-size: 10px; font-weight: 760; }
+    .match-tvg-provenance { margin-top: 2px; color: #789087; font-size: 10px; overflow-wrap: anywhere; }
     .match-arrow { color: var(--accent); font-size: 18px; }
     .match-score { color: var(--accent); font-weight: 850; }
     .match-buttons { display: flex; gap: 7px; }
@@ -518,7 +525,7 @@
         <div class="match-summary">
           <div class="match-stat"><strong id="match-streams">—</strong><span>M3U streams</span></div>
           <div class="match-stat"><strong id="match-candidates">—</strong><span>Alias groups to review</span></div>
-          <div class="match-stat"><strong id="match-confirmed">—</strong><span>Confirmed</span></div>
+          <button class="match-stat match-stat-button" id="match-confirmed-jump" type="button" disabled aria-label="Show confirmed matches"><strong id="match-confirmed">—</strong><span>Confirmed</span></button>
           <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
         </div>
         <div class="match-status" id="match-status"></div>
@@ -619,6 +626,7 @@
       dispatchDisconnect: document.getElementById('dispatch-disconnect'), dispatchLoading: document.getElementById('dispatch-loading'),
       matchReview: document.getElementById('match-review'), matchStreams: document.getElementById('match-streams'),
       matchCandidates: document.getElementById('match-candidates'), matchConfirmed: document.getElementById('match-confirmed'),
+      matchConfirmedJump: document.getElementById('match-confirmed-jump'),
       matchDenied: document.getElementById('match-denied'), matchList: document.getElementById('match-list'),
       matchStatus: document.getElementById('match-status'), decisionHistory: document.getElementById('decision-history'),
       decisionList: document.getElementById('decision-list'),
@@ -791,6 +799,7 @@
       els.matchStreams.textContent = matchReview.streamCount.toLocaleString();
       els.matchCandidates.textContent = matchReview.candidateCount.toLocaleString();
       els.matchConfirmed.textContent = matchReview.confirmedCount.toLocaleString();
+      els.matchConfirmedJump.disabled = matchReview.confirmedCount === 0;
       els.matchDenied.textContent = matchReview.deniedCount.toLocaleString();
       const fetched = matchReview.fetchedAt ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
@@ -823,15 +832,27 @@
       const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
       for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
-      if ((candidate.tvgIds || []).length) {
+      const tvgEvidence = (candidate.tvgIdEvidence || []).length ? candidate.tvgIdEvidence : (candidate.tvgIds || []).map(id => ({id, known:false, streamNames:[], m3uAccountIds:[]}));
+      if (tvgEvidence.length) {
         const options = document.createElement('div'); options.className = 'match-tvg-options';
         const help = document.createElement('div'); help.className = 'match-meta';
-        help.textContent = candidate.tvgIds.length === 1 ? 'The matching TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
+        help.textContent = tvgEvidence.length === 1 ? 'The provider-reported TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
         options.append(help);
-        for (const tvgId of candidate.tvgIds) {
+        for (const evidence of tvgEvidence) {
+          const tvgId = evidence.id;
           const label = document.createElement('label'); label.className = 'match-tvg-option';
-          const input = document.createElement('input'); input.type = 'checkbox'; input.value = tvgId; input.checked = candidate.tvgIds.length === 1;
-          label.append(input, document.createTextNode(tvgId)); options.append(label);
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = tvgId; input.checked = tvgEvidence.length === 1;
+          const copy = document.createElement('span'); copy.className = 'match-tvg-copy';
+          const id = document.createElement('span'); id.className = 'match-tvg-id'; id.textContent = tvgId;
+          copy.append(id);
+          const context = document.createElement('span'); context.className = 'match-tvg-known';
+          context.textContent = evidence.known ? 'Already known on this channel' : 'Additional provider ID'; copy.append(context);
+          const provenance = document.createElement('div'); provenance.className = 'match-tvg-provenance';
+          const accounts = (evidence.m3uAccountIds || []).join(', ');
+          const names = (evidence.streamNames || []).join(' · ');
+          provenance.textContent = [accounts && `M3U accounts ${accounts}`, names].filter(Boolean).join(' · ');
+          if (provenance.textContent) copy.append(provenance);
+          label.append(input, copy); options.append(label);
         }
         stream.append(options);
       }
@@ -935,6 +956,12 @@
       els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
       els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
       for (const control of document.querySelectorAll('.match-buttons button, .decision-row button')) control.disabled = dispatchBusy;
+    }
+
+    function showConfirmedMatches() {
+      if (!matchReview?.confirmedCount || els.decisionHistory.hidden) return;
+      els.decisionHistory.open = true;
+      els.decisionHistory.scrollIntoView({behavior:'smooth', block:'start'});
     }
 
     function emptyMessage(text) {
@@ -1463,6 +1490,7 @@
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
     els.dispatchForm.addEventListener('submit', saveDispatch);
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
+    els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     initCollapsibleSections();
