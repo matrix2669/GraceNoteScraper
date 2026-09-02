@@ -33,10 +33,17 @@ type scoredCandidate struct {
 	reason  string
 }
 
-// MatchStreams returns one current proposal per unreviewed stream. A denied
-// proposal exposes the next-best candidate on the next pass; a confirmed
-// stream is omitted until its decision is cleared. No score is auto-accepted.
+// MatchStreams returns one current proposal per unreviewed stream. Call
+// MatchStreamCandidates when the caller also needs the already-scored
+// alternatives. No score is auto-accepted.
 func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []Stream, decisions map[string]Decision) []Candidate {
+	return MatchStreamCandidates(sourceFingerprint, channels, streams, decisions).Primary
+}
+
+// MatchStreamCandidates returns both the current proposal and every qualifying
+// alternate from one matching pass. A denied proposal exposes the next-best
+// candidate on the next pass; a confirmed stream is omitted until cleared.
+func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, streams []Stream, decisions map[string]Decision) CandidateSet {
 	prepared, exactIndex, tokenIndex, gramIndex, epgIndex := prepareChannels(channels)
 	confirmedStreams := make(map[string]bool)
 	denied := make(map[string]bool)
@@ -60,7 +67,7 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 		}
 	}
 
-	result := make([]Candidate, 0)
+	result := CandidateSet{}
 	for _, stream := range streams {
 		streamHash := stream.Fingerprint()
 		normalizedAlias := NormalizeStreamAlias(stream)
@@ -148,35 +155,48 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 			}
 			return left.ID < right.ID
 		})
-		best := scored[0]
-		channel := prepared[best.channel].channel
-		result = append(result, Candidate{
-			Key:             candidateKey(sourceFingerprint, streamHash, channel.ID),
-			ChannelID:       channel.ID,
-			ChannelNumber:   channel.Number,
-			ChannelName:     channel.Name,
-			StreamID:        stream.ID,
-			StreamKey:       stream.Key(),
-			StreamName:      stream.Name,
-			TVGID:           stream.TVGID,
-			M3UAccountID:    stream.M3UAccountID,
-			ChannelGroupID:  stream.ChannelGroupID,
-			StreamChannelNo: stream.StreamChannelNo,
-			StreamHash:      streamHash,
-			Source:          sourceFingerprint,
-			Score:           best.score,
-			Reason:          best.reason,
-			NormalizedAlias: normalizedAlias,
-			KnownEPGID:      strings.TrimSpace(stream.TVGID) != "" && prepared[best.channel].epgIDs[strings.ToLower(strings.TrimSpace(stream.TVGID))],
-		})
-	}
-	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Score != result[j].Score {
-			return result[i].Score > result[j].Score
+		for rank, match := range scored {
+			channel := prepared[match.channel].channel
+			candidate := Candidate{
+				Key:             candidateKey(sourceFingerprint, streamHash, channel.ID),
+				ChannelID:       channel.ID,
+				ChannelNumber:   channel.Number,
+				ChannelName:     channel.Name,
+				StreamID:        stream.ID,
+				StreamKey:       stream.Key(),
+				StreamName:      stream.Name,
+				TVGID:           stream.TVGID,
+				M3UAccountID:    stream.M3UAccountID,
+				ChannelGroupID:  stream.ChannelGroupID,
+				StreamChannelNo: stream.StreamChannelNo,
+				StreamHash:      streamHash,
+				Source:          sourceFingerprint,
+				Score:           match.score,
+				Reason:          match.reason,
+				NormalizedAlias: normalizedAlias,
+				KnownEPGID:      strings.TrimSpace(stream.TVGID) != "" && prepared[match.channel].epgIDs[strings.ToLower(strings.TrimSpace(stream.TVGID))],
+			}
+			result.All = append(result.All, candidate)
+			if rank == 0 {
+				result.Primary = append(result.Primary, candidate)
+			}
 		}
-		return strings.ToLower(result[i].StreamName) < strings.ToLower(result[j].StreamName)
-	})
+	}
+	sortCandidates(result.Primary)
+	sortCandidates(result.All)
 	return result
+}
+
+func sortCandidates(candidates []Candidate) {
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].Score != candidates[j].Score {
+			return candidates[i].Score > candidates[j].Score
+		}
+		if !strings.EqualFold(candidates[i].StreamName, candidates[j].StreamName) {
+			return strings.ToLower(candidates[i].StreamName) < strings.ToLower(candidates[j].StreamName)
+		}
+		return channelNumberLess(candidates[i].ChannelNumber, candidates[j].ChannelNumber)
+	})
 }
 
 func aliasDecisionKey(alias, channelID string) string {

@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 const (
 	dispatcharrStreamCacheAge = 5 * time.Minute
 	dispatcharrReviewLimit    = 100
+	dispatcharrReviewMaxLimit = 5000
 )
 
 type dispatcharrAPI interface {
@@ -83,6 +86,7 @@ type dispatcharrReviewResponse struct {
 	FetchedAt            time.Time                    `json:"fetchedAt"`
 	Cached               bool                         `json:"cached"`
 	Warning              string                       `json:"warning,omitempty"`
+	VisibleLimit         int                          `json:"visibleLimit"`
 	Candidates           []dispatcharr.CandidateGroup `json:"candidates"`
 	Decisions            []dispatcharrReviewDecision  `json:"decisions"`
 }
@@ -313,6 +317,11 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, force bool) (dispatcharrReviewBuild, bool) {
+	visibleLimit, err := dispatcharrVisibleLimit(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return dispatcharrReviewBuild{}, false
+	}
 	dispatchConfig, configured := s.config.Get()
 	if !configured {
 		http.Error(w, "Connect Dispatcharr to review M3U matches", http.StatusConflict)
@@ -353,20 +362,56 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if len(history) > dispatcharrReviewLimit {
 		history = history[:dispatcharrReviewLimit]
 	}
-	candidates := dispatcharr.MatchStreams(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
-	groups := dispatcharr.GroupCandidates(candidates)
-	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), candidates)
+	matches := dispatcharr.MatchStreamCandidates(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
+	groups := attachDispatcharrAlternatives(dispatcharr.GroupCandidates(matches.Primary), dispatcharr.GroupCandidates(matches.All))
+	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
 	visible := groups
-	if len(visible) > dispatcharrReviewLimit {
-		visible = visible[:dispatcharrReviewLimit]
+	if len(visible) > visibleLimit {
+		visible = visible[:visibleLimit]
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(candidates), ConfirmedCount: confirmed, DeniedCount: denied,
-			FetchedAt: fetchedAt, Cached: cached, Warning: warning, Candidates: visible, Decisions: history,
+			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(matches.Primary), ConfirmedCount: confirmed, DeniedCount: denied,
+			FetchedAt: fetchedAt, Cached: cached, Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
-		candidates: candidates, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
+		candidates: matches.Primary, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
 	}, true
+}
+
+func dispatcharrVisibleLimit(r *http.Request) (int, error) {
+	value := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if value == "" {
+		return dispatcharrReviewLimit, nil
+	}
+	limit, err := strconv.Atoi(value)
+	if err != nil || limit < 1 || limit > dispatcharrReviewMaxLimit {
+		return 0, fmt.Errorf("review limit must be between 1 and %d", dispatcharrReviewMaxLimit)
+	}
+	return limit, nil
+}
+
+func attachDispatcharrAlternatives(primary, all []dispatcharr.CandidateGroup) []dispatcharr.CandidateGroup {
+	byKey := make(map[string]dispatcharr.CandidateGroup, len(all))
+	byAlias := make(map[string][]dispatcharr.CandidateGroup)
+	for _, group := range all {
+		byKey[group.Key] = group
+		byAlias[group.NormalizedAlias] = append(byAlias[group.NormalizedAlias], group)
+	}
+	for index := range primary {
+		current := primary[index]
+		if complete, ok := byKey[current.Key]; ok {
+			primary[index] = complete
+		}
+		if current.Tier != "fuzzy" {
+			continue
+		}
+		for _, alternate := range byAlias[current.NormalizedAlias] {
+			if alternate.Key != current.Key {
+				primary[index].Alternatives = append(primary[index].Alternatives, alternate)
+			}
+		}
+	}
+	return primary
 }
 
 func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]dispatcharrReviewDecision, int, int) {

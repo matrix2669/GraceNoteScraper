@@ -118,6 +118,20 @@ func TestDeniedCandidateExposesNextChoiceAndConfirmedHidesStream(t *testing.T) {
 	}
 }
 
+func TestMatchStreamCandidatesRetainsAlreadyScoredAlternatives(t *testing.T) {
+	channels := []MatchChannel{
+		{ID: "sd", Number: "70", Name: "ESPN"},
+		{ID: "hd", Number: "570", Name: "ESPN"},
+	}
+	result := MatchStreamCandidates("source", channels, []Stream{{ID: 1, M3UAccountID: 3, Name: "ESPN HD"}}, nil)
+	if len(result.Primary) != 1 || result.Primary[0].ChannelID != "sd" {
+		t.Fatalf("primary candidates = %+v", result.Primary)
+	}
+	if len(result.All) != 2 || result.All[0].ChannelID != "sd" || result.All[1].ChannelID != "hd" {
+		t.Fatalf("all candidates = %+v", result.All)
+	}
+}
+
 func TestUnrelatedStreamHasNoCandidate(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "espn", Number: "570", Name: "ESPN"}},

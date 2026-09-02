@@ -92,6 +92,14 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 			t.Fatalf("page is missing editor control %q", expected)
 		}
 	}
+	for _, expected := range []string{`id="match-alternative-dialog"`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page is missing stable review control %q", expected)
+		}
+	}
+	if strings.Contains(body, "scheduleMatchReconcile") {
+		t.Fatal("page still schedules automatic match-review reloads")
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()
