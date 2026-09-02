@@ -63,8 +63,17 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/lineuparr", nil)
 	recorder := httptest.NewRecorder()
 	server.handlePage(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Shape your current lineup") {
+	body := recorder.Body.String()
+	if recorder.Code != http.StatusOK || !strings.Contains(body, "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
+	}
+	for _, expected := range []string{`id="match-alternative-dialog"`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page is missing stable review control %q", expected)
+		}
+	}
+	if strings.Contains(body, "scheduleMatchReconcile") {
+		t.Fatal("page still schedules automatic match-review reloads")
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)

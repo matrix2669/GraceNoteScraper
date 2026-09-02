@@ -74,6 +74,14 @@ type Candidate struct {
 	KnownEPGID      bool     `json:"-"`
 }
 
+// CandidateSet retains the current best proposal and every qualifying option
+// from the same bounded matching pass. The browser receives only grouped
+// summaries, while the server keeps All available for alternate review.
+type CandidateSet struct {
+	Primary []Candidate
+	All     []Candidate
+}
+
 type TVGIDEvidence struct {
 	ID            string   `json:"id"`
 	Known         bool     `json:"known"`
@@ -82,20 +90,21 @@ type TVGIDEvidence struct {
 }
 
 type CandidateGroup struct {
-	Key             string          `json:"key"`
-	ChannelID       string          `json:"channelId"`
-	ChannelNumber   string          `json:"channelNumber"`
-	ChannelName     string          `json:"channelName"`
-	Alias           string          `json:"alias"`
-	NormalizedAlias string          `json:"normalizedAlias"`
-	StreamCount     int             `json:"streamCount"`
-	StreamNames     []string        `json:"streamNames"`
-	TVGIDs          []string        `json:"tvgIds,omitempty"`
-	TVGIDEvidence   []TVGIDEvidence `json:"tvgIdEvidence,omitempty"`
-	M3UAccountIDs   []int64         `json:"m3uAccountIds"`
-	MinimumScore    int             `json:"minimumScore"`
-	MaximumScore    int             `json:"maximumScore"`
-	Tier            string          `json:"tier"`
-	Reasons         []string        `json:"reasons"`
-	CandidateKeys   []string        `json:"-"`
+	Key             string           `json:"key"`
+	ChannelID       string           `json:"channelId"`
+	ChannelNumber   string           `json:"channelNumber"`
+	ChannelName     string           `json:"channelName"`
+	Alias           string           `json:"alias"`
+	NormalizedAlias string           `json:"normalizedAlias"`
+	StreamCount     int              `json:"streamCount"`
+	StreamNames     []string         `json:"streamNames"`
+	TVGIDs          []string         `json:"tvgIds,omitempty"`
+	TVGIDEvidence   []TVGIDEvidence  `json:"tvgIdEvidence,omitempty"`
+	M3UAccountIDs   []int64          `json:"m3uAccountIds"`
+	MinimumScore    int              `json:"minimumScore"`
+	MaximumScore    int              `json:"maximumScore"`
+	Tier            string           `json:"tier"`
+	Reasons         []string         `json:"reasons"`
+	Alternatives    []CandidateGroup `json:"alternatives,omitempty"`
+	CandidateKeys   []string         `json:"-"`
 }

@@ -161,6 +161,20 @@
     .match-buttons button { min-height: 36px; padding: 0 11px; font-size: 12px; }
     .confirm-button { border-color: rgba(124,230,166,.55); color: var(--accent); }
     .deny-button { color: var(--danger); }
+    .match-load-more { justify-self: center; margin-top: 4px; }
+    .match-dialog {
+      width: min(760px, calc(100% - 28px)); max-height: min(82vh, 780px); padding: 0;
+      border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+    }
+    .match-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .match-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--line); }
+    .match-dialog-head h2 { margin: 0; font-size: 20px; }
+    .match-dialog-head p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .match-dialog-close { min-height: 34px; padding: 0 11px; }
+    .match-alternative-list { display: grid; gap: 10px; max-height: calc(82vh - 108px); padding: 16px 20px 20px; overflow: auto; }
+    .match-alternative-card { padding: 14px; border: 1px solid rgba(43,70,59,.75); border-radius: 11px; background: rgba(7,17,14,.42); }
+    .match-alternative-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .match-alternative-card .match-buttons { margin-top: 12px; justify-content: flex-end; }
     .decision-list { display: grid; gap: 7px; margin-top: 10px; }
     .decision-row {
       display: flex; align-items: center; justify-content: space-between; gap: 14px;
@@ -408,6 +422,17 @@
     </details>
   </main>
 
+  <dialog class="match-dialog" id="match-alternative-dialog">
+    <div class="match-dialog-head">
+      <div>
+        <h2 id="match-alternative-title">Other possible matches</h2>
+        <p id="match-alternative-help"></p>
+      </div>
+      <button class="match-dialog-close" id="match-alternative-close" type="button" aria-label="Close alternate matches">Close</button>
+    </div>
+    <div class="match-alternative-list" id="match-alternative-list"></div>
+  </dialog>
+
   <script>
     const els = {
       message: document.getElementById('message'), stats: document.getElementById('stats'),
@@ -430,7 +455,9 @@
       matchConfirmedJump: document.getElementById('match-confirmed-jump'),
       matchDenied: document.getElementById('match-denied'), matchList: document.getElementById('match-list'),
       matchStatus: document.getElementById('match-status'), decisionHistory: document.getElementById('decision-history'),
-      decisionList: document.getElementById('decision-list')
+      decisionList: document.getElementById('decision-list'), alternativeDialog: document.getElementById('match-alternative-dialog'),
+      alternativeTitle: document.getElementById('match-alternative-title'), alternativeHelp: document.getElementById('match-alternative-help'),
+      alternativeList: document.getElementById('match-alternative-list'), alternativeClose: document.getElementById('match-alternative-close')
     };
 
     let draft = null;
@@ -441,7 +468,7 @@
     const pendingDecisions = new Set();
     let decisionRevision = 0;
     let matchReviewRequest = 0;
-    let matchReconcileTimer = null;
+    let matchReviewLimit = 100;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -550,8 +577,9 @@
       }
     }
 
-    async function loadMatchReview(force = false, interactive = true) {
+    async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
       if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
+      if (force) requestedLimit = 100;
       const requestNumber = ++matchReviewRequest;
       const revision = decisionRevision;
       if (interactive) {
@@ -560,13 +588,18 @@
         els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing every active M3U stream…' : 'Comparing active M3U streams with this lineup…'));
       }
       try {
-        const review = await api('/api/lineuparr/dispatcharr/review' + (force ? '?refresh=true' : ''));
+        const query = new URLSearchParams({limit: String(requestedLimit)});
+        if (force) query.set('refresh', 'true');
+        const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision) return;
         matchReview = review;
+        matchReviewLimit = review.visibleLimit || requestedLimit;
         renderMatchReview();
+        return true;
       } catch (error) {
         if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
         showMessage(error.message, true);
+        return false;
       } finally {
         if (interactive) {
           dispatchBusy = false;
@@ -594,12 +627,23 @@
       } else {
         for (const candidate of matchReview.candidates) els.matchList.append(matchCard(candidate));
         if (matchReview.candidateCount > matchReview.candidates.length) {
-          els.matchList.append(emptyMessage(`Showing the first ${matchReview.candidates.length}. Review these to reveal the next proposals.`));
+          const remaining = matchReview.candidateCount - matchReview.candidates.length;
+          const amount = Math.min(100, remaining);
+          const loadMore = document.createElement('button'); loadMore.type = 'button'; loadMore.className = 'match-load-more';
+          loadMore.textContent = `Load ${amount} more (${remaining.toLocaleString()} remaining)`;
+          loadMore.addEventListener('click', () => loadMoreMatches());
+          els.matchList.append(loadMore);
         }
       }
       els.decisionList.replaceChildren();
       for (const decision of matchReview.decisions || []) els.decisionList.append(decisionRow(decision));
       els.decisionHistory.hidden = !(matchReview.decisions || []).length;
+    }
+
+    async function loadMoreMatches() {
+      if (!matchReview || dispatchBusy) return;
+      const requested = Math.min(matchReview.candidateCount, matchReviewLimit + 100);
+      await loadMatchReview(false, true, requested);
     }
 
     function matchCard(candidate) {
@@ -615,30 +659,7 @@
       const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
       for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
-      const tvgEvidence = (candidate.tvgIdEvidence || []).length ? candidate.tvgIdEvidence : (candidate.tvgIds || []).map(id => ({id, known:false, streamNames:[], m3uAccountIds:[]}));
-      if (tvgEvidence.length) {
-        const options = document.createElement('div'); options.className = 'match-tvg-options';
-        const help = document.createElement('div'); help.className = 'match-meta';
-        help.textContent = tvgEvidence.length === 1 ? 'The provider-reported TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
-        options.append(help);
-        for (const evidence of tvgEvidence) {
-          const tvgId = evidence.id;
-          const label = document.createElement('label'); label.className = 'match-tvg-option';
-          const input = document.createElement('input'); input.type = 'checkbox'; input.value = tvgId; input.checked = tvgEvidence.length === 1;
-          const copy = document.createElement('span'); copy.className = 'match-tvg-copy';
-          const id = document.createElement('span'); id.className = 'match-tvg-id'; id.textContent = tvgId;
-          copy.append(id);
-          const context = document.createElement('span'); context.className = 'match-tvg-known';
-          context.textContent = evidence.known ? 'Already known on this channel' : 'Additional provider ID'; copy.append(context);
-          const provenance = document.createElement('div'); provenance.className = 'match-tvg-provenance';
-          const accounts = (evidence.m3uAccountIds || []).join(', ');
-          const names = (evidence.streamNames || []).join(' · ');
-          provenance.textContent = [accounts && `M3U accounts ${accounts}`, names].filter(Boolean).join(' · ');
-          if (provenance.textContent) copy.append(provenance);
-          label.append(input, copy); options.append(label);
-        }
-        stream.append(options);
-      }
+      appendTVGOptions(stream, candidate);
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
       const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
@@ -655,6 +676,30 @@
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied', []));
       buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
       return card;
+    }
+
+    function appendTVGOptions(parent, candidate) {
+      const tvgEvidence = (candidate.tvgIdEvidence || []).length ? candidate.tvgIdEvidence : (candidate.tvgIds || []).map(id => ({id, known:false, streamNames:[], m3uAccountIds:[]}));
+      if (!tvgEvidence.length) return;
+      const options = document.createElement('div'); options.className = 'match-tvg-options';
+      const help = document.createElement('div'); help.className = 'match-meta';
+      help.textContent = tvgEvidence.length === 1 ? 'The provider-reported TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
+      options.append(help);
+      for (const evidence of tvgEvidence) {
+        const label = document.createElement('label'); label.className = 'match-tvg-option';
+        const input = document.createElement('input'); input.type = 'checkbox'; input.value = evidence.id; input.checked = tvgEvidence.length === 1;
+        const copy = document.createElement('span'); copy.className = 'match-tvg-copy';
+        const id = document.createElement('span'); id.className = 'match-tvg-id'; id.textContent = evidence.id; copy.append(id);
+        const context = document.createElement('span'); context.className = 'match-tvg-known';
+        context.textContent = evidence.known ? 'Already known on this channel' : 'Additional provider ID'; copy.append(context);
+        const provenance = document.createElement('div'); provenance.className = 'match-tvg-provenance';
+        const accounts = (evidence.m3uAccountIds || []).join(', ');
+        const names = (evidence.streamNames || []).join(' · ');
+        provenance.textContent = [accounts && `M3U accounts ${accounts}`, names].filter(Boolean).join(' · ');
+        if (provenance.textContent) copy.append(provenance);
+        label.append(input, copy); options.append(label);
+      }
+      parent.append(options);
     }
 
     function decisionRow(decision) {
@@ -687,7 +732,14 @@
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds})
         });
-        showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. The next candidate can now be reviewed.');
+        if (decision === 'confirmed') await reloadDraft();
+        const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
+        if (alternatives.length) {
+          openMatchAlternatives(candidate);
+          showMessage('Match denied. Review the other qualifying possibilities or close this list.');
+        } else {
+          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. Load more when you are ready for another review page.');
+        }
       } catch (error) {
         matchReview.candidateCount++;
         matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
@@ -699,23 +751,82 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(key);
-        scheduleMatchReconcile();
       }
     }
 
-    function scheduleMatchReconcile() {
-      if (matchReconcileTimer) clearTimeout(matchReconcileTimer);
-      matchReconcileTimer = setTimeout(async () => {
-        matchReconcileTimer = null;
-        if (pendingDecisions.size > 0) return scheduleMatchReconcile();
-        const revision = decisionRevision;
-        try {
+    function openMatchAlternatives(candidate) {
+      els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
+      els.alternativeHelp.textContent = 'These channels also cleared the fuzzy-match threshold in the same scan. Confirm the right target, deny incorrect options, or close this list without deciding.';
+      renderMatchAlternatives(candidate);
+      if (typeof els.alternativeDialog.showModal === 'function') els.alternativeDialog.showModal();
+      else els.alternativeDialog.setAttribute('open', '');
+    }
+
+    function renderMatchAlternatives(candidate) {
+      els.alternativeList.replaceChildren();
+      const alternatives = candidate.alternatives || [];
+      if (!alternatives.length) {
+        els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+        return;
+      }
+      for (const alternate of alternatives) els.alternativeList.append(alternativeMatchCard(candidate, alternate));
+    }
+
+    function alternativeMatchCard(primary, candidate) {
+      const card = document.createElement('article'); card.className = 'match-alternative-card'; card.dataset.key = candidate.key;
+      const main = document.createElement('div'); main.className = 'match-alternative-main';
+      const copy = document.createElement('div');
+      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const meta = document.createElement('div'); meta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
+      const score = document.createElement('span'); score.className = 'match-score';
+      score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
+      copy.append(name, meta); main.append(copy); card.append(main);
+      appendTVGOptions(card, candidate);
+      const buttons = document.createElement('div'); buttons.className = 'match-buttons';
+      const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
+      confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', [...card.querySelectorAll('.match-tvg-option input:checked')].map(input => input.value), card));
+      const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
+      denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', [], card));
+      buttons.append(confirmButton, denyButton); card.append(buttons);
+      return card;
+    }
+
+    async function decideAlternative(primary, candidate, decision, tvgIds, card) {
+      if (pendingDecisions.has(candidate.key)) return;
+      pendingDecisions.add(candidate.key);
+      for (const button of card.querySelectorAll('button')) button.disabled = true;
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds})
+        });
+        matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount += decision === 'denied' ? 1 : 0;
+        matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        renderMatchReview();
+        if (decision === 'confirmed') {
           await reloadDraft();
-          if (revision === decisionRevision) await loadMatchReview(false, false);
-        } catch (error) {
-          showMessage(error.message, true);
+          closeMatchAlternatives();
+          showMessage('Alternate match confirmed and aliases updated.');
+        } else {
+          card.remove();
+          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+          showMessage('Alternate match denied.');
         }
-      }, 350);
+      } catch (error) {
+        for (const button of card.querySelectorAll('button')) button.disabled = false;
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(candidate.key);
+      }
+    }
+
+    function closeMatchAlternatives() {
+      if (typeof els.alternativeDialog.close === 'function') els.alternativeDialog.close();
+      else els.alternativeDialog.removeAttribute('open');
     }
 
     async function clearDecision(key) {
@@ -738,7 +849,7 @@
       els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
       els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
       els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
-      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button')) control.disabled = dispatchBusy;
+      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
     }
 
     function showConfirmedMatches() {
@@ -991,6 +1102,7 @@
     els.dispatchForm.addEventListener('submit', saveDispatch);
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
+    els.alternativeClose.addEventListener('click', closeMatchAlternatives);
     els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     initCollapsibleSections();

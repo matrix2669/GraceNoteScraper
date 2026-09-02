@@ -201,6 +201,58 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	}
 }
 
+func TestDispatcharrReviewLimitAndFuzzyAlternatives(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?limit=250", nil)
+	limit, err := dispatcharrVisibleLimit(request)
+	if err != nil || limit != 250 {
+		t.Fatalf("visible limit = %d, %v", limit, err)
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?limit=0", nil)
+	if _, err := dispatcharrVisibleLimit(request); err == nil {
+		t.Fatal("zero review limit was accepted")
+	}
+
+	primary := []dispatcharr.CandidateGroup{{Key: "first", NormalizedAlias: "movienetwork", Tier: "fuzzy", StreamCount: 1}}
+	all := []dispatcharr.CandidateGroup{
+		{Key: "first", NormalizedAlias: "movienetwork", Tier: "fuzzy", StreamCount: 1},
+		{Key: "second", NormalizedAlias: "movienetwork", Tier: "fuzzy", StreamCount: 2},
+		{Key: "other-alias", NormalizedAlias: "sportsnetwork", Tier: "fuzzy", StreamCount: 1},
+	}
+	grouped := attachDispatcharrAlternatives(primary, all)
+	if len(grouped) != 1 || grouped[0].StreamCount != 1 || len(grouped[0].Alternatives) != 1 || grouped[0].Alternatives[0].Key != "second" {
+		t.Fatalf("alternatives = %+v", grouped)
+	}
+}
+
+func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
+	server, fake := newDispatcharrTestServer(t, true)
+	dispatchConfig, _ := server.config.Get()
+	lineupConfig, _, _ := server.lineup.store.Get()
+	candidate := dispatcharr.Candidate{
+		Key: "alternate-candidate", ChannelID: "1001", ChannelNumber: "2", ChannelName: "TWO",
+		StreamID: 10, StreamKey: "3:10", StreamName: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3,
+		StreamHash: "stream-hash", Source: dispatchConfig.Fingerprint(), Score: 82, Reason: "Fuzzy name 82%", NormalizedAlias: "two",
+	}
+	groups := dispatcharr.GroupCandidates([]dispatcharr.Candidate{candidate})
+	if len(groups) != 1 {
+		t.Fatalf("alternate groups = %+v", groups)
+	}
+	server.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), []dispatcharr.Candidate{candidate})
+	fake.streamErr = errors.New("alternate decision must not refresh streams")
+	payload := `{"key":"` + groups[0].Key + `","decision":"confirmed","tvgIds":["Two.us"]}`
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleDecision(recorder, request)
+	if recorder.Code != http.StatusOK || fake.streamCalls != 0 {
+		t.Fatalf("cached alternate response = %d calls %d body %s", recorder.Code, fake.streamCalls, recorder.Body.String())
+	}
+	decisions := server.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
+	if len(decisions) != 1 {
+		t.Fatalf("cached alternate decisions = %+v", decisions)
+	}
+}
+
 func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	server, _ := newDispatcharrTestServer(t, true)
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
