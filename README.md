@@ -121,7 +121,9 @@ The builder at `/lineuparr` is an extension of the active scraper lineup rather 
 
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`; exact catalog and iptv-org matches may add their attributable EPG identifiers. The builder then applies only unique exact matches from:
 
-Both detailed and compact channel rows lead with the callsign and append the first distinct enriched channel or affiliate name when one is available; punctuation-only and spacing-only duplicates are suppressed.
+Both detailed and compact channel rows lead with the callsign and append the best distinct name from attributable affiliate, official-provider, or catalog evidence; punctuation-only, identifier, and channel-number duplicates are suppressed. Clicking the name opens the next 24 current or upcoming programmes from the selected guide to help identify an unfamiliar channel. **Batch categorize** can select every currently visible filtered row and apply one category atomically.
+
+The same GN brand mark shown in the page header is served as the SVG favicon for the guide, setup, and Lineuparr pages.
 
 - Matching provider and country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin). US defaults select a Verizon FiOS, DIRECTV, or DISH provider catalog when applicable and also use the combined US catalog; other currently mapped catalogs cover the UK, Canada, Australia, Spain, France, and the Netherlands.
 - The public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records.
@@ -143,6 +145,8 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
+| `POST /api/lineuparr/categories` | Atomically apply one category to a validated channel selection |
+| `GET /api/lineuparr/channel-programs?channelId=<id>` | Return up to 24 current/upcoming programmes from the selected guide |
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |

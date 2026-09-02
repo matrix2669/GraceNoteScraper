@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lineuparr builder · GraceNoteScraper</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
     :root {
       color-scheme: dark;
@@ -118,18 +119,28 @@
     .export-button { border-color: var(--accent); background: var(--accent); color: #092015; }
     .export-button:hover { background: #9af0bb; }
     .duplicate-button:not(:disabled) { border-color: rgba(246,210,116,.55); color: var(--warning); }
+    .batch-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(124,230,166,.08); }
+    .batch-bar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--line); background: rgba(124,230,166,.045); }
+    .batch-count { min-width: 112px; color: var(--accent); font-size: 12px; font-weight: 760; }
+    .batch-bar .field { min-width: 190px; }
 
     .channel-list { display: grid; }
     .channel-count { flex: 0 0 auto; align-self: end; min-height: 42px; padding: 0 4px; color: var(--muted); font-size: 12px; line-height: 42px; white-space: nowrap; }
     .channel-card { padding: 15px 18px; border-bottom: 1px solid rgba(43,70,59,.75); }
     .channel-card:last-child { border-bottom: 0; }
     .channel-card.excluded { opacity: .55; background: rgba(0,0,0,.16); }
+    .channel-card.batch-selected { background: rgba(124,230,166,.065); }
     .channel-main { gap: 13px; align-items: flex-start; }
+    .batch-toggle { display: none; flex: 0 0 22px; width: 22px; height: 32px; place-items: center; }
+    .builder-panel.batch-mode .batch-toggle { display: grid; }
+    .batch-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
     .include-toggle { display: grid; flex: 0 0 22px; width: 22px; height: 32px; place-items: center; }
     .include-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
     .channel-number { flex: 0 0 68px; padding-top: 4px; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 820; }
     .channel-copy { min-width: 0; flex: 1 1 auto; }
     .channel-name { font-weight: 760; overflow-wrap: anywhere; }
+    .channel-name-button { display: inline-flex; min-height: 0; max-width: 100%; align-items: baseline; justify-content: flex-start; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
+    .channel-name-button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
     .channel-detail-name { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 520; }
     .channel-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
     .badges { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
@@ -151,6 +162,17 @@
     .builder-panel.compact .badges,
     .builder-panel.compact details { display: none; }
     .builder-panel.compact .channel-detail-name { font-size: 11px; }
+    .program-dialog { width: min(780px, calc(100% - 28px)); max-height: min(84vh, 820px); padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    .program-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .program-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 20px; border-bottom: 1px solid var(--line); }
+    .program-dialog-head h2 { margin: 0; font-size: 20px; }
+    .program-dialog-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .program-dialog-close { min-height: 34px; padding: 0 11px; }
+    .program-list { display: grid; max-height: calc(84vh - 92px); overflow: auto; }
+    .program-row { display: grid; grid-template-columns: minmax(145px, .42fr) minmax(0, 1fr); gap: 16px; padding: 13px 20px; border-bottom: 1px solid rgba(43,70,59,.65); }
+    .program-time { color: var(--accent); font-size: 11px; line-height: 1.45; }
+    .program-title { font-weight: 760; }
+    .program-meta, .program-description { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
     .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
     .loading { padding: 70px 20px; color: var(--muted); text-align: center; }
     .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border: 3px solid rgba(124,230,166,.18); border-top-color: var(--accent); border-radius: 50%; animation: spin .85s linear infinite; }
@@ -163,6 +185,7 @@
       .channel-main { flex-wrap: wrap; }
       .channel-copy { flex-basis: calc(100% - 120px); }
       .channel-actions { flex: 1 1 100%; margin-left: 103px; }
+      .batch-bar .field { flex: 1 1 220px; }
     }
 
     @media (max-width: 600px) {
@@ -184,6 +207,7 @@
       details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
       .source-message { white-space: normal; }
+      .program-row { grid-template-columns: 1fr; gap: 5px; }
     }
   </style>
 </head>
@@ -247,16 +271,35 @@
         <div class="channel-count" id="visible-count" aria-live="polite"></div>
         <div class="actions">
           <button type="button" id="view-toggle" aria-pressed="false">Compact view</button>
+          <button type="button" id="batch-toggle" class="batch-button" aria-pressed="false">Batch categorize</button>
           <button type="button" id="remove-duplicates" class="duplicate-button">Remove suggested SD</button>
           <button type="button" id="restore-all">Restore all</button>
           <a class="export-button" href="/api/lineuparr/export">Export JSON</a>
         </div>
+      </div>
+      <div class="batch-bar" id="batch-bar" hidden>
+        <div class="batch-count" id="batch-count" aria-live="polite">0 selected</div>
+        <button type="button" id="batch-select-visible">Select visible</button>
+        <button type="button" id="batch-clear">Clear</button>
+        <div class="field">
+          <label for="batch-category">Set category</label>
+          <select id="batch-category"></select>
+        </div>
+        <button type="button" id="batch-apply" class="export-button">Apply to selected</button>
       </div>
       <div class="channel-list" id="channel-list">
         <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
       </div>
     </section>
   </main>
+
+  <dialog class="program-dialog" id="program-dialog">
+    <div class="program-dialog-head">
+      <div><h2 id="program-title">Upcoming programmes</h2><p id="program-channel"></p></div>
+      <button class="program-dialog-close" id="program-close" type="button">Close</button>
+    </div>
+    <div class="program-list" id="program-list"></div>
+  </dialog>
 
   <script>
     const els = {
@@ -266,14 +309,22 @@
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
       includedFilter: document.getElementById('included-filter'), visibleCount: document.getElementById('visible-count'),
       builderPanel: document.querySelector('.builder-panel'), viewToggle: document.getElementById('view-toggle'),
+      batchToggle: document.getElementById('batch-toggle'), batchBar: document.getElementById('batch-bar'),
+      batchCount: document.getElementById('batch-count'), batchSelectVisible: document.getElementById('batch-select-visible'),
+      batchClear: document.getElementById('batch-clear'), batchCategory: document.getElementById('batch-category'), batchApply: document.getElementById('batch-apply'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
       included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
-      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved')
+      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'),
+      programDialog: document.getElementById('program-dialog'), programTitle: document.getElementById('program-title'),
+      programChannel: document.getElementById('program-channel'), programList: document.getElementById('program-list'), programClose: document.getElementById('program-close')
     };
 
     let draft = null;
     let saving = false;
     let compact = localStorage.getItem('lineuparr-view') === 'compact';
+    let batchMode = false;
+    const selectedChannels = new Set();
+    let programRequest = 0;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -311,6 +362,7 @@
       renderSources();
       renderCategoryOptions();
       renderViewMode();
+      renderBatchControls();
       renderChannels();
     }
 
@@ -354,17 +406,31 @@
 
     function renderCategoryOptions() {
       const previous = els.categoryFilter.value;
+      const batchPrevious = els.batchCategory.value;
       els.categoryFilter.replaceChildren(new Option('All categories', ''));
+      els.batchCategory.replaceChildren();
       for (const category of categories()) {
         els.categoryFilter.add(new Option(category, category));
+        els.batchCategory.add(new Option(category, category));
       }
       els.categoryFilter.value = previous;
+      els.batchCategory.value = categories().includes(batchPrevious) ? batchPrevious : 'Uncategorized';
     }
 
     function renderViewMode() {
       els.builderPanel.classList.toggle('compact', compact);
       els.viewToggle.textContent = compact ? 'Detailed view' : 'Compact view';
       els.viewToggle.setAttribute('aria-pressed', String(compact));
+    }
+
+    function renderBatchControls() {
+      els.builderPanel.classList.toggle('batch-mode', batchMode);
+      els.batchToggle.setAttribute('aria-pressed', String(batchMode));
+      els.batchToggle.textContent = batchMode ? 'Finish batch edit' : 'Batch categorize';
+      els.batchBar.hidden = !batchMode;
+      els.batchCount.textContent = `${selectedChannels.size.toLocaleString()} selected`;
+      els.batchApply.disabled = saving || selectedChannels.size === 0;
+      els.batchClear.disabled = selectedChannels.size === 0;
     }
 
     function sourceLabel(id) {
@@ -376,17 +442,50 @@
       return normalize(left) === normalize(right);
     }
 
-    function renderChannels() {
+    function descriptiveChannelName(channel) {
+      const callSign = String(channel.callSign || channel.name || '').trim();
+      const rejected = new Set([
+        callSign, channel.stationId, channel.placementId, channel.number,
+        `${channel.number || ''} ${callSign}`
+      ].map(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')).filter(Boolean));
+      const candidates = [];
+      const add = (value, score) => {
+        value = String(value || '').trim();
+        const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (!value || rejected.has(normalized) || /^\d+$/.test(value)) return;
+        candidates.push({value, score: score + (value.includes(' ') ? 8 : 0) + Math.min(value.length, 40) / 10});
+      };
+      if (!String(channel.nameSource || '').toLowerCase().startsWith('dispatcharr')) add(channel.name, 35);
+      add(channel.affiliate, 45);
+      for (const evidence of channel.aliasEvidence || []) {
+        const methods = (evidence.methods || []).join(' ').toLowerCase();
+        const sources = (evidence.sources || []).map(value => String(value).toLowerCase());
+        if (/station id|position id|channel number plus|event callsign/.test(methods)) continue;
+        const external = sources.some(source => source !== 'gracenote' && !source.startsWith('dispatcharr'));
+        if (!external && !/affiliate/.test(methods)) continue;
+        let score = external ? 55 : 20;
+        if (/official|provider|lineup|affiliate|network|catalog/.test(methods)) score += 20;
+        add(evidence.value, score);
+      }
+      candidates.sort((left, right) => right.score - left.score || left.value.localeCompare(right.value));
+      return candidates[0]?.value || '';
+    }
+
+    function filteredChannels() {
       const query = els.search.value.trim().toLowerCase();
       const category = els.categoryFilter.value;
       const visibility = els.includedFilter.value;
-      const visible = draft.channels.filter(channel => {
+      return draft.channels.filter(channel => {
         if (category && channel.category !== category) return false;
         if (visibility === 'included' && !channel.included) return false;
         if (visibility === 'excluded' && channel.included) return false;
         if (!query) return true;
         return [channel.number, channel.name, channel.callSign, channel.affiliate, ...(channel.aliases || [])].join(' ').toLowerCase().includes(query);
       });
+    }
+
+    function renderChannels() {
+      const visible = filteredChannels();
       els.visibleCount.textContent = `Showing ${visible.length.toLocaleString()} of ${draft.channels.length.toLocaleString()} channels`;
 
       if (!visible.length) {
@@ -400,23 +499,34 @@
     }
 
     function channelCard(channel) {
-      const card = document.createElement('article'); card.className = 'channel-card' + (channel.included ? '' : ' excluded');
+      const card = document.createElement('article');
+      card.className = 'channel-card' + (channel.included ? '' : ' excluded') + (selectedChannels.has(channel.id) ? ' batch-selected' : '');
       const main = document.createElement('div'); main.className = 'channel-main';
+      const batchLabel = document.createElement('label'); batchLabel.className = 'batch-toggle'; batchLabel.title = 'Select for batch category change';
+      const batchCheckbox = document.createElement('input'); batchCheckbox.type = 'checkbox'; batchCheckbox.checked = selectedChannels.has(channel.id); batchCheckbox.disabled = saving;
+      batchCheckbox.setAttribute('aria-label', `Select ${channel.name} for batch category change`);
+      batchCheckbox.addEventListener('change', () => {
+        if (batchCheckbox.checked) selectedChannels.add(channel.id); else selectedChannels.delete(channel.id);
+        renderBatchControls(); renderChannels();
+      });
+      batchLabel.append(batchCheckbox);
       const toggleLabel = document.createElement('label'); toggleLabel.className = 'include-toggle'; toggleLabel.title = 'Include in export';
       const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = channel.included; toggle.disabled = saving;
       toggle.addEventListener('change', () => saveChannel(channel, { included: toggle.checked }, toggle));
       toggleLabel.append(toggle);
       const number = document.createElement('div'); number.className = 'channel-number'; number.textContent = channel.number || '—';
       const copy = document.createElement('div'); copy.className = 'channel-copy';
-      const name = document.createElement('div'); name.className = 'channel-name';
+      const name = document.createElement('button'); name.type = 'button'; name.className = 'channel-name channel-name-button';
       const callSign = String(channel.callSign || channel.name || '').trim();
-      const detailedName = [channel.name, channel.affiliate].map(value => String(value || '').trim()).find(value => value && !equivalentChannelNames(callSign, value)) || '';
+      const detailedName = descriptiveChannelName(channel);
       const callSignText = document.createElement('span'); callSignText.textContent = callSign || 'Unnamed channel';
       name.append(callSignText);
       if (detailedName && !equivalentChannelNames(callSign, detailedName)) {
         const detail = document.createElement('span'); detail.className = 'channel-detail-name'; detail.textContent = `· ${detailedName}`;
         name.append(detail);
       }
+      name.title = 'Show upcoming programmes';
+      name.addEventListener('click', () => openChannelPrograms(channel));
       const meta = document.createElement('div'); meta.className = 'channel-meta';
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';
@@ -433,7 +543,7 @@
       };
       categoryInput.addEventListener('change', saveCategory);
       actions.append(categoryInput);
-      main.append(toggleLabel, number, copy, actions); card.append(main);
+      main.append(batchLabel, toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
       const summary = document.createElement('summary'); summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs`;
@@ -449,6 +559,98 @@
     }
 
     function badge(text, kind = '') { const item = document.createElement('span'); item.className = `badge ${kind}`; item.textContent = text; return item; }
+
+    function toggleBatchMode() {
+      batchMode = !batchMode;
+      if (!batchMode) selectedChannels.clear();
+      renderBatchControls();
+      renderChannels();
+    }
+
+    function selectVisibleChannels() {
+      for (const channel of filteredChannels()) selectedChannels.add(channel.id);
+      renderBatchControls();
+      renderChannels();
+    }
+
+    function clearBatchSelection() {
+      selectedChannels.clear();
+      renderBatchControls();
+      renderChannels();
+    }
+
+    async function applyBatchCategory() {
+      if (saving || selectedChannels.size === 0) return;
+      const channelIDs = [...selectedChannels];
+      const category = els.batchCategory.value || 'Uncategorized';
+      saving = true; renderBatchControls(); renderSummary();
+      try {
+        await api('/api/lineuparr/categories', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:channelIDs, category})
+        });
+        const selected = new Set(channelIDs);
+        for (const channel of draft.channels) {
+          if (!selected.has(channel.id)) continue;
+          channel.category = category;
+          channel.categorySource = 'user';
+          channel.categoryMethod = 'user edit';
+        }
+        selectedChannels.clear();
+        renderCategoryOptions();
+        showMessage(`${channelIDs.length} channel${channelIDs.length === 1 ? '' : 's'} moved to ${category}.`);
+      } catch (error) {
+        showMessage(error.message, true);
+      } finally {
+        saving = false; renderBatchControls(); renderSummary(); renderChannels();
+      }
+    }
+
+    async function openChannelPrograms(channel) {
+      const requestNumber = ++programRequest;
+      els.programTitle.textContent = 'Upcoming programmes';
+      els.programChannel.textContent = `${channel.number || '—'} · ${channel.callSign || channel.name}`;
+      els.programList.replaceChildren(emptyMessage('Loading the selected guide schedule…'));
+      if (typeof els.programDialog.showModal === 'function') els.programDialog.showModal();
+      else els.programDialog.setAttribute('open', '');
+      try {
+        const result = await api(`/api/lineuparr/channel-programs?channelId=${encodeURIComponent(channel.id)}`);
+        if (requestNumber !== programRequest) return;
+        els.programChannel.textContent = `${result.number || '—'} · ${result.name || channel.name}`;
+        renderPrograms(result.programs || []);
+      } catch (error) {
+        els.programList.replaceChildren(emptyMessage(error.message));
+      }
+    }
+
+    function renderPrograms(programs) {
+      els.programList.replaceChildren();
+      if (!programs.length) {
+        els.programList.append(emptyMessage('No current or upcoming programmes are available in the selected guide.'));
+        return;
+      }
+      for (const program of programs) {
+        const row = document.createElement('article'); row.className = 'program-row';
+        const time = document.createElement('div'); time.className = 'program-time';
+        const start = new Date(program.start); const end = new Date(program.end);
+        time.textContent = Number.isNaN(start.getTime()) ? program.start : `${start.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})}\n${start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}–${end.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+        time.style.whiteSpace = 'pre-line';
+        const copy = document.createElement('div');
+        const title = document.createElement('div'); title.className = 'program-title'; title.textContent = program.title || 'Untitled programme';
+        copy.append(title);
+        const metaValues = [program.subTitle, program.category, program.rating, program.isNew && 'New'].filter(Boolean);
+        if (metaValues.length) { const meta = document.createElement('div'); meta.className = 'program-meta'; meta.textContent = metaValues.join(' · '); copy.append(meta); }
+        if (program.description) { const description = document.createElement('div'); description.className = 'program-description'; description.textContent = program.description; copy.append(description); }
+        row.append(time, copy); els.programList.append(row);
+      }
+    }
+
+    function closeProgramDialog() {
+      programRequest++;
+      if (typeof els.programDialog.close === 'function') els.programDialog.close();
+      else els.programDialog.removeAttribute('open');
+    }
+
+    function emptyMessage(text) { const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item; }
 
     async function saveChannel(channel, patch, control) {
       const oldIncluded = channel.included; const oldCategory = channel.category;
@@ -497,6 +699,11 @@
       localStorage.setItem('lineuparr-view', compact ? 'compact' : 'detailed');
       renderViewMode();
     });
+    els.batchToggle.addEventListener('click', toggleBatchMode);
+    els.batchSelectVisible.addEventListener('click', selectVisibleChannels);
+    els.batchClear.addEventListener('click', clearBatchSelection);
+    els.batchApply.addEventListener('click', applyBatchCategory);
+    els.programClose.addEventListener('click', closeProgramDialog);
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     loadDraft();
