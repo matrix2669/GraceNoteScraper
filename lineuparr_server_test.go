@@ -72,6 +72,14 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 			t.Fatalf("page is missing stable review control %q", expected)
 		}
 	}
+	for _, removed := range []string{"appendTVGOptions(", "match-tvg-option", "provider-reported TVG ID will be added"} {
+		if strings.Contains(body, removed) {
+			t.Fatalf("page still exposes removed TVG-ID selector %q", removed)
+		}
+	}
+	if got := strings.Count(body, "tvgIds:[]"); got != 2 {
+		t.Fatalf("browser decisions do not explicitly suppress provider TVG IDs: found %d requests", got)
+	}
 	if strings.Contains(body, "scheduleMatchReconcile") {
 		t.Fatal("page still schedules automatic match-review reloads")
 	}

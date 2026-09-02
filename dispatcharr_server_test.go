@@ -162,7 +162,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	server.cache.clear()
 	fake.streamErr = errors.New("decision should use the cached candidate")
 
-	payload := `{"key":"` + key + `","decision":"confirmed"}`
+	payload := `{"key":"` + key + `","decision":"confirmed","tvgIds":[]}`
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
@@ -179,7 +179,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 		t.Fatal(err)
 	}
 	channel := draft.Channels[0]
-	if !containsString(channel.Aliases, "US| TWO HD") || !containsString(channel.EPGIDs, "Two.us") {
+	if !containsString(channel.Aliases, "US| TWO HD") || containsString(channel.EPGIDs, "Two.us") {
 		t.Fatalf("confirmed draft channel = %+v", channel)
 	}
 
@@ -281,7 +281,7 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	}
 }
 
-func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) {
+func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *testing.T) {
 	server, fake := newDispatcharrTestServer(t, true)
 	fake.streams = []dispatcharr.Stream{
 		{ID: 10, Name: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3},
@@ -302,7 +302,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) 
 	if group.StreamCount != 3 || len(group.TVGIDs) != 2 || len(group.TVGIDEvidence) != 2 || len(group.M3UAccountIDs) != 3 {
 		t.Fatalf("group evidence = %+v", group)
 	}
-	payload := `{"key":"` + group.Key + `","decision":"confirmed","tvgIds":["Two.us"]}`
+	payload := `{"key":"` + group.Key + `","decision":"confirmed","tvgIds":[]}`
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
@@ -316,8 +316,8 @@ func TestDispatcharrReviewGroupsEquivalentStreamsAndSelectsTVGIDs(t *testing.T) 
 		t.Fatalf("group decisions = %+v", decisions)
 	}
 	for _, decision := range decisions {
-		if decision.TVGID != "" && decision.TVGID != "Two.us" {
-			t.Fatalf("unselected TVG ID persisted: %+v", decision)
+		if decision.TVGID != "" {
+			t.Fatalf("provider TVG ID persisted without a browser selection: %+v", decision)
 		}
 		if decision.NormalizedAlias != "two" {
 			t.Fatalf("normalized group identity was not persisted: %+v", decision)
