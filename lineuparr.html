@@ -228,13 +228,6 @@
     .match-tier { display: inline-flex; margin-right: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(124,230,166,.1); color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .match-tier.contained { color: var(--warning); background: rgba(255,203,92,.1); }
     .match-tier.fuzzy { color: var(--danger); background: rgba(255,95,87,.1); }
-    .match-tvg-options { display: grid; gap: 5px; margin-top: 8px; }
-    .match-tvg-option { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; }
-    .match-tvg-option input { width: 15px; height: 15px; }
-    .match-tvg-copy { min-width: 0; line-height: 1.35; }
-    .match-tvg-id { color: var(--text); font-weight: 720; }
-    .match-tvg-known { margin-left: 6px; color: var(--accent); font-size: 10px; font-weight: 760; }
-    .match-tvg-provenance { margin-top: 2px; color: #789087; font-size: 10px; overflow-wrap: anywhere; }
     .match-arrow { color: var(--accent); font-size: 18px; }
     .match-score { color: var(--accent); font-weight: 850; }
     .match-buttons { display: flex; gap: 7px; }
@@ -961,7 +954,6 @@
       const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
       for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
-      appendTVGOptions(stream, candidate);
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
       const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
@@ -973,35 +965,11 @@
       channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
-      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed', [...card.querySelectorAll('.match-tvg-option input:checked')].map(input => input.value)));
+      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
-      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied', []));
+      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
       buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
       return card;
-    }
-
-    function appendTVGOptions(parent, candidate) {
-      const tvgEvidence = (candidate.tvgIdEvidence || []).length ? candidate.tvgIdEvidence : (candidate.tvgIds || []).map(id => ({id, known:false, streamNames:[], m3uAccountIds:[]}));
-      if (!tvgEvidence.length) return;
-      const options = document.createElement('div'); options.className = 'match-tvg-options';
-      const help = document.createElement('div'); help.className = 'match-meta';
-      help.textContent = tvgEvidence.length === 1 ? 'The provider-reported TVG ID will be added with the aliases.' : 'Multiple TVG IDs were reported. Select only the IDs that belong to this channel; aliases can be confirmed with none selected.';
-      options.append(help);
-      for (const evidence of tvgEvidence) {
-        const label = document.createElement('label'); label.className = 'match-tvg-option';
-        const input = document.createElement('input'); input.type = 'checkbox'; input.value = evidence.id; input.checked = tvgEvidence.length === 1;
-        const copy = document.createElement('span'); copy.className = 'match-tvg-copy';
-        const id = document.createElement('span'); id.className = 'match-tvg-id'; id.textContent = evidence.id; copy.append(id);
-        const context = document.createElement('span'); context.className = 'match-tvg-known';
-        context.textContent = evidence.known ? 'Already known on this channel' : 'Additional provider ID'; copy.append(context);
-        const provenance = document.createElement('div'); provenance.className = 'match-tvg-provenance';
-        const accounts = (evidence.m3uAccountIds || []).join(', ');
-        const names = (evidence.streamNames || []).join(' · ');
-        provenance.textContent = [accounts && `M3U accounts ${accounts}`, names].filter(Boolean).join(' · ');
-        if (provenance.textContent) copy.append(provenance);
-        label.append(input, copy); options.append(label);
-      }
-      parent.append(options);
     }
 
     function decisionRow(decision) {
@@ -1014,7 +982,7 @@
       row.append(copy, undo); return row;
     }
 
-    async function decideMatch(key, decision, tvgIds = []) {
+    async function decideMatch(key, decision) {
       if (pendingDecisions.has(key) || !matchReview) return;
       const candidate = (matchReview.candidates || []).find(item => item.key === key);
       if (!candidate) return;
@@ -1032,7 +1000,7 @@
       renderMatchReview();
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds})
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
         if (decision === 'confirmed') await reloadDraft();
         const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
@@ -1085,23 +1053,22 @@
       score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
       meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
       copy.append(name, meta); main.append(copy); card.append(main);
-      appendTVGOptions(card, candidate);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
-      confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', [...card.querySelectorAll('.match-tvg-option input:checked')].map(input => input.value), card));
+      confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
-      denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', [], card));
+      denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
       buttons.append(confirmButton, denyButton); card.append(buttons);
       return card;
     }
 
-    async function decideAlternative(primary, candidate, decision, tvgIds, card) {
+    async function decideAlternative(primary, candidate, decision, card) {
       if (pendingDecisions.has(candidate.key)) return;
       pendingDecisions.add(candidate.key);
       for (const button of card.querySelectorAll('button')) button.disabled = true;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds})
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
         });
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;

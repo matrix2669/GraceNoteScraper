@@ -192,13 +192,13 @@ The optional Dispatcharr panel compares the active lineup with every non-stale s
 
 Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Delimited `US`, `GO`, `Prime`, `Tubi`, and `ROKU` provider prefixes, common HD/UHD markers, punctuation, and spacing are normalized. A leading HDHomeRun-style number is removed only when it exactly equals Dispatcharr's channel-number metadata, so event years and unrelated numeric names remain intact. A score is never accepted automatically:
 
-- **Confirm** adds the stream name and, when present, its `tvg_id` to that specific lineup position with Dispatcharr provenance.
+- **Confirm** adds the reviewed stream-name aliases to that specific lineup position with Dispatcharr provenance. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.
 - **Deny** records only that stream/channel pairing as rejected. When a fuzzy proposal had other qualifying targets, the already-scored alternatives open immediately for separate confirmation or denial.
 - **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
 
 Confirm and deny actions remove their row immediately without locking or re-sorting the remaining review page. The initial page contains 100 groups; **Load more** explicitly requests the next 100. Decisions retain the safe normalized stream identity as well as the active lineup, stream fingerprint, and target channel, so equivalent account variants, authentication changes, and container restarts do not restore reviewed rows. The confirmed counter opens reviewed matches.
 
-TVG-ID checkboxes are independent from text aliases: confirming a row always adds its reviewed stream-name aliases, while only selected TVG IDs are added to `epg_ids`. A target-known ID reinforces an existing exact identity; an additional provider ID can improve later exact EPG matching but may also be opaque or provider-specific, so it remains an explicit choice. Removing the checkboxes would not remove name aliases, but it would discard that useful exact-ID evidence.
+Provider-reported TVG IDs remain available as internal scoring and provenance evidence, but the browser does not offer TVG-ID checkboxes or add those identifiers to `epg_ids`. Confirming a row still adds its reviewed stream-name aliases. This reflects the current Lineuparr consumer, which matches lineup names and aliases but does not consume lineup JSON `epg_ids`; the server retains the metadata so exact-ID selection can be reconsidered if that behavior changes.
 
 Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
