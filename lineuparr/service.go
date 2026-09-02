@@ -438,6 +438,17 @@ func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpd
 	return s.store.Update(fingerprint, channelID, update)
 }
 
+func (s *Service) UpdateChannelsCategory(fingerprint string, channelIDs []string, category string) error {
+	category = cleanCategory(category)
+	if category == "" {
+		category = uncategorized
+	}
+	if len(category) > 80 {
+		return errors.New("category must be 80 characters or fewer")
+	}
+	return s.store.SetCategory(fingerprint, channelIDs, category)
+}
+
 func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) error {
 	ids := make([]string, 0, len(draft.DuplicateSuggestions))
 	for _, suggestion := range draft.DuplicateSuggestions {
