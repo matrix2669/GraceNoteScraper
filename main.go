@@ -27,6 +27,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
 	"github.com/daniel-widrick/GraceNoteScraper/util"
@@ -211,7 +212,7 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 
 		grid, err := client.GetDataByTime(ts)
 		if err != nil {
-			log.Printf("Error fetching grid at %d: %v", ts, err)
+			applog.Errorf("fetching grid at %d: %v", ts, err)
 			continue
 		}
 
@@ -297,6 +298,16 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 }
 
 func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
+	if err := writeGuideFile(tvGuide); err != nil {
+		return err
+	}
+	if err := saveGuideCache(tvGuide, sourceFingerprint); err != nil {
+		applog.Errorf("failed to save guide cache: %v", err)
+	}
+	return nil
+}
+
+func writeGuideFile(tvGuide *guide.TVGuide) error {
 	log.Printf("Rendering XMLTV: %d channels, %d programs", len(tvGuide.Channels), len(tvGuide.Programs))
 
 	// Parse embedded template
@@ -331,13 +342,16 @@ func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
 	}
 
 	log.Printf("Wrote guide to xmlguide.xmltv")
-	saveGuideCache(tvGuide, sourceFingerprint)
 	return nil
 }
 
 // ---------- Guide cache ----------
 
-const guideCachePath = "guide_cache.json"
+const (
+	guideCachePath            = "guide_cache.json"
+	guideRefreshInterval      = 24 * time.Hour
+	immediateGuideRefreshWait = 100 * time.Millisecond
+)
 
 type guideCache struct {
 	SavedAt           time.Time     `json:"saved_at"`
@@ -345,47 +359,153 @@ type guideCache struct {
 	Guide             guide.TVGuide `json:"guide"`
 }
 
-// saveGuideCache persists the TVGuide to a JSON file.
-func saveGuideCache(g *guide.TVGuide, sourceFingerprint string) {
+// saveGuideCache persists the TVGuide atomically so an interrupted write does
+// not replace the last usable cache.
+func saveGuideCache(g *guide.TVGuide, sourceFingerprint string) error {
 	data, err := json.Marshal(guideCache{SavedAt: time.Now(), SourceFingerprint: sourceFingerprint, Guide: *g})
 	if err != nil {
-		log.Printf("guide cache: failed to marshal: %v", err)
-		return
+		return fmt.Errorf("marshal: %w", err)
 	}
-	if err := os.WriteFile(guideCachePath, data, 0644); err != nil {
-		log.Printf("guide cache: failed to write: %v", err)
-		return
+
+	tmp, err := os.CreateTemp(".", "guide-cache-*.tmp")
+	if err != nil {
+		return fmt.Errorf("create temporary file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if err := tmp.Chmod(0644); err != nil {
+		tmp.Close()
+		return fmt.Errorf("set temporary file permissions: %w", err)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write temporary file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temporary file: %w", err)
+	}
+	if err := os.Rename(tmpName, guideCachePath); err != nil {
+		return fmt.Errorf("replace cache: %w", err)
 	}
 	log.Println("Saved guide cache")
+	return nil
 }
 
-// loadGuideCache loads the TVGuide from the JSON cache if it's younger than maxAge.
-// Returns the guide, its age, and whether it was loaded.
-func loadGuideCache(maxAge time.Duration, sourceFingerprint string) (*guide.TVGuide, time.Duration, bool) {
+type guideCacheStatus string
+
+const (
+	guideCacheMissing       guideCacheStatus = "missing"
+	guideCacheUnreadable    guideCacheStatus = "unreadable"
+	guideCacheCorrupt       guideCacheStatus = "corrupt"
+	guideCacheSourceChanged guideCacheStatus = "source-changed"
+	guideCacheReady         guideCacheStatus = "ready"
+)
+
+type guideCacheLoadResult struct {
+	Guide  *guide.TVGuide
+	Age    time.Duration
+	Status guideCacheStatus
+	Err    error
+}
+
+// loadGuideCache validates the source-bound JSON cache without rejecting it
+// solely because it is old. Startup decides whether to schedule an immediate
+// refresh while continuing to serve stale data.
+func loadGuideCache(sourceFingerprint string) guideCacheLoadResult {
 	data, err := os.ReadFile(guideCachePath)
 	if err != nil {
-		return nil, 0, false
+		if errors.Is(err, os.ErrNotExist) {
+			return guideCacheLoadResult{Status: guideCacheMissing}
+		}
+		return guideCacheLoadResult{Status: guideCacheUnreadable, Err: err}
 	}
 	var c guideCache
 	if err := json.Unmarshal(data, &c); err != nil {
-		log.Printf("guide cache: corrupt, ignoring: %v", err)
-		return nil, 0, false
+		return guideCacheLoadResult{Status: guideCacheCorrupt, Err: err}
 	}
 	if c.SourceFingerprint != sourceFingerprint {
-		log.Println("guide cache: source changed, ignoring cached guide")
-		return nil, 0, false
+		return guideCacheLoadResult{Status: guideCacheSourceChanged}
 	}
 	age := time.Since(c.SavedAt)
-	if age >= maxAge {
-		return nil, age, false
+	if age < 0 {
+		age = 0
 	}
-	return &c.Guide, age, true
+	return guideCacheLoadResult{Guide: &c.Guide, Age: age, Status: guideCacheReady}
+}
+
+type guideStartupPlan struct {
+	Guide               *guide.TVGuide
+	NextScrapeIn        time.Duration
+	Message             string
+	Warn                bool
+	InvalidateArtifacts bool
+}
+
+func planGuideStartup(cache guideCacheLoadResult, xmltvErr error) guideStartupPlan {
+	refreshPlan := guideStartupPlan{NextScrapeIn: immediateGuideRefreshWait}
+
+	switch cache.Status {
+	case guideCacheMissing:
+		refreshPlan.Message = "Guide cache is missing; a fresh guide will be generated in the background"
+		return refreshPlan
+	case guideCacheUnreadable:
+		refreshPlan.Message = fmt.Sprintf("Guide cache is unreadable (%v); a fresh guide will be generated in the background", cache.Err)
+		refreshPlan.Warn = true
+		return refreshPlan
+	case guideCacheCorrupt:
+		refreshPlan.Message = fmt.Sprintf("Guide cache is corrupt (%v); a fresh guide will be generated in the background", cache.Err)
+		refreshPlan.Warn = true
+		return refreshPlan
+	case guideCacheSourceChanged:
+		refreshPlan.Message = "Guide cache belongs to a different lineup; stale guide artifacts will be removed before refresh"
+		refreshPlan.InvalidateArtifacts = true
+		return refreshPlan
+	case guideCacheReady:
+		if xmltvErr != nil {
+			if errors.Is(xmltvErr, os.ErrNotExist) {
+				refreshPlan.Message = "Guide cache is valid but xmlguide.xmltv is missing; a fresh guide will be generated in the background"
+			} else {
+				refreshPlan.Message = fmt.Sprintf("Guide cache is valid but xmlguide.xmltv cannot be inspected (%v); a fresh guide will be generated in the background", xmltvErr)
+			}
+			refreshPlan.Warn = true
+			return refreshPlan
+		}
+	default:
+		refreshPlan.Message = fmt.Sprintf("Guide cache has unknown status %q; a fresh guide will be generated in the background", cache.Status)
+		refreshPlan.Warn = true
+		return refreshPlan
+	}
+
+	plan := guideStartupPlan{Guide: cache.Guide}
+	if cache.Age >= guideRefreshInterval {
+		plan.NextScrapeIn = immediateGuideRefreshWait
+		plan.Message = fmt.Sprintf("Loaded stale guide cache (%s old); serving it while an immediate background refresh runs", cache.Age.Round(time.Second))
+		return plan
+	}
+
+	plan.NextScrapeIn = guideRefreshInterval - cache.Age
+	if plan.NextScrapeIn < time.Second {
+		plan.NextScrapeIn = time.Second
+	}
+	plan.Message = fmt.Sprintf("Loaded fresh guide cache (%s old); next refresh in %s", cache.Age.Round(time.Second), plan.NextScrapeIn.Round(time.Second))
+	return plan
+}
+
+func restoreMissingGuideFile(cache guideCacheLoadResult, xmltvErr error) (error, bool) {
+	if cache.Status != guideCacheReady || !errors.Is(xmltvErr, os.ErrNotExist) {
+		return xmltvErr, false
+	}
+	if err := writeGuideFile(cache.Guide); err != nil {
+		return fmt.Errorf("rebuild XMLTV from guide cache: %w", err), false
+	}
+	return nil, true
 }
 
 func invalidateCurrentGuideArtifacts() {
 	for _, path := range []string{"xmlguide.xmltv", guideCachePath} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			log.Printf("setup: could not remove stale %s: %v", path, err)
+			applog.Warnf("setup could not remove stale %s: %v", path, err)
 		}
 	}
 }
@@ -398,12 +518,12 @@ func rotateFiles() {
 
 	src, err := os.ReadFile("xmlguide.xmltv")
 	if err != nil {
-		log.Printf("rotate: failed to read xmlguide.xmltv: %v", err)
+		applog.Errorf("rotate failed to read xmlguide.xmltv: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(dated, src, 0644); err != nil {
-		log.Printf("rotate: failed to write %s: %v", dated, err)
+		applog.Errorf("rotate failed to write %s: %v", dated, err)
 		return
 	}
 	log.Printf("Rotated guide to %s", dated)
@@ -457,7 +577,7 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		if filterEnabled {
 			cf, err := fetchJellyfinChannelNumbers(jellyfinURL, jellyfinAPIKey)
 			if err != nil {
-				log.Printf("Warning: could not fetch Jellyfin channels for filter, proceeding unfiltered: %v", err)
+				applog.Warnf("could not fetch Jellyfin channels for filter, proceeding unfiltered: %v", err)
 			} else {
 				channelFilter = cf
 			}
@@ -483,7 +603,7 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		if errors.Is(err, errScrapeSourceChanged) {
 			log.Println("Discarded scrape because the active lineup changed")
 		} else if err != nil {
-			log.Printf("Scrape failed: %v", err)
+			applog.Errorf("scrape failed: %v", err)
 			nextDelay = 15 * time.Minute
 		} else {
 			log.Println("Scrape complete")
@@ -773,14 +893,14 @@ func handleLiveTVTune(jellyfinURL, jellyfinAPIKey string) http.HandlerFunc {
 		path := fmt.Sprintf("/Items/%s/PlaybackInfo", channelId)
 		body, err := jfGet(path)
 		if err != nil {
-			log.Printf("livetv tune step 1: %v", err)
+			applog.Errorf("livetv tune step 1: %v", err)
 			http.Error(w, "PlaybackInfo failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
 
 		var info playbackInfoResponse
 		if err := json.Unmarshal(body, &info); err != nil {
-			log.Printf("livetv tune: parsing playback info: %v", err)
+			applog.Errorf("livetv tune could not parse playback info: %v", err)
 			http.Error(w, "Failed to parse PlaybackInfo", http.StatusBadGateway)
 			return
 		}
@@ -798,14 +918,14 @@ func handleLiveTVTune(jellyfinURL, jellyfinAPIKey string) http.HandlerFunc {
 			info.PlaySessionId, channelId)
 		respBody, err := jfPost(openPath, openBody)
 		if err != nil {
-			log.Printf("livetv tune step 2: %v", err)
+			applog.Errorf("livetv tune step 2: %v", err)
 			http.Error(w, "LiveStreams/Open failed: "+err.Error(), http.StatusBadGateway)
 			return
 		}
 
 		var opened openStreamResponse
 		if err := json.Unmarshal(respBody, &opened); err != nil {
-			log.Printf("livetv tune: parsing open stream: %v", err)
+			applog.Errorf("livetv tune could not parse open stream: %v", err)
 			http.Error(w, "Failed to parse LiveStreams/Open", http.StatusBadGateway)
 			return
 		}
@@ -925,6 +1045,11 @@ func filterGuideChannels(g *guide.TVGuide, allowed map[string]bool) *guide.TVGui
 // ---------- Main ----------
 
 func main() {
+	// Go's standard logger writes to stderr by default. Keep routine progress on
+	// stdout so container log viewers do not label informational messages as
+	// errors; explicitly classified warnings and failures use applog.
+	log.SetOutput(os.Stdout)
+
 	guideOnly := flag.Bool("guide-only", false, "Scrape once and exit (no server)")
 	flag.Parse()
 
@@ -937,7 +1062,7 @@ func main() {
 	configPath := util.GetEnv("CONFIG_PATH", "config.json")
 	configStore, configErr := appconfig.LoadStore(configPath)
 	if configErr != nil {
-		log.Printf("Configuration could not be loaded; /setup will remain available: %v", configErr)
+		applog.Warnf("configuration could not be loaded; /setup will remain available: %v", configErr)
 	}
 
 	jellyfinURL := strings.TrimRight(util.GetEnv("JELLYFIN_URL", ""), "/")
@@ -953,7 +1078,7 @@ func main() {
 	if channelFilterEnabled {
 		cf, err := fetchJellyfinChannelNumbers(jellyfinURL, jellyfinAPIKey)
 		if err != nil {
-			log.Printf("Warning: could not fetch Jellyfin channels for filter: %v", err)
+			applog.Warnf("could not fetch Jellyfin channels for filter: %v", err)
 			log.Println("Channel filter will be retried on next scheduled scrape")
 		} else {
 			channelFilter = cf
@@ -974,11 +1099,11 @@ func main() {
 	if *guideOnly {
 		config, configured, _ := configStore.Get()
 		if !configured {
-			log.Fatal("No provider is configured. Run server mode and open /setup, or provide complete GN_* environment settings.")
+			applog.Fatalf("no provider is configured. Run server mode and open /setup, or provide complete GN_* environment settings.")
 		}
 		log.Println("Starting scrape (guide-only mode)...")
 		if _, err := runScrape(config.Preferences(), tmdbClient, baseURL, channelFilter, config.Fingerprint(), nil, nil); err != nil {
-			log.Fatalf("Scrape failed: %v", err)
+			applog.Fatalf("scrape failed: %v", err)
 		}
 		log.Println("--guide-only: done")
 		return
@@ -992,23 +1117,29 @@ func main() {
 	if configured {
 		log.Printf("Active lineup: %s (%s)", config.Gracenote.ProviderName, source)
 		_, xmltvErr := os.Stat("xmlguide.xmltv")
-		cached, age, cacheOK := loadGuideCache(4*time.Hour, config.Fingerprint())
-		if cacheOK && xmltvErr == nil {
-			log.Printf("Loaded guide from cache (%s old), skipping initial scrape", age.Round(time.Second))
-			g = cached
+		cache := loadGuideCache(config.Fingerprint())
+		var rebuilt bool
+		xmltvErr, rebuilt = restoreMissingGuideFile(cache, xmltvErr)
+		if rebuilt {
+			log.Println("Rebuilt missing xmlguide.xmltv from the source-matching guide cache")
+		}
+		plan := planGuideStartup(cache, xmltvErr)
+		if plan.Warn {
+			applog.Warnf("%s", plan.Message)
+		} else {
+			log.Println(plan.Message)
+		}
+		if plan.InvalidateArtifacts {
+			invalidateCurrentGuideArtifacts()
+		}
+		g = plan.Guide
+		nextScrapeIn = plan.NextScrapeIn
+		if g != nil {
 			if channelFilter != nil {
 				before := len(g.Channels)
 				g = filterGuideChannels(g, channelFilter)
 				log.Printf("Channel filter: %d → %d channels (cached guide)", before, len(g.Channels))
 			}
-			nextScrapeIn = 24*time.Hour - age
-			if nextScrapeIn < time.Hour {
-				nextScrapeIn = time.Hour
-			}
-		} else {
-			invalidateCurrentGuideArtifacts()
-			nextScrapeIn = 100 * time.Millisecond
-			log.Println("A fresh guide will be generated in the background")
 		}
 	} else {
 		log.Println("No provider configured; open /setup to choose a lineup")
@@ -1068,7 +1199,7 @@ func main() {
 	go func() {
 		log.Printf("HTTP server listening on :%s", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("HTTP server error: %v", err)
+			applog.Fatalf("HTTP server error: %v", err)
 		}
 	}()
 
@@ -1080,7 +1211,7 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		applog.Errorf("HTTP server shutdown error: %v", err)
 	}
 
 	log.Println("Goodbye")
