@@ -413,6 +413,25 @@ func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *tes
 	}
 }
 
+func TestDuplicateSuggestionRecognizesAttributedAliasWithExplicitHD(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "i24-unmarked", Number: "14", Name: "I24NWEN", OriginalName: "I24NWEN", CallSign: "I24NWEN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"directv-official-lineup"}, Methods: []string{"exact provider identity"}}},
+		},
+		{
+			ID: "i24-hd", Number: "697", Name: "I24NEHD", OriginalName: "I24NEHD", CallSign: "I24NEHD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:I24NEWS, provider-position:optimum|14)"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "i24-unmarked" || suggestions[0].KeepID != "i24-hd" {
+		t.Fatalf("attributed-alias HD duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "unique stronger quality rank") || !strings.Contains(suggestions[0].Reason, "i24 News") {
+		t.Fatalf("attributed-alias HD duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
 func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -423,6 +442,34 @@ func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing
 			channels: []DraftChannel{
 				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
 				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+			},
+		},
+		{
+			name: "only one position has attributable evidence",
+			channels: []DraftChannel{
+				{ID: "unmarked", CallSign: "I24NWEN", OriginalName: "I24NWEN", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"gracenote"}}}},
+				{ID: "hd", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "explicit SD aliases come from different sources",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "unmarked and HD aliases have schedule evidence only",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "714", CallSign: "SHOPLCH", OriginalName: "SHOPLCH", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:SHOPLC)"}}}},
+				{ID: "hd", Number: "785", CallSign: "WRNNDT", OriginalName: "WRNNDT", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (affiliate:SHOPLC, identity-name:WRNN, provider-position:optimum|48)"}}}},
+			},
+		},
+		{
+			name: "official alias and unlinked schedule alias",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "1", CallSign: "IN2TV", OriginalName: "IN2TV", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"optimum-official-lineup"}, Methods: []string{"exact provider channel number"}}}},
+				{ID: "hd", Number: "100", CallSign: "CHDDRHD", OriginalName: "CHDDRHD", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:CHDDR, provider-position:optimum|100)"}}}},
 			},
 		},
 		{
@@ -449,10 +496,17 @@ func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing
 			},
 		},
 		{
-			name: "no explicit SD member",
+			name: "no explicit quality marker",
 			channels: []DraftChannel{
 				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
 				{ID: "two", CallSign: "NWSNT", OriginalName: "NWSNT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "equal explicit quality ranks",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "I24NEWSHD", OriginalName: "I24NEWSHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
 			},
 		},
 		{
