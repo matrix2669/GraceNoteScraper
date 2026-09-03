@@ -429,6 +429,139 @@ func TestDuplicateSuggestionRecognizesTerminalDigitalCallsignWithoutCatalog(t *t
 	}
 }
 
+func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *testing.T) {
+	source := "gracenote-weekday-epg-usa-11743"
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "newsnation-sd", Number: "82", Name: "NWSNTSD", OriginalName: "NWSNTSD", CallSign: "NWSNTSD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+		{
+			ID: "newsnation", Number: "686", Name: "NEWSNTN", OriginalName: "NEWSNTN", CallSign: "NEWSNTN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "newsnation-sd" || suggestions[0].KeepID != "newsnation" {
+		t.Fatalf("attributed-alias duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "explicitly SD") || !strings.Contains(suggestions[0].Reason, "NewsNation") {
+		t.Fatalf("attributed-alias duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestDuplicateSuggestionRecognizesAttributedAliasWithExplicitHD(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "i24-unmarked", Number: "14", Name: "I24NWEN", OriginalName: "I24NWEN", CallSign: "I24NWEN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"directv-official-lineup"}, Methods: []string{"exact provider identity"}}},
+		},
+		{
+			ID: "i24-hd", Number: "697", Name: "I24NEHD", OriginalName: "I24NEHD", CallSign: "I24NEHD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:I24NEWS, provider-position:optimum|14)"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "i24-unmarked" || suggestions[0].KeepID != "i24-hd" {
+		t.Fatalf("attributed-alias HD duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "unique stronger quality rank") || !strings.Contains(suggestions[0].Reason, "i24 News") {
+		t.Fatalf("attributed-alias HD duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		channels []DraftChannel
+	}{
+		{
+			name: "gracenote-only alias",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+			},
+		},
+		{
+			name: "only one position has attributable evidence",
+			channels: []DraftChannel{
+				{ID: "unmarked", CallSign: "I24NWEN", OriginalName: "I24NWEN", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"gracenote"}}}},
+				{ID: "hd", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "explicit SD aliases come from different sources",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "unmarked and HD aliases have schedule evidence only",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "714", CallSign: "SHOPLCH", OriginalName: "SHOPLCH", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:SHOPLC)"}}}},
+				{ID: "hd", Number: "785", CallSign: "WRNNDT", OriginalName: "WRNNDT", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (affiliate:SHOPLC, identity-name:WRNN, provider-position:optimum|48)"}}}},
+			},
+		},
+		{
+			name: "official alias and unlinked schedule alias",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "1", CallSign: "IN2TV", OriginalName: "IN2TV", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"optimum-official-lineup"}, Methods: []string{"exact provider channel number"}}}},
+				{ID: "hd", Number: "100", CallSign: "CHDDRHD", OriginalName: "CHDDRHD", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:CHDDR, provider-position:optimum|100)"}}}},
+			},
+		},
+		{
+			name: "multiple non-SD counterparts",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "two", CallSign: "NEWSNTNALT", OriginalName: "NEWSNTNALT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "competing counterparts across aliases",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "EXAMPLESD", OriginalName: "EXAMPLESD", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}, {Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+				{ID: "one", CallSign: "EXAMPLE", OriginalName: "EXAMPLE", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "EXAMPLEALT", OriginalName: "EXAMPLEALT", AliasEvidence: []AliasEvidence{{Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "numbered digital subchannel",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "WABCSD", OriginalName: "WABCSD", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+				{ID: "subchannel", CallSign: "WABCDT2", OriginalName: "WABCDT2", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "no explicit quality marker",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "NWSNT", OriginalName: "NWSNT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "equal explicit quality ranks",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "I24NEWSHD", OriginalName: "I24NEWSHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "natural callsign ending in SD",
+			channels: []DraftChannel{
+				{ID: "kusd", CallSign: "KUSD", OriginalName: "KUSD", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+				{ID: "peer", CallSign: "SDPBS", OriginalName: "SDPBS", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if suggestions := findDuplicateSuggestions(test.channels); len(suggestions) != 0 {
+				t.Fatalf("duplicate suggestions = %+v", suggestions)
+			}
+		})
+	}
+}
+
 func TestQualitySuffixDuplicateSuggestionPreservesSubchannelsAndAmbiguity(t *testing.T) {
 	tests := []struct {
 		name     string

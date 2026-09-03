@@ -1066,6 +1066,99 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 			}
 		}
 	}
+
+	aliasGroups := make(map[string]*duplicateAliasGroup)
+	for index, channel := range channels {
+		for _, evidence := range channel.AliasEvidence {
+			aliasKey := identityKey(evidence.Value)
+			if aliasKey == "" || isDigits(aliasKey) {
+				continue
+			}
+			for _, source := range evidence.Sources {
+				sourceKey := strings.ToLower(cleanText(source))
+				if sourceKey == "" || sourceKey == "gracenote" {
+					continue
+				}
+				group := aliasGroups[aliasKey]
+				if group == nil {
+					group = &duplicateAliasGroup{
+						alias:                   evidence.Value,
+						sources:                 make(map[string]bool),
+						sourceMembers:           make(map[string]map[int]bool),
+						providerPositionBridges: make(map[int]map[string]bool),
+						seen:                    make(map[int]bool),
+					}
+					aliasGroups[aliasKey] = group
+				}
+				group.sources[source] = true
+				if group.sourceMembers[sourceKey] == nil {
+					group.sourceMembers[sourceKey] = make(map[int]bool)
+				}
+				group.sourceMembers[sourceKey][index] = true
+				for _, method := range evidence.Methods {
+					if number := providerPositionNumber(method); number != "" {
+						if group.providerPositionBridges[index] == nil {
+							group.providerPositionBridges[index] = make(map[string]bool)
+						}
+						group.providerPositionBridges[index][number] = true
+					}
+				}
+				if !group.seen[index] {
+					group.indexes = append(group.indexes, index)
+					group.seen[index] = true
+				}
+			}
+		}
+	}
+	aliasCandidates := make(map[string]map[string]DuplicateSuggestion)
+	for _, group := range aliasGroups {
+		if len(group.indexes) != 2 {
+			continue
+		}
+		left := channels[group.indexes[0]]
+		right := channels[group.indexes[1]]
+		if looksLikeNumberedDigitalSubchannel(left.CallSign) || looksLikeNumberedDigitalSubchannel(right.CallSign) {
+			continue
+		}
+		leftRank := qualityRank(left)
+		rightRank := qualityRank(right)
+		if leftRank == rightRank || (!hasExplicitQualityMarker(left) && !hasExplicitQualityMarker(right)) {
+			continue
+		}
+		remove, keep := left, right
+		if rightRank < leftRank {
+			remove, keep = right, left
+		}
+		if hasExplicitSDMarker(remove) {
+			if !group.hasSharedSource() {
+				continue
+			}
+		} else if !group.hasSharedNonScheduleSource() && !group.hasProviderPositionBridge(group.indexes[0], left, group.indexes[1], right) {
+			continue
+		}
+		sources := strings.Join(mapKeys(group.sources), ", ")
+		reason := fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s has the unique stronger quality rank", group.alias, sources, keep.CallSign)
+		if hasExplicitSDMarker(remove) && !hasExplicitQualityMarker(keep) {
+			reason = fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s is explicitly SD and %s is the unique non-SD counterpart", group.alias, sources, remove.CallSign, keep.CallSign)
+		}
+		suggestion := DuplicateSuggestion{
+			RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+			KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+		}
+		if aliasCandidates[remove.ID] == nil {
+			aliasCandidates[remove.ID] = make(map[string]DuplicateSuggestion)
+		}
+		aliasCandidates[remove.ID][keep.ID] = suggestion
+	}
+	for removeID, candidates := range aliasCandidates {
+		if _, exists := suggestionByRemoveID[removeID]; exists || len(candidates) != 1 {
+			continue
+		}
+		for _, suggestion := range candidates {
+			suggestionByRemoveID[removeID] = suggestion
+		}
+	}
+
 	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
 	for _, suggestion := range suggestionByRemoveID {
 		suggestions = append(suggestions, suggestion)
@@ -1080,6 +1173,58 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
 	return suggestions
+}
+
+type duplicateAliasGroup struct {
+	alias                   string
+	sources                 map[string]bool
+	sourceMembers           map[string]map[int]bool
+	providerPositionBridges map[int]map[string]bool
+	indexes                 []int
+	seen                    map[int]bool
+}
+
+func (group *duplicateAliasGroup) hasSharedSource() bool {
+	for _, members := range group.sourceMembers {
+		if len(members) == 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasSharedNonScheduleSource() bool {
+	for source, members := range group.sourceMembers {
+		if len(members) == 2 && !strings.HasPrefix(source, "gracenote-weekday-epg-") {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasProviderPositionBridge(leftIndex int, left DraftChannel, rightIndex int, right DraftChannel) bool {
+	return group.providerPositionBridges[leftIndex][cleanText(right.Number)] ||
+		group.providerPositionBridges[rightIndex][cleanText(left.Number)]
+}
+
+func providerPositionNumber(method string) string {
+	lower := strings.ToLower(method)
+	const marker = "provider-position:"
+	index := strings.Index(lower, marker)
+	if index < 0 {
+		return ""
+	}
+	value := method[index+len(marker):]
+	if fields := strings.FieldsFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ')' || r == ';'
+	}); len(fields) > 0 {
+		value = fields[0]
+	}
+	separator := strings.LastIndex(value, "|")
+	if separator < 0 {
+		return ""
+	}
+	return cleanText(value[separator+1:])
 }
 
 func sharesAttributableSource(left, right DraftChannel) bool {
@@ -1129,6 +1274,38 @@ func qualityRank(channel DraftChannel) int {
 		return 0
 	}
 	return 1
+}
+
+func hasExplicitSDMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, " SD") || hasTerminalSDMarker(callSign) || hasTerminalSDMarker(originalName)
+}
+
+func hasExplicitQualityMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, "4K") || strings.Contains(value, "UHD") ||
+		strings.Contains(value, " HD") || strings.Contains(value, " SD") ||
+		hasTerminalQualityMarker(callSign, "HD") || hasTerminalQualityMarker(callSign, "SD") ||
+		hasTerminalQualityMarker(originalName, "HD") || hasTerminalQualityMarker(originalName, "SD") ||
+		looksLikeDigitalCallSign(callSign)
+}
+
+func hasTerminalSDMarker(value string) bool {
+	return hasTerminalQualityMarker(value, "SD")
+}
+
+func hasTerminalQualityMarker(value, marker string) bool {
+	return strings.HasSuffix(value, marker) && len(strings.TrimSuffix(value, marker)) >= 3
+}
+
+func looksLikeNumberedDigitalSubchannel(value string) bool {
+	key := identityKey(value)
+	index := strings.LastIndex(key, "dt")
+	return index >= 3 && index+2 < len(key) && isDigits(key[index+2:])
 }
 
 func looksLikeDigitalCallSign(value string) bool {
