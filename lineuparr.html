@@ -1390,18 +1390,18 @@
     }
 
     function renderSummary() {
-      const included = draft.channels.filter(channel => channel.included).length;
-      const categorized = draft.channels.filter(channel => channel.category !== 'Uncategorized').length;
-      els.included.textContent = included.toLocaleString();
+      const includedChannels = draft.channels.filter(channel => channel.included);
+      const categorized = includedChannels.filter(channel => channel.category !== 'Uncategorized').length;
+      els.included.textContent = includedChannels.length.toLocaleString();
       els.total.textContent = draft.channels.length.toLocaleString();
       els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
       els.categorized.textContent = categorized.toLocaleString();
-      els.unresolved.textContent = (draft.channels.length - categorized).toLocaleString();
+      els.unresolved.textContent = (includedChannels.length - categorized).toLocaleString();
       const count = remainingDuplicateSuggestions().length;
       els.removeDuplicates.textContent = count ? `Review ${count} suggested SD duplicate${count === 1 ? '' : 's'}` : 'No SD duplicates suggested';
       els.removeDuplicates.title = count ? 'Review the SD positions identified by exact shared-source evidence before removing them.' : 'No SD/HD pair was identified by exact shared-source evidence in this lineup.';
       els.removeDuplicates.disabled = saving || count === 0;
-      els.restoreAll.disabled = saving || included === draft.channels.length;
+      els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
     }
 
     function remainingDuplicateSuggestions() {

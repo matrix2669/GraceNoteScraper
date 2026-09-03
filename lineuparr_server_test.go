@@ -110,6 +110,15 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if strings.Contains(body, "scheduleMatchReconcile") {
 		t.Fatal("page still schedules automatic match-review reloads")
 	}
+	for _, expected := range []string{
+		"const includedChannels = draft.channels.filter(channel => channel.included)",
+		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
+		"includedChannels.length - categorized",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page category counters are not scoped to included channels: missing %q", expected)
+		}
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()

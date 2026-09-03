@@ -226,15 +226,15 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	for _, channel := range resultChannels {
 		if channel.Included {
 			draft.Included++
+			if channel.Category == uncategorized {
+				draft.Uncategorized++
+			} else {
+				draft.Categorized++
+			}
 		} else {
 			draft.Excluded++
 		}
 		draft.AliasCount += len(channel.Aliases)
-		if channel.Category == uncategorized {
-			draft.Uncategorized++
-		} else {
-			draft.Categorized++
-		}
 	}
 	return draft, nil
 }
@@ -1059,7 +1059,7 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 			if _, exists := suggestionByRemoveID[remove.ID]; exists {
 				continue
 			}
-			reason := fmt.Sprintf("Callsigns differ only by an HD/SD suffix; %s carries the stronger HD/digital marker", keep.CallSign)
+			reason := fmt.Sprintf("Callsigns differ only by an HD/SD/DT quality suffix; %s carries the stronger HD/digital marker", keep.CallSign)
 			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
 				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
 				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
@@ -1102,7 +1102,7 @@ func qualitySuffixBase(value string) (string, bool) {
 	if key == "" {
 		return "", false
 	}
-	for _, suffix := range []string{"hd", "sd"} {
+	for _, suffix := range []string{"hd", "sd", "dt"} {
 		if !strings.HasSuffix(key, suffix) {
 			continue
 		}
