@@ -45,7 +45,7 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 
 | Cache | File | TTL |
 |---|---|---|
-| Guide (in-memory + disk) | `guide_cache.json` | 4h (startup skip) / 24h (rescrape) |
+| Guide (in-memory + disk) | `guide_cache.json` | 24h freshness; stale source-matching fallback during refresh |
 | TMDB lookups | `tmdb_cache.json` | 7 days |
 | TV logo HEAD checks | `tvlogo_cache.json` | persisted, no expiry |
 | Image proxy | `image_cache/` dir | indefinite (per-URL SHA256 key) |
@@ -54,7 +54,7 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 
 `lineuparr_state.json` is not an enrichment cache. It stores explicit inclusion/category choices, alias suppressions, and Dispatcharr match decisions, and is ignored automatically when the active Gracenote source fingerprint changes. `dispatcharr_config.json` is a separate connection file created with mode `0600` on POSIX systems and excluded from Git and Docker build context; JWTs and stream URLs are never persisted.
 
-**Server mode startup logic:** The HTTP server starts even without a provider so `/setup` is always recoverable. `/` redirects to setup until a valid source exists. If `xmlguide.xmltv` and a source-matching `guide_cache.json` both exist and the cache is under 4 hours old, the initial scrape is skipped. Otherwise a background scrape is queued. A `sync.RWMutex`-guarded `GuideState` holds the live guide, and `appconfig.Store.WhileCurrent` prevents an old scrape from publishing after a provider change.
+**Server mode startup logic:** The HTTP server starts even without a provider so `/setup` is always recoverable. `/` redirects to setup until a valid source exists. A source-matching guide cache younger than 24 hours is loaded and schedules its next scrape for the remainder of that interval. An older source-matching cache remains available while an immediate background refresh runs; failed refreshes retain that stale guide for the existing 15-minute retry. If the cache is usable but `xmlguide.xmltv` is missing, the XMLTV file is rebuilt locally from the cache. Missing, unreadable, corrupt, and source-mismatched cache states are logged explicitly; only source changes invalidate the old lineup's artifacts. Cache writes and XMLTV writes replace their respective files atomically. A `sync.RWMutex`-guarded `GuideState` holds the live guide, and `appconfig.Store.WhileCurrent` prevents an old scrape from publishing after a provider change. Routine progress uses stdout while classified warnings and errors use stderr.
 
 **Jellyfin integration:** Optional. When `JELLYFIN_URL` + `JELLYFIN_API_KEY` are set, three extra routes are registered (`/api/livetv/channels`, `/api/livetv/tune`, `/api/livetv/stop`). The tune flow does a 3-step Jellyfin handshake (PlaybackInfo → LiveStreams/Open → build master.m3u8 URL) with a hardcoded 4-second delay before returning the HLS URL. Channel filter (`JELLYFIN_CHANNEL_FILTER`) reduces the guide to only channels Jellyfin has in its live TV lineup, matched by channel number.
 

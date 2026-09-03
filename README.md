@@ -13,7 +13,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - Optional Dispatcharr M3U matching with explicit confirm/deny review and reversible alias cleanup
 - No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
-- Guide data cached on disk — fast restarts without re-scraping
+- Guide data cached on disk — fast restarts without re-scraping, with stale-guide fallback during background refresh
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
 - Optional channel filter to limit guide output to Jellyfin-available channels
@@ -56,12 +56,14 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 6. Open `http://<your-host>:8080/lineuparr` to review and export a Lineuparr-compatible JSON file for the same active lineup.
 
-Setup, guide data, caches, and images are persisted in a Docker volume. The container restarts automatically and refreshes guide data every 24 hours.
+Setup, guide data, caches, and images are persisted in a Docker volume. The container restarts automatically and refreshes guide data every 24 hours. A restart loads a source-matching cached guide immediately. If it is at least 24 hours old, the scraper keeps serving it while refreshing in the background; changing the configured lineup still invalidates the old lineup's guide.
 
 To view logs:
 ```sh
 docker compose logs -f
 ```
+
+Routine scrape and enrichment progress is written to stdout. Warnings and failures are written to stderr so container log viewers can distinguish severity correctly.
 
 To pull and run the newest image for the selected channel:
 ```sh

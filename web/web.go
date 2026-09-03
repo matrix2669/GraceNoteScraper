@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const (
@@ -169,7 +171,7 @@ func (c *Client) getDataByTimeOnce(ctx context.Context, t int64) (*GridResponse,
 func NewClient(pref Preferences) *Client {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		log.Fatalf("Unable to create cookie storage for http client: %v", err)
+		applog.Fatalf("unable to create cookie storage for HTTP client: %v", err)
 		return nil
 	}
 	client := &Client{
