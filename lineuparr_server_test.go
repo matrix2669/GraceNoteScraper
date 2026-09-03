@@ -83,6 +83,15 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
+	for _, expected := range []string{
+		"const includedChannels = draft.channels.filter(channel => channel.included)",
+		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
+		"includedChannels.length - categorized",
+	} {
+		if !strings.Contains(recorder.Body.String(), expected) {
+			t.Fatalf("page category counters are not scoped to included channels: missing %q", expected)
+		}
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()

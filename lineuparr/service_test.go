@@ -86,6 +86,33 @@ func TestBuildRetainsEveryProviderPosition(t *testing.T) {
 	}
 }
 
+func TestDraftCategoryCountsIncludeOnlyIncludedChannels(t *testing.T) {
+	service := newTestService(t, "", "")
+	news := "News"
+	excluded := false
+	if err := service.UpdateChannel("source-one", "excluded-uncategorized", ChannelUpdate{Included: &excluded}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateChannel("source-one", "included-categorized", ChannelUpdate{Category: &news}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateChannel("source-one", "excluded-categorized", ChannelUpdate{Included: &excluded, Category: &news}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{
+		{Key: "included-uncategorized", Number: "1", CallSign: "ONE"},
+		{Key: "excluded-uncategorized", Number: "2", CallSign: "TWO"},
+		{Key: "included-categorized", Number: "3", CallSign: "THREE"},
+		{Key: "excluded-categorized", Number: "4", CallSign: "FOUR"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Included != 2 || draft.Excluded != 2 || draft.Categorized != 1 || draft.Uncategorized != 1 {
+		t.Fatalf("included category counts = included %d excluded %d categorized %d uncategorized %d", draft.Included, draft.Excluded, draft.Categorized, draft.Uncategorized)
+	}
+}
+
 func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	catalog := `{
       "package":"Curated test",
@@ -347,9 +374,22 @@ func TestDuplicateSuggestionRecognizesExactQualitySuffixWithGracenoteNames(t *te
 		if want[suggestion.RemoveID] != suggestion.KeepID {
 			t.Fatalf("quality-suffix duplicate suggestion = %+v", suggestion)
 		}
-		if !strings.Contains(suggestion.Reason, "HD/SD suffix") {
+		if !strings.Contains(suggestion.Reason, "quality suffix") {
 			t.Fatalf("quality-suffix duplicate reason = %q", suggestion.Reason)
 		}
+	}
+}
+
+func TestDuplicateSuggestionRecognizesTerminalDigitalCallsignWithoutCatalog(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{ID: "wcbs-sd", Number: "2", Name: "WCBS", OriginalName: "WCBS", CallSign: "WCBS", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "wcbs-hd", Number: "502", Name: "WCBSDT", OriginalName: "WCBSDT", CallSign: "WCBSDT", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "wcbs-sd" || suggestions[0].KeepID != "wcbs-hd" {
+		t.Fatalf("terminal-DT duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "HD/SD/DT quality suffix") {
+		t.Fatalf("terminal-DT duplicate reason = %q", suggestions[0].Reason)
 	}
 }
 
@@ -363,6 +403,7 @@ func TestQualitySuffixDuplicateSuggestionPreservesSubchannelsAndAmbiguity(t *tes
 			channels: []DraftChannel{
 				{ID: "main", Number: "7", CallSign: "WABC", NameSource: "gracenote"},
 				{ID: "subchannel", Number: "7.2", CallSign: "WABCDT2", NameSource: "gracenote"},
+				{ID: "subchannel-three", Number: "7.3", CallSign: "WABCDT3", NameSource: "gracenote"},
 			},
 		},
 		{
