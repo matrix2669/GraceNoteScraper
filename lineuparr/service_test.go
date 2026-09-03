@@ -393,6 +393,85 @@ func TestDuplicateSuggestionRecognizesTerminalDigitalCallsignWithoutCatalog(t *t
 	}
 }
 
+func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *testing.T) {
+	source := "gracenote-weekday-epg-usa-11743"
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "newsnation-sd", Number: "82", Name: "NWSNTSD", OriginalName: "NWSNTSD", CallSign: "NWSNTSD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+		{
+			ID: "newsnation", Number: "686", Name: "NEWSNTN", OriginalName: "NEWSNTN", CallSign: "NEWSNTN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "newsnation-sd" || suggestions[0].KeepID != "newsnation" {
+		t.Fatalf("attributed-alias duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "explicitly SD") || !strings.Contains(suggestions[0].Reason, "NewsNation") {
+		t.Fatalf("attributed-alias duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		channels []DraftChannel
+	}{
+		{
+			name: "gracenote-only alias",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+			},
+		},
+		{
+			name: "multiple non-SD counterparts",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "two", CallSign: "NEWSNTNALT", OriginalName: "NEWSNTNALT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "competing counterparts across aliases",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "EXAMPLESD", OriginalName: "EXAMPLESD", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}, {Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+				{ID: "one", CallSign: "EXAMPLE", OriginalName: "EXAMPLE", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "EXAMPLEALT", OriginalName: "EXAMPLEALT", AliasEvidence: []AliasEvidence{{Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "numbered digital subchannel",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "WABCSD", OriginalName: "WABCSD", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+				{ID: "subchannel", CallSign: "WABCDT2", OriginalName: "WABCDT2", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "no explicit SD member",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "NWSNT", OriginalName: "NWSNT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "natural callsign ending in SD",
+			channels: []DraftChannel{
+				{ID: "kusd", CallSign: "KUSD", OriginalName: "KUSD", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+				{ID: "peer", CallSign: "SDPBS", OriginalName: "SDPBS", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if suggestions := findDuplicateSuggestions(test.channels); len(suggestions) != 0 {
+				t.Fatalf("duplicate suggestions = %+v", suggestions)
+			}
+		})
+	}
+}
+
 func TestQualitySuffixDuplicateSuggestionPreservesSubchannelsAndAmbiguity(t *testing.T) {
 	tests := []struct {
 		name     string

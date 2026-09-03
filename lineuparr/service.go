@@ -745,6 +745,73 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 			}
 		}
 	}
+
+	aliasGroups := make(map[string]*duplicateAliasGroup)
+	for index, channel := range channels {
+		for _, evidence := range channel.AliasEvidence {
+			aliasKey := identityKey(evidence.Value)
+			if aliasKey == "" || isDigits(aliasKey) {
+				continue
+			}
+			for _, source := range evidence.Sources {
+				sourceKey := strings.ToLower(cleanText(source))
+				if sourceKey == "" || sourceKey == "gracenote" {
+					continue
+				}
+				groupKey := sourceKey + "\x00" + aliasKey
+				group := aliasGroups[groupKey]
+				if group == nil {
+					group = &duplicateAliasGroup{alias: evidence.Value, source: source, seen: make(map[int]bool)}
+					aliasGroups[groupKey] = group
+				}
+				if !group.seen[index] {
+					group.indexes = append(group.indexes, index)
+					group.seen[index] = true
+				}
+			}
+		}
+	}
+	aliasCandidates := make(map[string]map[string]DuplicateSuggestion)
+	for _, group := range aliasGroups {
+		if len(group.indexes) != 2 {
+			continue
+		}
+		left := channels[group.indexes[0]]
+		right := channels[group.indexes[1]]
+		if looksLikeNumberedDigitalSubchannel(left.CallSign) || looksLikeNumberedDigitalSubchannel(right.CallSign) {
+			continue
+		}
+		leftSD := hasExplicitSDMarker(left)
+		rightSD := hasExplicitSDMarker(right)
+		if leftSD == rightSD {
+			continue
+		}
+		remove, keep := left, right
+		if rightSD {
+			remove, keep = right, left
+		}
+		if qualityRank(keep) <= qualityRank(remove) {
+			continue
+		}
+		reason := fmt.Sprintf("Exact alias %s from %s identifies both positions; %s is explicitly SD and %s is the unique non-SD counterpart", group.alias, group.source, remove.CallSign, keep.CallSign)
+		suggestion := DuplicateSuggestion{
+			RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+			KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+		}
+		if aliasCandidates[remove.ID] == nil {
+			aliasCandidates[remove.ID] = make(map[string]DuplicateSuggestion)
+		}
+		aliasCandidates[remove.ID][keep.ID] = suggestion
+	}
+	for removeID, candidates := range aliasCandidates {
+		if _, exists := suggestionByRemoveID[removeID]; exists || len(candidates) != 1 {
+			continue
+		}
+		for _, suggestion := range candidates {
+			suggestionByRemoveID[removeID] = suggestion
+		}
+	}
+
 	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
 	for _, suggestion := range suggestionByRemoveID {
 		suggestions = append(suggestions, suggestion)
@@ -759,6 +826,13 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
 	return suggestions
+}
+
+type duplicateAliasGroup struct {
+	alias   string
+	source  string
+	indexes []int
+	seen    map[int]bool
 }
 
 func sharesAttributableSource(left, right DraftChannel) bool {
@@ -808,6 +882,23 @@ func qualityRank(channel DraftChannel) int {
 		return 0
 	}
 	return 1
+}
+
+func hasExplicitSDMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, " SD") || hasTerminalSDMarker(callSign) || hasTerminalSDMarker(originalName)
+}
+
+func hasTerminalSDMarker(value string) bool {
+	return strings.HasSuffix(value, "SD") && len(strings.TrimSuffix(value, "SD")) >= 3
+}
+
+func looksLikeNumberedDigitalSubchannel(value string) bool {
+	key := identityKey(value)
+	index := strings.LastIndex(key, "dt")
+	return index >= 3 && index+2 < len(key) && isDigits(key[index+2:])
 }
 
 func looksLikeDigitalCallSign(value string) bool {
