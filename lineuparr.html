@@ -23,6 +23,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -174,6 +175,77 @@
     .status-pill.error { color: var(--danger); background: rgba(255,95,87,.08); }
     .status-pill.running { color: var(--warning); }
 
+    .dispatch-panel > .panel-summary { padding-top: 20px; padding-bottom: 16px; }
+    .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .dispatch-form {
+      display: grid; grid-template-columns: minmax(220px, 2fr) minmax(135px, .8fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
+      gap: 10px; align-items: end; margin-top: 17px;
+    }
+    .dispatch-form .field { min-width: 0; }
+    .dispatch-form .api-key-field { grid-column: span 2; }
+    .dispatch-connection {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin-top: 15px; padding: 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px;
+      background: rgba(7,17,14,.42);
+    }
+    .dispatch-connected { color: var(--accent); font-size: 12px; font-weight: 760; }
+    .dispatch-meta { margin-top: 3px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+    .dispatch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dispatch-actions button { min-height: 36px; font-size: 12px; }
+    .danger-button { color: var(--danger); }
+    .match-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+    .match-stat { padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .match-stat-button { display: block; width: 100%; min-height: 0; color: var(--text); text-align: left; font-weight: inherit; cursor: pointer; }
+    .match-stat-button:not(:disabled):hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
+    .match-stat-button:disabled { cursor: default; opacity: 1; }
+    .match-stat strong { display: block; font-size: 19px; }
+    .match-stat span { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .match-status { margin: 9px 2px 0; color: var(--muted); font-size: 11px; }
+    .match-status.warning { color: var(--warning); }
+    .match-list { display: grid; gap: 9px; margin-top: 13px; }
+    .match-card {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+      gap: 14px; align-items: center; padding: 13px; border: 1px solid rgba(43,70,59,.75);
+      border-radius: 11px; background: rgba(7,17,14,.42);
+    }
+    .match-name { font-size: 13px; font-weight: 760; overflow-wrap: anywhere; }
+    .match-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .match-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .match-evidence summary { cursor: pointer; }
+    .match-evidence-list { display: grid; gap: 4px; margin-top: 7px; overflow-wrap: anywhere; }
+    .match-tier { display: inline-flex; margin-right: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(124,230,166,.1); color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .match-tier.contained { color: var(--warning); background: rgba(255,203,92,.1); }
+    .match-tier.fuzzy { color: var(--danger); background: rgba(255,95,87,.1); }
+    .match-arrow { color: var(--accent); font-size: 18px; }
+    .match-score { color: var(--accent); font-weight: 850; }
+    .match-buttons { display: flex; gap: 7px; }
+    .match-buttons button { min-height: 36px; padding: 0 11px; font-size: 12px; }
+    .confirm-button { border-color: rgba(124,230,166,.55); color: var(--accent); }
+    .deny-button { color: var(--danger); }
+    .match-load-more { justify-self: center; margin-top: 4px; }
+    .match-dialog {
+      width: min(760px, calc(100% - 28px)); max-height: min(82vh, 780px); padding: 0;
+      border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+    }
+    .match-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .match-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--line); }
+    .match-dialog-head h2 { margin: 0; font-size: 20px; }
+    .match-dialog-head p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .match-dialog-close { min-height: 34px; padding: 0 11px; }
+    .match-alternative-list { display: grid; gap: 10px; max-height: calc(82vh - 108px); padding: 16px 20px 20px; overflow: auto; }
+    .match-alternative-card { padding: 14px; border: 1px solid rgba(43,70,59,.75); border-radius: 11px; background: rgba(7,17,14,.42); }
+    .match-alternative-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .match-alternative-card .match-buttons { margin-top: 12px; justify-content: flex-end; }
+    .decision-list { display: grid; gap: 7px; margin-top: 10px; }
+    .decision-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 10px 11px; border: 1px solid rgba(43,70,59,.55); border-radius: 9px; color: var(--muted); font-size: 11px;
+    }
+    .decision-row strong { color: var(--text); }
+    .decision-row button { min-height: 32px; padding: 0 10px; font-size: 11px; }
+    .privacy-note { margin-top: 10px; color: #789087; font-size: 11px; line-height: 1.45; }
+    .dispatch-panel details { margin: 14px 0 0; }
+
     .builder-panel { overflow: hidden; }
     .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
     .builder-panel[open] > .panel-summary { border-bottom-color: var(--line); }
@@ -257,7 +329,6 @@
     .channel-card > details { margin: 11px 0 0 103px; }
     .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
     .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-    .alias { padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
     .builder-panel.compact .channel-card { padding-top: 8px; padding-bottom: 8px; }
     .builder-panel.compact .channel-main { align-items: center; }
     .builder-panel.compact .include-toggle { height: 30px; }
@@ -278,6 +349,11 @@
     .program-time { color: var(--accent); font-size: 11px; line-height: 1.45; }
     .program-title { font-weight: 760; }
     .program-meta, .program-description { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+    .alias { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
+    .alias.removed { border-style: dashed; color: #899d94; text-decoration: line-through; }
+    .alias button { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .alias button:hover { color: var(--danger); }
+    .alias.removed button:hover { color: var(--accent); }
     .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
     .loading { padding: 70px 20px; color: var(--muted); text-align: center; }
     .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border: 3px solid rgba(124,230,166,.18); border-top-color: var(--accent); border-radius: 50%; animation: spin .85s linear infinite; }
@@ -316,6 +392,13 @@
       .provider-address { grid-template-columns: 1fr; }
       .source-message { white-space: normal; }
       .program-row { grid-template-columns: 1fr; gap: 5px; }
+      .dispatch-form { grid-template-columns: 1fr; }
+      .dispatch-head, .dispatch-connection { align-items: flex-start; flex-direction: column; }
+      .match-summary { grid-template-columns: repeat(2, 1fr); }
+      .match-card { grid-template-columns: 1fr; gap: 8px; }
+      .match-arrow { transform: rotate(90deg); }
+      .match-buttons { width: 100%; }
+      .match-buttons button { flex: 1; }
     }
   </style>
 </head>
@@ -408,6 +491,71 @@
           <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
           <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
         </div>
+      </div>
+    </details>
+
+    <details class="panel dispatch-panel collapsible-panel" id="dispatch-panel" data-section-key="dispatcharr" open>
+      <summary class="panel-summary dispatch-head">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Dispatcharr M3U matching</span>
+          <span class="panel-help">Review grouped aliases from every active M3U stream.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+      <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias group.</p>
+      <form class="dispatch-form" id="dispatch-form">
+        <div class="field">
+          <label for="dispatch-url">Dispatcharr address</label>
+          <input id="dispatch-url" type="url" placeholder="http://dispatcharr:9191" required>
+        </div>
+        <div class="field">
+          <label for="dispatch-auth">Authentication</label>
+          <select id="dispatch-auth">
+            <option value="password">User / password</option>
+            <option value="api-key">API key</option>
+          </select>
+        </div>
+        <div class="field" id="dispatch-user-field">
+          <label for="dispatch-user">Username</label>
+          <input id="dispatch-user" autocomplete="username" required>
+        </div>
+        <div class="field" id="dispatch-password-field">
+          <label for="dispatch-password">Password</label>
+          <input id="dispatch-password" type="password" autocomplete="current-password" placeholder="Required to connect">
+        </div>
+        <div class="field api-key-field" id="dispatch-api-key-field" hidden>
+          <label for="dispatch-api-key">API key</label>
+          <input id="dispatch-api-key" type="password" autocomplete="off" placeholder="Required to connect">
+        </div>
+        <button class="confirm-button" id="dispatch-save" type="submit">Save &amp; test</button>
+      </form>
+      <div class="privacy-note">The scraper stores the selected credential in a separate owner-only file, keeps JWT access tokens in memory, and discards stream URLs server-side. Use HTTPS unless both apps share a trusted private network.</div>
+      <div class="dispatch-connection" id="dispatch-connection" hidden>
+        <div>
+          <div class="dispatch-connected">Connected</div>
+          <div class="dispatch-meta" id="dispatch-meta"></div>
+        </div>
+        <div class="dispatch-actions">
+          <button type="button" id="dispatch-refresh">Refresh streams</button>
+          <button type="button" id="dispatch-disconnect" class="danger-button">Disconnect</button>
+        </div>
+      </div>
+      <div id="match-review" hidden>
+        <div class="match-summary">
+          <div class="match-stat"><strong id="match-streams">—</strong><span>M3U streams</span></div>
+          <div class="match-stat"><strong id="match-candidates">—</strong><span>Alias groups to review</span></div>
+          <button class="match-stat match-stat-button" id="match-confirmed-jump" type="button" disabled aria-label="Show confirmed matches"><strong id="match-confirmed">—</strong><span>Confirmed</span></button>
+          <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
+        </div>
+        <div class="match-status" id="match-status"></div>
+        <div class="match-list" id="match-list"></div>
+        <details id="decision-history">
+          <summary>Reviewed matches</summary>
+          <div class="decision-list" id="decision-list"></div>
+        </details>
+      </div>
+      <div class="match-list" id="dispatch-loading"></div>
       </div>
     </details>
 
@@ -526,6 +674,17 @@
     </form>
   </dialog>
 
+  <dialog class="match-dialog" id="match-alternative-dialog">
+    <div class="match-dialog-head">
+      <div>
+        <h2 id="match-alternative-title">Other possible matches</h2>
+        <p id="match-alternative-help"></p>
+      </div>
+      <button class="match-dialog-close" id="match-alternative-close" type="button" aria-label="Close alternate matches">Close</button>
+    </div>
+    <div class="match-alternative-list" id="match-alternative-list"></div>
+  </dialog>
+
   <script>
     const els = {
       exportOpen: document.getElementById('export-open'), exportDialog: document.getElementById('export-dialog'),
@@ -563,7 +722,22 @@
       stopScan: document.getElementById('stop-scan'),
       aliasLastRefresh: document.getElementById('alias-last-refresh'),
       programDialog: document.getElementById('program-dialog'), programTitle: document.getElementById('program-title'),
-      programChannel: document.getElementById('program-channel'), programList: document.getElementById('program-list'), programClose: document.getElementById('program-close')
+      programChannel: document.getElementById('program-channel'), programList: document.getElementById('program-list'), programClose: document.getElementById('program-close'),
+      dispatchForm: document.getElementById('dispatch-form'), dispatchURL: document.getElementById('dispatch-url'),
+      dispatchAuth: document.getElementById('dispatch-auth'), dispatchUserField: document.getElementById('dispatch-user-field'),
+      dispatchPasswordField: document.getElementById('dispatch-password-field'), dispatchAPIKeyField: document.getElementById('dispatch-api-key-field'),
+      dispatchUser: document.getElementById('dispatch-user'), dispatchPassword: document.getElementById('dispatch-password'), dispatchAPIKey: document.getElementById('dispatch-api-key'),
+      dispatchSave: document.getElementById('dispatch-save'), dispatchConnection: document.getElementById('dispatch-connection'),
+      dispatchMeta: document.getElementById('dispatch-meta'), dispatchRefresh: document.getElementById('dispatch-refresh'),
+      dispatchDisconnect: document.getElementById('dispatch-disconnect'), dispatchLoading: document.getElementById('dispatch-loading'),
+      matchReview: document.getElementById('match-review'), matchStreams: document.getElementById('match-streams'),
+      matchCandidates: document.getElementById('match-candidates'), matchConfirmed: document.getElementById('match-confirmed'),
+      matchConfirmedJump: document.getElementById('match-confirmed-jump'),
+      matchDenied: document.getElementById('match-denied'), matchList: document.getElementById('match-list'),
+      matchStatus: document.getElementById('match-status'), decisionHistory: document.getElementById('decision-history'),
+      decisionList: document.getElementById('decision-list'), alternativeDialog: document.getElementById('match-alternative-dialog'),
+      alternativeTitle: document.getElementById('match-alternative-title'), alternativeHelp: document.getElementById('match-alternative-help'),
+      alternativeList: document.getElementById('match-alternative-list'), alternativeClose: document.getElementById('match-alternative-close')
     };
 
     let draft = null;
@@ -583,6 +757,13 @@
     const selectedChannels = new Set();
     let programRequest = 0;
     const channelCollator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
+    let dispatchConfig = null;
+    let matchReview = null;
+    let dispatchBusy = false;
+    const pendingDecisions = new Set();
+    let decisionRevision = 0;
+    let matchReviewRequest = 0;
+    let matchReviewLimit = 100;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -746,17 +927,381 @@
       renderAll();
     }
 
+    async function loadDispatchConfig() {
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config');
+        renderDispatchConfig();
+        if (dispatchConfig.configured && draft && !dispatchBusy) loadMatchReview();
+      } catch (error) {
+        els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+      }
+    }
+
+    function renderDispatchConfig() {
+      const configured = !!dispatchConfig?.configured;
+      els.dispatchConnection.hidden = !configured;
+      els.matchReview.hidden = !configured || !matchReview;
+      els.dispatchURL.value = dispatchConfig?.baseUrl || els.dispatchURL.value;
+      els.dispatchAuth.value = dispatchConfig?.authMethod || 'password';
+      els.dispatchUser.value = dispatchConfig?.username || els.dispatchUser.value;
+      renderDispatchAuthFields();
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      els.dispatchPassword.required = passwordAuth && !configured;
+      els.dispatchPassword.placeholder = configured && passwordAuth ? 'Leave blank to keep saved password' : 'Required to connect';
+      els.dispatchAPIKey.required = !passwordAuth && !configured;
+      els.dispatchAPIKey.placeholder = configured && !passwordAuth ? 'Leave blank to keep saved API key' : 'Required to connect';
+      const identity = dispatchConfig?.authMethod === 'api-key' ? 'API key' : dispatchConfig?.username;
+      els.dispatchMeta.textContent = configured ? `${identity} at ${dispatchConfig.baseUrl}` : '';
+      if (!configured) {
+        matchReview = null;
+        els.matchReview.hidden = true;
+        els.dispatchLoading.replaceChildren(emptyMessage('Connect Dispatcharr when you are ready to review provider stream names.'));
+      }
+    }
+
+    function renderDispatchAuthFields() {
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      const savedMethod = dispatchConfig?.authMethod || 'password';
+      const canKeepSavedSecret = !!dispatchConfig?.configured && savedMethod === els.dispatchAuth.value;
+      els.dispatchUserField.hidden = !passwordAuth;
+      els.dispatchPasswordField.hidden = !passwordAuth;
+      els.dispatchAPIKeyField.hidden = passwordAuth;
+      els.dispatchUser.required = passwordAuth;
+      els.dispatchPassword.required = passwordAuth && !canKeepSavedSecret;
+      els.dispatchAPIKey.required = !passwordAuth && !canKeepSavedSecret;
+      setDispatchControls();
+    }
+
+    async function saveDispatch(event) {
+      event.preventDefault();
+      if (dispatchBusy) return;
+      let saved = false;
+      dispatchBusy = true;
+      setDispatchControls();
+      els.dispatchLoading.replaceChildren(emptyMessage('Testing the connection…'));
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({baseUrl: els.dispatchURL.value, authMethod: els.dispatchAuth.value, username: els.dispatchUser.value, password: els.dispatchPassword.value, apiKey: els.dispatchAPIKey.value})
+        });
+        els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
+        matchReview = null;
+        renderDispatchConfig();
+        els.dispatchLoading.replaceChildren();
+        saved = true;
+        showMessage('Dispatcharr connected. Loading active M3U streams…');
+      } catch (error) {
+        els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+        showMessage(error.message, true);
+      } finally {
+        dispatchBusy = false;
+        setDispatchControls();
+      }
+      if (saved) await loadMatchReview(true);
+    }
+
+    async function disconnectDispatch() {
+      if (dispatchBusy || !confirm('Remove the saved Dispatcharr connection? Confirmed aliases will remain until you undo or remove them.')) return;
+      dispatchBusy = true;
+      setDispatchControls();
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {method:'DELETE'});
+        matchReview = null;
+        els.dispatchURL.value = '';
+        els.dispatchUser.value = '';
+        els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
+        renderDispatchConfig();
+        showMessage('Dispatcharr connection removed. Previously confirmed aliases remain attributable and editable.');
+      } catch (error) {
+        showMessage(error.message, true);
+      } finally {
+        dispatchBusy = false;
+        setDispatchControls();
+      }
+    }
+
+    async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
+      if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
+      if (force) requestedLimit = 100;
+      const requestNumber = ++matchReviewRequest;
+      const revision = decisionRevision;
+      if (interactive) {
+        dispatchBusy = true;
+        setDispatchControls();
+        els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing every active M3U stream…' : 'Comparing active M3U streams with this lineup…'));
+      }
+      try {
+        const query = new URLSearchParams({limit: String(requestedLimit)});
+        if (force) query.set('refresh', 'true');
+        const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision) return;
+        matchReview = review;
+        matchReviewLimit = review.visibleLimit || requestedLimit;
+        renderMatchReview();
+        return true;
+      } catch (error) {
+        if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+        showMessage(error.message, true);
+        return false;
+      } finally {
+        if (interactive) {
+          dispatchBusy = false;
+          setDispatchControls();
+        }
+      }
+    }
+
+    function renderMatchReview() {
+      if (!matchReview) return;
+      els.matchReview.hidden = false;
+      els.dispatchLoading.replaceChildren();
+      els.matchStreams.textContent = matchReview.streamCount.toLocaleString();
+      els.matchCandidates.textContent = matchReview.candidateCount.toLocaleString();
+      els.matchConfirmed.textContent = matchReview.confirmedCount.toLocaleString();
+      els.matchConfirmedJump.disabled = matchReview.confirmedCount === 0;
+      els.matchDenied.textContent = matchReview.deniedCount.toLocaleString();
+      const fetched = matchReview.fetchedAt ? new Date(matchReview.fetchedAt).toLocaleString() : '';
+      const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
+      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} matching stream${grouped === 1 ? '' : 's'} are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
+      els.matchStatus.classList.toggle('warning', !!matchReview.warning);
+      els.matchList.replaceChildren();
+      const candidates = matchReview.candidates || [];
+      const hasMore = matchReview.candidateCount > candidates.length;
+      if (!candidates.length) {
+        const message = hasMore
+          ? 'Current review page is complete. Load more to continue.'
+          : 'No current proposals remain. Unmatched streams stay unchanged.';
+        els.matchList.append(emptyMessage(message));
+      }
+      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
+      if (hasMore) {
+        const remaining = matchReview.candidateCount - candidates.length;
+        const amount = Math.min(100, remaining);
+        const loadMore = document.createElement('button'); loadMore.type = 'button'; loadMore.className = 'match-load-more';
+        loadMore.textContent = `Load ${amount} more (${remaining.toLocaleString()} remaining)`;
+        loadMore.addEventListener('click', () => loadMoreMatches());
+        els.matchList.append(loadMore);
+      }
+      els.decisionList.replaceChildren();
+      for (const decision of matchReview.decisions || []) els.decisionList.append(decisionRow(decision));
+      els.decisionHistory.hidden = !(matchReview.decisions || []).length;
+    }
+
+    async function loadMoreMatches() {
+      if (!matchReview || dispatchBusy) return;
+      const requested = Math.min(matchReview.candidateCount, matchReviewLimit + 100);
+      await loadMatchReview(false, true, requested);
+    }
+
+    function matchCard(candidate) {
+      const card = document.createElement('article'); card.className = 'match-card'; card.dataset.key = candidate.key;
+      const stream = document.createElement('div');
+      const streamName = document.createElement('div'); streamName.className = 'match-name'; streamName.textContent = candidate.alias;
+      const streamMeta = document.createElement('div'); streamMeta.className = 'match-meta';
+      const accounts = (candidate.m3uAccountIds || []).join(', ');
+      streamMeta.textContent = `${candidate.streamCount.toLocaleString()} stream${candidate.streamCount === 1 ? '' : 's'}${accounts ? ` · M3U accounts ${accounts}` : ''}`;
+      stream.append(streamName, streamMeta);
+      const evidence = document.createElement('details'); evidence.className = 'match-evidence';
+      const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = `View ${(candidate.streamNames || []).length} raw name variant${(candidate.streamNames || []).length === 1 ? '' : 's'}`;
+      const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
+      for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
+      evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
+      const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
+      const channel = document.createElement('div');
+      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const channelMeta = document.createElement('div'); channelMeta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
+      const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
+      const scoreText = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      score.textContent = scoreText;
+      channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
+      const buttons = document.createElement('div'); buttons.className = 'match-buttons';
+      const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
+      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
+      const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
+      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
+      buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
+      return card;
+    }
+
+    function decisionRow(decision) {
+      const row = document.createElement('div'); row.className = 'decision-row';
+      const copy = document.createElement('div');
+      const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
+      copy.append(title, meta);
+      const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
+      row.append(copy, undo); return row;
+    }
+
+    async function decideMatch(key, decision) {
+      if (pendingDecisions.has(key) || !matchReview) return;
+      const candidate = (matchReview.candidates || []).find(item => item.key === key);
+      if (!candidate) return;
+      pendingDecisions.add(key);
+      decisionRevision++;
+      matchReview = {
+        ...matchReview,
+        candidateCount: Math.max(0, matchReview.candidateCount - 1),
+        candidateStreamCount: Math.max(0, (matchReview.candidateStreamCount || matchReview.candidateCount) - candidate.streamCount),
+        confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
+        deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
+        candidates: (matchReview.candidates || []).filter(item => item.key !== key),
+        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
+      };
+      renderMatchReview();
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
+        });
+        if (decision === 'confirmed') await reloadDraft();
+        const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
+        if (alternatives.length) {
+          openMatchAlternatives(candidate);
+          showMessage('Match denied. Review the other qualifying possibilities or close this list.');
+        } else {
+          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. Load more when you are ready for another review page.');
+        }
+      } catch (error) {
+        matchReview.candidateCount++;
+        matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
+        matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
+        matchReview.candidates = [candidate, ...(matchReview.candidates || [])];
+        matchReview.decisions = (matchReview.decisions || []).filter(item => item.key !== key);
+        renderMatchReview();
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(key);
+      }
+    }
+
+    function openMatchAlternatives(candidate) {
+      els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
+      els.alternativeHelp.textContent = 'These channels also cleared the fuzzy-match threshold in the same scan. Confirm the right target, deny incorrect options, or close this list without deciding.';
+      renderMatchAlternatives(candidate);
+      if (typeof els.alternativeDialog.showModal === 'function') els.alternativeDialog.showModal();
+      else els.alternativeDialog.setAttribute('open', '');
+    }
+
+    function renderMatchAlternatives(candidate) {
+      els.alternativeList.replaceChildren();
+      const alternatives = candidate.alternatives || [];
+      if (!alternatives.length) {
+        els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+        return;
+      }
+      for (const alternate of alternatives) els.alternativeList.append(alternativeMatchCard(candidate, alternate));
+    }
+
+    function alternativeMatchCard(primary, candidate) {
+      const card = document.createElement('article'); card.className = 'match-alternative-card'; card.dataset.key = candidate.key;
+      const main = document.createElement('div'); main.className = 'match-alternative-main';
+      const copy = document.createElement('div');
+      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const meta = document.createElement('div'); meta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
+      const score = document.createElement('span'); score.className = 'match-score';
+      score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
+      copy.append(name, meta); main.append(copy); card.append(main);
+      const buttons = document.createElement('div'); buttons.className = 'match-buttons';
+      const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
+      confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
+      const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
+      denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
+      buttons.append(confirmButton, denyButton); card.append(buttons);
+      return card;
+    }
+
+    async function decideAlternative(primary, candidate, decision, card) {
+      if (pendingDecisions.has(candidate.key)) return;
+      pendingDecisions.add(candidate.key);
+      for (const button of card.querySelectorAll('button')) button.disabled = true;
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
+        });
+        matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount += decision === 'denied' ? 1 : 0;
+        matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        renderMatchReview();
+        if (decision === 'confirmed') {
+          await reloadDraft();
+          closeMatchAlternatives();
+          showMessage('Alternate match confirmed and aliases updated.');
+        } else {
+          card.remove();
+          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+          showMessage('Alternate match denied.');
+        }
+      } catch (error) {
+        for (const button of card.querySelectorAll('button')) button.disabled = false;
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(candidate.key);
+      }
+    }
+
+    function closeMatchAlternatives() {
+      if (typeof els.alternativeDialog.close === 'function') els.alternativeDialog.close();
+      else els.alternativeDialog.removeAttribute('open');
+    }
+
+    async function clearDecision(key) {
+      if (dispatchBusy) return;
+      dispatchBusy = true; setDispatchControls();
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
+        });
+        await reloadDraft();
+        showMessage('Match review undone.');
+      } catch (error) { showMessage(error.message, true); }
+      finally { dispatchBusy = false; setDispatchControls(); }
+      await loadMatchReview();
+    }
+
+    function setDispatchControls() {
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      for (const control of [els.dispatchURL, els.dispatchAuth, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
+      els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
+      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
+    }
+
+    function showConfirmedMatches() {
+      if (!matchReview?.confirmedCount || els.decisionHistory.hidden) return;
+      els.decisionHistory.open = true;
+      els.decisionHistory.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
+    function emptyMessage(text) {
+      const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item;
+    }
+
     async function loadDraft() {
       try {
         draft = await api('/api/lineuparr/draft');
         showMessage('');
         renderAll();
+        if (dispatchConfig?.configured && !dispatchBusy) loadMatchReview();
       } catch (error) {
         const waiting = /still being generated/i.test(error.message);
         document.getElementById('loading-copy').textContent = waiting ? 'The guide is still being generated. This page will retry automatically…' : 'The lineup could not be loaded.';
         showMessage(error.message, !waiting);
         if (waiting) setTimeout(loadDraft, 10000);
       }
+    }
+
+    async function reloadDraft() {
+      draft = await api('/api/lineuparr/draft');
+      renderAll();
     }
 
     function renderAll() {
@@ -1019,16 +1564,44 @@
       main.append(batchLabel, toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
-      const summary = document.createElement('summary'); summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs`;
+      const removedCount = (channel.suppressedAliasEvidence || []).length;
+      const summary = document.createElement('summary');
+      summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs` + (removedCount ? ` · ${removedCount} removed` : '');
       const aliases = document.createElement('div'); aliases.className = 'alias-list';
       for (const evidence of channel.aliasEvidence || []) {
-        const item = document.createElement('span'); item.className = 'alias'; item.textContent = evidence.value; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
+        aliases.append(aliasChip(channel, evidence, false));
+      }
+      for (const evidence of channel.suppressedAliasEvidence || []) {
+        aliases.append(aliasChip(channel, evidence, true));
       }
       for (const evidence of channel.epgIdEvidence || []) {
         const item = document.createElement('span'); item.className = 'alias'; item.textContent = `EPG: ${evidence.value}`; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
       }
       details.append(summary, aliases); card.append(details);
       return card;
+    }
+
+    function aliasChip(channel, evidence, suppressed) {
+      const item = document.createElement('span'); item.className = 'alias' + (suppressed ? ' removed' : '');
+      item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`;
+      const value = document.createElement('span'); value.textContent = evidence.value;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = suppressed ? 'Restore' : 'Remove';
+      button.setAttribute('aria-label', `${suppressed ? 'Restore' : 'Remove'} alias ${evidence.value}`);
+      button.addEventListener('click', () => setAlias(channel.id, evidence.value, !suppressed));
+      item.append(value, button); return item;
+    }
+
+    async function setAlias(channelId, alias, suppressed) {
+      if (saving) return;
+      saving = true; renderSummary();
+      try {
+        await api('/api/lineuparr/alias', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelId, alias, suppressed})
+        });
+        await reloadDraft();
+        showMessage(suppressed ? 'Alias removed from this export.' : 'Alias restored.');
+      } catch (error) { showMessage(error.message, true); }
+      finally { saving = false; renderSummary(); renderChannels(); }
     }
 
     function badge(text, kind = '') { const item = document.createElement('span'); item.className = `badge ${kind}`; item.textContent = text; return item; }
@@ -1312,6 +1885,13 @@
     initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
+    els.dispatchForm.addEventListener('submit', saveDispatch);
+    els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
+    els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
+    els.alternativeClose.addEventListener('click', closeMatchAlternatives);
+    els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
+    els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
+    loadDispatchConfig();
     loadDraft();
   </script>
 </body>
