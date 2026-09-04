@@ -163,15 +163,15 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	for _, channel := range resultChannels {
 		if channel.Included {
 			draft.Included++
+			if channel.Category == uncategorized {
+				draft.Uncategorized++
+			} else {
+				draft.Categorized++
+			}
 		} else {
 			draft.Excluded++
 		}
 		draft.AliasCount += len(channel.Aliases)
-		if channel.Category == uncategorized {
-			draft.Uncategorized++
-		} else {
-			draft.Categorized++
-		}
 	}
 	return draft, nil
 }
@@ -208,6 +208,30 @@ func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) er
 	ids := make([]string, 0, len(draft.DuplicateSuggestions))
 	for _, suggestion := range draft.DuplicateSuggestions {
 		ids = append(ids, suggestion.RemoveID)
+	}
+	return s.store.SetIncluded(fingerprint, ids, false)
+}
+
+func (s *Service) RemoveSuggestedDuplicateIDs(fingerprint string, draft *Draft, requested []string) error {
+	allowed := make(map[string]bool, len(draft.DuplicateSuggestions))
+	for _, suggestion := range draft.DuplicateSuggestions {
+		allowed[suggestion.RemoveID] = true
+	}
+	ids := make([]string, 0, len(requested))
+	seen := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if !allowed[id] {
+			return fmt.Errorf("channel %q is not a current duplicate suggestion", id)
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
 	}
 	return s.store.SetIncluded(fingerprint, ids, false)
 }
@@ -560,18 +584,18 @@ func addScores(scores map[int]int, candidates []int, score int) {
 }
 
 func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
-	groups := make(map[string][]int)
+	nameGroups := make(map[string][]int)
 	for index, channel := range channels {
 		if channel.NameSource == "gracenote" {
 			continue
 		}
 		key := identityKey(channel.Name)
 		if key != "" {
-			groups[key] = append(groups[key], index)
+			nameGroups[key] = append(nameGroups[key], index)
 		}
 	}
-	var suggestions []DuplicateSuggestion
-	for _, indexes := range groups {
+	suggestionByRemoveID := make(map[string]DuplicateSuggestion)
+	for _, indexes := range nameGroups {
 		if len(indexes) < 2 {
 			continue
 		}
@@ -596,16 +620,216 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				continue
 			}
 			reason := fmt.Sprintf("Exact source identity maps both positions to %s; %s carries the stronger HD/digital marker", keep.Name, keep.CallSign)
-			suggestions = append(suggestions, DuplicateSuggestion{
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
 				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
 				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-			})
+			}
 		}
 	}
+
+	suffixGroups := make(map[string][]int)
+	groupsWithSuffix := make(map[string]bool)
+	for index, channel := range channels {
+		base, hasSuffix := qualitySuffixBase(channel.CallSign)
+		if base == "" {
+			continue
+		}
+		suffixGroups[base] = append(suffixGroups[base], index)
+		groupsWithSuffix[base] = groupsWithSuffix[base] || hasSuffix
+	}
+	for base, indexes := range suffixGroups {
+		if len(indexes) < 2 || !groupsWithSuffix[base] {
+			continue
+		}
+		bestRank := -1
+		keepIndexes := make([]int, 0, 1)
+		for _, index := range indexes {
+			rank := qualityRank(channels[index])
+			if rank > bestRank {
+				bestRank = rank
+				keepIndexes = []int{index}
+			} else if rank == bestRank {
+				keepIndexes = append(keepIndexes, index)
+			}
+		}
+		if len(keepIndexes) != 1 || bestRank <= 1 {
+			continue
+		}
+		keep := channels[keepIndexes[0]]
+		for _, index := range indexes {
+			remove := channels[index]
+			if remove.ID == keep.ID || qualityRank(remove) >= bestRank {
+				continue
+			}
+			if _, exists := suggestionByRemoveID[remove.ID]; exists {
+				continue
+			}
+			reason := fmt.Sprintf("Callsigns differ only by an HD/SD/DT quality suffix; %s carries the stronger HD/digital marker", keep.CallSign)
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
+				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+			}
+		}
+	}
+
+	aliasGroups := make(map[string]*duplicateAliasGroup)
+	for index, channel := range channels {
+		for _, evidence := range channel.AliasEvidence {
+			aliasKey := identityKey(evidence.Value)
+			if aliasKey == "" || isDigits(aliasKey) {
+				continue
+			}
+			for _, source := range evidence.Sources {
+				sourceKey := strings.ToLower(cleanText(source))
+				if sourceKey == "" || sourceKey == "gracenote" {
+					continue
+				}
+				group := aliasGroups[aliasKey]
+				if group == nil {
+					group = &duplicateAliasGroup{
+						alias:                   evidence.Value,
+						sources:                 make(map[string]bool),
+						sourceMembers:           make(map[string]map[int]bool),
+						providerPositionBridges: make(map[int]map[string]bool),
+						seen:                    make(map[int]bool),
+					}
+					aliasGroups[aliasKey] = group
+				}
+				group.sources[source] = true
+				if group.sourceMembers[sourceKey] == nil {
+					group.sourceMembers[sourceKey] = make(map[int]bool)
+				}
+				group.sourceMembers[sourceKey][index] = true
+				for _, method := range evidence.Methods {
+					if number := providerPositionNumber(method); number != "" {
+						if group.providerPositionBridges[index] == nil {
+							group.providerPositionBridges[index] = make(map[string]bool)
+						}
+						group.providerPositionBridges[index][number] = true
+					}
+				}
+				if !group.seen[index] {
+					group.indexes = append(group.indexes, index)
+					group.seen[index] = true
+				}
+			}
+		}
+	}
+	aliasCandidates := make(map[string]map[string]DuplicateSuggestion)
+	for _, group := range aliasGroups {
+		if len(group.indexes) != 2 {
+			continue
+		}
+		left := channels[group.indexes[0]]
+		right := channels[group.indexes[1]]
+		if looksLikeNumberedDigitalSubchannel(left.CallSign) || looksLikeNumberedDigitalSubchannel(right.CallSign) {
+			continue
+		}
+		leftRank := qualityRank(left)
+		rightRank := qualityRank(right)
+		if leftRank == rightRank || (!hasExplicitQualityMarker(left) && !hasExplicitQualityMarker(right)) {
+			continue
+		}
+		remove, keep := left, right
+		if rightRank < leftRank {
+			remove, keep = right, left
+		}
+		if hasExplicitSDMarker(remove) {
+			if !group.hasSharedSource() {
+				continue
+			}
+		} else if !group.hasSharedNonScheduleSource() && !group.hasProviderPositionBridge(group.indexes[0], left, group.indexes[1], right) {
+			continue
+		}
+		sources := strings.Join(mapKeys(group.sources), ", ")
+		reason := fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s has the unique stronger quality rank", group.alias, sources, keep.CallSign)
+		if hasExplicitSDMarker(remove) && !hasExplicitQualityMarker(keep) {
+			reason = fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s is explicitly SD and %s is the unique non-SD counterpart", group.alias, sources, remove.CallSign, keep.CallSign)
+		}
+		suggestion := DuplicateSuggestion{
+			RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+			KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+		}
+		if aliasCandidates[remove.ID] == nil {
+			aliasCandidates[remove.ID] = make(map[string]DuplicateSuggestion)
+		}
+		aliasCandidates[remove.ID][keep.ID] = suggestion
+	}
+	for removeID, candidates := range aliasCandidates {
+		if _, exists := suggestionByRemoveID[removeID]; exists || len(candidates) != 1 {
+			continue
+		}
+		for _, suggestion := range candidates {
+			suggestionByRemoveID[removeID] = suggestion
+		}
+	}
+
+	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
+	for _, suggestion := range suggestionByRemoveID {
+		suggestions = append(suggestions, suggestion)
+	}
 	sort.SliceStable(suggestions, func(i, j int) bool {
-		return numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber)
+		if numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber) {
+			return true
+		}
+		if numberLess(suggestions[j].RemoveNumber, suggestions[i].RemoveNumber) {
+			return false
+		}
+		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
 	return suggestions
+}
+
+type duplicateAliasGroup struct {
+	alias                   string
+	sources                 map[string]bool
+	sourceMembers           map[string]map[int]bool
+	providerPositionBridges map[int]map[string]bool
+	indexes                 []int
+	seen                    map[int]bool
+}
+
+func (group *duplicateAliasGroup) hasSharedSource() bool {
+	for _, members := range group.sourceMembers {
+		if len(members) == 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasSharedNonScheduleSource() bool {
+	for source, members := range group.sourceMembers {
+		if len(members) == 2 && !strings.HasPrefix(source, "gracenote-weekday-epg-") {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasProviderPositionBridge(leftIndex int, left DraftChannel, rightIndex int, right DraftChannel) bool {
+	return group.providerPositionBridges[leftIndex][cleanText(right.Number)] ||
+		group.providerPositionBridges[rightIndex][cleanText(left.Number)]
+}
+
+func providerPositionNumber(method string) string {
+	lower := strings.ToLower(method)
+	const marker = "provider-position:"
+	index := strings.Index(lower, marker)
+	if index < 0 {
+		return ""
+	}
+	value := method[index+len(marker):]
+	if fields := strings.FieldsFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ')' || r == ';'
+	}); len(fields) > 0 {
+		value = fields[0]
+	}
+	separator := strings.LastIndex(value, "|")
+	if separator < 0 {
+		return ""
+	}
+	return cleanText(value[separator+1:])
 }
 
 func sharesAttributableSource(left, right DraftChannel) bool {
@@ -623,6 +847,24 @@ func sharesAttributableSource(left, right DraftChannel) bool {
 	return false
 }
 
+func qualitySuffixBase(value string) (string, bool) {
+	key := identityKey(value)
+	if key == "" {
+		return "", false
+	}
+	for _, suffix := range []string{"hd", "sd", "dt"} {
+		if !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		base := strings.TrimSuffix(key, suffix)
+		if len(base) < 3 {
+			return "", false
+		}
+		return base, true
+	}
+	return key, false
+}
+
 func qualityRank(channel DraftChannel) int {
 	value := strings.ToUpper(channel.CallSign + " " + channel.OriginalName)
 	callSign := strings.ToUpper(identityKey(channel.CallSign))
@@ -637,6 +879,38 @@ func qualityRank(channel DraftChannel) int {
 		return 0
 	}
 	return 1
+}
+
+func hasExplicitSDMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, " SD") || hasTerminalSDMarker(callSign) || hasTerminalSDMarker(originalName)
+}
+
+func hasExplicitQualityMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, "4K") || strings.Contains(value, "UHD") ||
+		strings.Contains(value, " HD") || strings.Contains(value, " SD") ||
+		hasTerminalQualityMarker(callSign, "HD") || hasTerminalQualityMarker(callSign, "SD") ||
+		hasTerminalQualityMarker(originalName, "HD") || hasTerminalQualityMarker(originalName, "SD") ||
+		looksLikeDigitalCallSign(callSign)
+}
+
+func hasTerminalSDMarker(value string) bool {
+	return hasTerminalQualityMarker(value, "SD")
+}
+
+func hasTerminalQualityMarker(value, marker string) bool {
+	return strings.HasSuffix(value, marker) && len(strings.TrimSuffix(value, marker)) >= 3
+}
+
+func looksLikeNumberedDigitalSubchannel(value string) bool {
+	key := identityKey(value)
+	index := strings.LastIndex(key, "dt")
+	return index >= 3 && index+2 < len(key) && isDigits(key[index+2:])
 }
 
 func looksLikeDigitalCallSign(value string) bool {

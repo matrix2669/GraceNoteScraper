@@ -69,9 +69,15 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(body, "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
-	for _, expected := range []string{`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `id="sort-order"`, `<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`, `No SD/HD pair was identified`} {
+	for _, expected := range []string{
+		`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `id="sort-order"`,
+		`<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`,
+		"const includedChannels = draft.channels.filter(channel => channel.included)",
+		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
+		"includedChannels.length - categorized", `id="duplicate-review"`, `Review ${count} suggested SD duplicate`,
+	} {
 		if !strings.Contains(body, expected) {
-			t.Fatalf("page is missing editor control %q", expected)
+			t.Fatalf("page is missing editor behavior %q", expected)
 		}
 	}
 
@@ -87,6 +93,36 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	}
 	if draft.Total != 2 || draft.Included != 2 || draft.Channels[0].ID == draft.Channels[1].ID {
 		t.Fatalf("draft positions = %+v", draft.Channels)
+	}
+}
+
+func TestLineuparrDuplicateRemovalAcceptsReviewedSubset(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["1001"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"removed":1`) {
+		t.Fatalf("selective duplicate response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.Channels[0].Included || !draft.Channels[1].Included {
+		t.Fatalf("reviewed duplicate inclusion = %+v", draft.Channels)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["not-a-suggestion"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown duplicate response = %d body %s", recorder.Code, recorder.Body.String())
 	}
 }
 

@@ -253,22 +253,42 @@ func (s *lineuparrServer) handleRemoveDuplicates(w http.ResponseWriter, r *http.
 	if !requireJSONContentType(w, r) {
 		return
 	}
+	var body struct {
+		ChannelIDs *[]string `json:"channelIds"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
+		return
+	}
 	draft, config, _, ok := s.buildDraft(w, r)
 	if !ok {
 		return
 	}
+	removed := len(draft.DuplicateSuggestions)
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
+		if body.ChannelIDs != nil {
+			requested := make([]string, 0, len(*body.ChannelIDs))
+			seen := make(map[string]bool, len(*body.ChannelIDs))
+			for _, id := range *body.ChannelIDs {
+				id = strings.TrimSpace(id)
+				if id != "" && !seen[id] {
+					seen[id] = true
+					requested = append(requested, id)
+				}
+			}
+			removed = len(requested)
+			return s.builder.RemoveSuggestedDuplicateIDs(config.Fingerprint(), draft, requested)
+		}
 		return s.builder.RemoveSuggestedDuplicates(config.Fingerprint(), draft)
 	})
 	if err != nil {
-		http.Error(w, "Unable to remove suggested duplicates: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Unable to remove suggested duplicates: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 	if !current {
 		http.Error(w, "The active provider changed; reload the builder before saving", http.StatusConflict)
 		return
 	}
-	writeLineuparrJSON(w, http.StatusOK, map[string]any{"saved": true, "removed": len(draft.DuplicateSuggestions)})
+	writeLineuparrJSON(w, http.StatusOK, map[string]any{"saved": true, "removed": removed})
 }
 
 func (s *lineuparrServer) handleRestoreAll(w http.ResponseWriter, r *http.Request) {
