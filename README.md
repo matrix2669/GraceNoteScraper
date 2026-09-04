@@ -35,14 +35,14 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 1. Clone the repo:
    ```sh
-   git clone https://github.com/daniel-widrick/GraceNoteScraper.git
+   git clone --branch dev-test https://github.com/matrix2669/GraceNoteScraper.git
    cd GraceNoteScraper
    ```
 
 2. Copy the environment file for optional integrations:
    ```sh
    cp .env.example .env
-   # Optionally add a TMDB token, Jellyfin settings, or legacy GN_* settings
+   # Optionally add a TMDB token or Jellyfin settings
    ```
 
 3. Start the container:
@@ -65,9 +65,10 @@ docker compose logs -f
 
 Routine scrape and enrichment progress is written to stdout. Warnings and failures are written to stderr so container log viewers can distinguish severity correctly.
 
-To rebuild after pulling updates:
+To pull and run the newest image for the selected channel:
 ```sh
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 ## Requirements
@@ -101,6 +102,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 
 | Variable | Description | Default |
 |---|---|---|
+| `GRACENOTESCRAPER_IMAGE_TAG` | GHCR image channel used by Docker Compose; keep `dev-test` until promotion | `dev-test` |
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
 | `MARKET_INDEX_PATH` | Persistent lineup evidence (legacy setting name retained) | `market_index.json` |
 | `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
@@ -118,7 +120,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `GN_ZIPCODE` | Legacy/bootstrap ZIP or postal code | — |
 | `GN_LANGUAGE` | Language code | `en-us` |
 | `GN_DEVICE` | Device identifier | `-` |
-| `TMDB_TOKEN` | TMDB read access token (optional) | — |
+| `TMDB_TOKEN` | Optional TMDB read-access token; adds programme posters, star ratings, release years, original languages, TMDB IDs, and missing-description fallback | — |
 | `TMDB_WORKERS` | Concurrent TMDB title workers; all requests retain the shared rate limiter (1-16) | `4` |
 | `BASE_URL` | Server base URL — rewrites XMLTV image URLs to use the built-in proxy cache (e.g. `http://192.168.1.50:8080`) | — |
 | `PORT` | HTTP server port | `8080` |
