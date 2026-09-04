@@ -69,6 +69,7 @@ type Candidate struct {
 	StreamHash      string   `json:"-"`
 	Source          string   `json:"-"`
 	Score           int      `json:"score"`
+	NameScore       int      `json:"-"`
 	Reason          string   `json:"reason"`
 	NormalizedAlias string   `json:"-"`
 	KnownEPGID      bool     `json:"-"`

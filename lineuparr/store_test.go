@@ -65,7 +65,7 @@ func TestStateStorePersistsAliasAndMatchReview(t *testing.T) {
 	}
 	decision := MatchDecision{
 		Key: "candidate", Decision: "denied", DispatcharrFingerprint: "dispatcharr",
-		StreamFingerprint: "stream", StreamKey: "3:10", ChannelID: "one", StreamName: "Provider Name",
+		StreamFingerprint: "stream", StreamKey: "3:10", ChannelID: "one", StreamName: "Provider Name", NameScore: 98,
 	}
 	if err := store.SetMatchDecision("source", decision); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestStateStorePersistsAliasAndMatchReview(t *testing.T) {
 	if got := reloaded.Snapshot("source")["one"].SuppressedAliases; len(got) != 1 || got[0] != "Bad Alias" {
 		t.Fatalf("suppressed aliases = %v", got)
 	}
-	if got := reloaded.MatchDecisionSnapshot("source")["candidate"]; got.Decision != "denied" {
+	if got := reloaded.MatchDecisionSnapshot("source")["candidate"]; got.Decision != "denied" || got.NameScore != 98 {
 		t.Fatalf("match decision = %+v", got)
 	}
 	if err := reloaded.ClearMatchDecision("source", "candidate"); err != nil {
