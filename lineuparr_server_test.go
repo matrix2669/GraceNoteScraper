@@ -89,7 +89,7 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if !strings.Contains(recorder.Body.String(), "Queued — click to cancel") {
 		t.Fatal("queued alias action is missing from the Lineuparr page")
 	}
-	for _, expected := range []string{`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `document.createElement('select')`, `cursor: not-allowed`, `No SD/HD pair was identified`} {
+	for _, expected := range []string{`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `id="sort-order"`, `<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`, `No SD/HD pair was identified`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("page is missing editor control %q", expected)
 		}
