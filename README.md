@@ -98,7 +98,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
 | `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
-| `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, one per lineup | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
+| `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, keyed by export filename | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
 | `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
@@ -120,7 +120,7 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
 
-The URL serves the **last explicitly exported version**. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to publish an updated version at the same URL. Each configured lineup has its own URL, and previously exported lineups remain available after switching providers. Snapshots survive container restarts and remain readable while a guide rebuild is in progress. Keep `LINEUPARR_EXPORT_DIR` on persistent storage; old lineup snapshots are retained until removed from that directory.
+The URL serves the **last explicitly exported version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while exporting the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; export again to create the descriptive URL.
 
 Use a scraper hostname and port that the Lineuparr host can reach. A compatible Lineuparr URL-import action can fetch the JSON using its normal lineup filename from the `Content-Disposition` header. The URL grants read access to the exported lineup to anyone who can reach the scraper. It contains no provider credentials or stream URLs. The existing `/api/lineuparr/export` endpoint remains a direct download of the live draft for older clients; it does not update the published snapshot.
 
@@ -158,7 +158,7 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
-| `GET, HEAD /lineuparr/exports/{source}/lineup.json` | Read the last explicitly exported JSON, without rebuilding; `?download=1` requests an attachment |
+| `GET, HEAD /lineuparr/exports/{filename}` | Read the last explicitly exported JSON by its descriptive download filename, without rebuilding; `?download=1` requests an attachment |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |

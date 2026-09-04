@@ -2,14 +2,15 @@ package main
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"mime"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +19,9 @@ import (
 
 const lineuparrPublishedPrefix = "/lineuparr/exports/"
 
-// One atomic record per source keeps the last explicit export independent of
+var publishedLineuparrFilename = regexp.MustCompile(`^[A-Z]{2}_[\pL\pN-]+_lineup\.json$`)
+
+// One atomic record per export filename keeps the last explicit export independent of
 // guide availability, subsequent draft edits, and provider selection changes.
 type publishedLineuparr struct {
 	Version     int             `json:"version"`
@@ -66,7 +69,7 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 	}
 	record := publishedLineuparr{Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
-		return savePublishedLineuparr(s.exportDir, config.Fingerprint(), record)
+		return savePublishedLineuparr(s.exportDir, record)
 	})
 	if err != nil {
 		http.Error(w, "Unable to save the export. The previous published version is unchanged.", http.StatusInternalServerError)
@@ -77,12 +80,15 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeLineuparrJSON(w, http.StatusOK, map[string]any{
-		"path":     lineuparrPublishedPrefix + config.Fingerprint() + "/lineup.json",
+		"path":     lineuparrPublishedPrefix + url.PathEscape(record.Filename),
 		"filename": record.Filename, "publishedAt": record.PublishedAt,
 	})
 }
 
-func savePublishedLineuparr(dir, fingerprint string, record publishedLineuparr) error {
+func savePublishedLineuparr(dir string, record publishedLineuparr) error {
+	if !publishedLineuparrFilename.MatchString(record.Filename) {
+		return errors.New("invalid Lineuparr export filename")
+	}
 	data, err := json.Marshal(record)
 	if err != nil {
 		return err
@@ -105,7 +111,7 @@ func savePublishedLineuparr(dir, fingerprint string, record publishedLineuparr) 
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), filepath.Join(dir, fingerprint+".json"))
+	return os.Rename(tmp.Name(), filepath.Join(dir, record.Filename))
 }
 
 func (s *lineuparrServer) handlePublishedExport(w http.ResponseWriter, r *http.Request) {
@@ -115,27 +121,19 @@ func (s *lineuparrServer) handlePublishedExport(w http.ResponseWriter, r *http.R
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	parts := strings.Split(strings.TrimPrefix(r.URL.Path, lineuparrPublishedPrefix), "/")
-	if !strings.HasPrefix(r.URL.Path, lineuparrPublishedPrefix) || len(parts) != 2 || len(parts[0]) != 64 || s.exportDir == "" {
+	filename := strings.TrimPrefix(r.URL.Path, lineuparrPublishedPrefix)
+	if !strings.HasPrefix(r.URL.Path, lineuparrPublishedPrefix) || !publishedLineuparrFilename.MatchString(filename) || s.exportDir == "" {
 		http.NotFound(w, r)
 		return
 	}
-	if _, err := hex.DecodeString(parts[0]); err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	data, err := os.ReadFile(filepath.Join(s.exportDir, parts[0]+".json"))
+	data, err := os.ReadFile(filepath.Join(s.exportDir, filename))
 	if errors.Is(err, os.ErrNotExist) {
 		http.NotFound(w, r)
 		return
 	}
 	var record publishedLineuparr
-	if err != nil || json.Unmarshal(data, &record) != nil || record.Version != 1 || !json.Valid(record.Data) {
+	if err != nil || json.Unmarshal(data, &record) != nil || record.Version != 1 || record.Filename != filename || !json.Valid(record.Data) {
 		http.Error(w, "The saved export could not be read; export the lineup again", http.StatusInternalServerError)
-		return
-	}
-	if parts[1] != "lineup.json" {
-		http.NotFound(w, r)
 		return
 	}
 	disposition := "inline"
