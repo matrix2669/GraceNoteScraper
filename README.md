@@ -109,6 +109,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
 | `LINEUPARR_STATE_PATH` | Saved channel, alias, category, and Dispatcharr match-review choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
+| `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, one per lineup | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
 | `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
 | `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
 | `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
@@ -166,6 +167,12 @@ Provider coverage is intentionally explicit about source limitations:
 The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
 
 ## Lineuparr JSON Builder
+
+Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
+
+The URL serves the **last explicitly exported version**. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to publish an updated version at the same URL. Each configured lineup has its own URL, and previously exported lineups remain available after switching providers. Snapshots survive container restarts and remain readable while a guide rebuild is in progress. Keep `LINEUPARR_EXPORT_DIR` on persistent storage; old lineup snapshots are retained until removed from that directory.
+
+Use a scraper hostname and port that the Lineuparr host can reach. A compatible Lineuparr URL-import action can fetch the JSON using its normal lineup filename from the `Content-Disposition` header. The URL grants read access to the exported lineup to anyone who can reach the scraper. It contains no provider credentials or stream URLs. The existing `/api/lineuparr/export` endpoint remains a direct download of the live draft for older clients; it does not update the published snapshot.
 
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
 
@@ -235,6 +242,8 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |
 | `GET /api/lineuparr/dispatcharr/review` | Fetch the current safe M3U match-review queue; `limit` controls the visible page and `refresh=true` refreshes streams |
 | `POST, DELETE /api/lineuparr/dispatcharr/decision` | Confirm/deny a current candidate, or undo one reviewed decision |
+| `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
+| `GET, HEAD /lineuparr/exports/{source}/lineup.json` | Read the last explicitly exported JSON, without rebuilding; `?download=1` requests an attachment |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |

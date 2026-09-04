@@ -1486,6 +1486,7 @@ func main() {
 	lineuparrHandlers := &lineuparrServer{
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		aliasQueue: aliasQueue, addressSearcher: addressSearcher,
+		exportDir: util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1529,6 +1530,8 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/review", dispatcharrHandlers.handleReview)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", dispatcharrHandlers.handleDecision)
+	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)
+	mux.HandleFunc(lineuparrPublishedPrefix, lineuparrHandlers.handlePublishedExport)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)

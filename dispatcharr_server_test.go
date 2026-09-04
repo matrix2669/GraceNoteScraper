@@ -294,6 +294,14 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	if len(draft.Channels) == 0 || !containsString(draft.Channels[0].ExcludedAliases, "US| TWO HD") {
 		t.Fatalf("denied exact match was not exported as a channel exclusion: %+v", draft.Channels)
 	}
+	// Composition regression: published exports must retain the reviewed
+	// exclusions supplied by Dispatcharr, just like the live draft export.
+	server.lineup.exportDir = t.TempDir()
+	publishedPath := publishLineuparrForTest(t, server.lineup)
+	published := readLineuparrExport(server.lineup, http.MethodGet, publishedPath)
+	if published.Code != http.StatusOK || !strings.Contains(published.Body.String(), `"excluded_aliases"`) || !strings.Contains(published.Body.String(), "US| TWO HD") {
+		t.Fatalf("published export lost reviewed exclusions: %d %s", published.Code, published.Body.String())
+	}
 	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()

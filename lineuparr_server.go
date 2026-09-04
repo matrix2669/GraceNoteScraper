@@ -33,6 +33,7 @@ type lineuparrServer struct {
 	builder         *lineuparrbuilder.Service
 	marketIndex     *marketindex.Service
 	aliasQueue      *aliasJobQueue
+	exportDir       string
 	addressSearcher providerAddressSearcher
 }
 
@@ -558,6 +559,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		http.Error(w, "The active provider changed while the draft was building; reload and try again", http.StatusConflict)
 		return nil, appconfig.Config{}, nil, false
 	}
+	draft.SourceFingerprint = config.Fingerprint()
 	return draft, config, inputs, true
 }
 
