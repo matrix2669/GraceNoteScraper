@@ -69,7 +69,7 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(body, "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
-	for _, expected := range []string{`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `document.createElement('select')`, `cursor: not-allowed`, `No SD/HD pair was identified`} {
+	for _, expected := range []string{`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `id="sort-order"`, `<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`, `No SD/HD pair was identified`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("page is missing editor control %q", expected)
 		}

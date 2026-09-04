@@ -263,9 +263,16 @@
         <div class="field">
           <label for="included-filter">Visibility</label>
           <select id="included-filter">
+            <option value="included" selected>Included only</option>
             <option value="all">All channels</option>
-            <option value="included">Included only</option>
             <option value="excluded">Excluded only</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="sort-order">Sort by</label>
+          <select id="sort-order">
+            <option value="number">Channel number</option>
+            <option value="name">Channel name</option>
           </select>
         </div>
         <div class="channel-count" id="visible-count" aria-live="polite"></div>
@@ -307,7 +314,7 @@
       providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
       sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
-      includedFilter: document.getElementById('included-filter'), visibleCount: document.getElementById('visible-count'),
+      includedFilter: document.getElementById('included-filter'), sortOrder: document.getElementById('sort-order'), visibleCount: document.getElementById('visible-count'),
       builderPanel: document.querySelector('.builder-panel'), viewToggle: document.getElementById('view-toggle'),
       batchToggle: document.getElementById('batch-toggle'), batchBar: document.getElementById('batch-bar'),
       batchCount: document.getElementById('batch-count'), batchSelectVisible: document.getElementById('batch-select-visible'),
@@ -325,6 +332,7 @@
     let batchMode = false;
     const selectedChannels = new Set();
     let programRequest = 0;
+    const channelCollator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -475,13 +483,30 @@
       const query = els.search.value.trim().toLowerCase();
       const category = els.categoryFilter.value;
       const visibility = els.includedFilter.value;
-      return draft.channels.filter(channel => {
+      const visible = draft.channels.filter(channel => {
         if (category && channel.category !== category) return false;
         if (visibility === 'included' && !channel.included) return false;
         if (visibility === 'excluded' && channel.included) return false;
         if (!query) return true;
         return [channel.number, channel.name, channel.callSign, channel.affiliate, ...(channel.aliases || [])].join(' ').toLowerCase().includes(query);
       });
+      visible.sort(channelSortComparator(els.sortOrder.value));
+      return visible;
+    }
+
+    function channelSortComparator(order) {
+      const number = channel => String(channel.number || '');
+      const name = channel => String(channel.callSign || channel.name || '').trim();
+      return (left, right) => {
+        const primary = order === 'name'
+          ? channelCollator.compare(name(left), name(right))
+          : channelCollator.compare(number(left), number(right));
+        if (primary) return primary;
+        const secondary = order === 'name'
+          ? channelCollator.compare(number(left), number(right))
+          : channelCollator.compare(name(left), name(right));
+        return secondary || channelCollator.compare(String(left.id || ''), String(right.id || ''));
+      };
     }
 
     function renderChannels() {
@@ -694,6 +719,7 @@
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
     els.categoryFilter.addEventListener('change', renderChannels);
     els.includedFilter.addEventListener('change', renderChannels);
+    els.sortOrder.addEventListener('change', renderChannels);
     els.viewToggle.addEventListener('click', () => {
       compact = !compact;
       localStorage.setItem('lineuparr-view', compact ? 'compact' : 'detailed');
