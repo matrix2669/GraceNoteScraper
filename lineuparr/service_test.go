@@ -625,7 +625,7 @@ func TestConfirmedDispatcharrMatchAndAliasSuppressionAreReversible(t *testing.T)
 		Key: "candidate", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source",
 		StreamFingerprint: "stream-hash", StreamKey: "3:10", StreamID: 10, M3UAccountID: 3,
 		ChannelID: "one", ChannelNumber: "5", ChannelName: "ONE", StreamName: "US| One Network HD",
-		TVGID: "OneNetwork.us", Score: 96, Reason: "Exact normalized name or alias",
+		TVGID: "OneNetwork.us", Score: 92, NameScore: 92, Reason: "Fuzzy name 92%",
 	}
 	if err := service.SetMatchDecision(lineup.SourceFingerprint, decision); err != nil {
 		t.Fatal(err)
@@ -660,6 +660,81 @@ func TestConfirmedDispatcharrMatchAndAliasSuppressionAreReversible(t *testing.T)
 	}
 }
 
+func TestDispatcharrExactThresholdControlsAliasesAndExclusions(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	decisions := []MatchDecision{
+		{Key: "confirmed-high", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-1", StreamKey: "3:1", StreamID: 1, M3UAccountID: 3, ChannelID: "confirmed-high", StreamName: "US| REELZ HD", NormalizedAlias: "reelz", Score: 95, NameScore: 95, Reason: "Fuzzy name 95%"},
+		{Key: "confirmed-low", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-2", StreamKey: "3:2", StreamID: 2, M3UAccountID: 3, ChannelID: "confirmed-low", StreamName: "Provider Movie Network", NormalizedAlias: "providermovienetwork", Score: 92, NameScore: 92, Reason: "Fuzzy name 92%"},
+		{Key: "confirmed-epg", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-3", StreamKey: "3:3", StreamID: 3, M3UAccountID: 3, ChannelID: "confirmed-epg", StreamName: "Unhelpful provider label", NormalizedAlias: "unhelpfulproviderlabel", Score: 100, NameScore: 31, Reason: "Exact EPG ID"},
+		{Key: "denied-high-a", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-4", StreamKey: "3:4", StreamID: 4, M3UAccountID: 3, ChannelID: "denied-high", StreamName: "US-ReelzChannel", NormalizedAlias: "reelzchannel", Score: 95, NameScore: 95, Reason: "Fuzzy name 95%"},
+		{Key: "denied-high-b", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-5", StreamKey: "7:5", StreamID: 5, M3UAccountID: 7, ChannelID: "denied-high", StreamName: "GO| Reelz Channel HD", NormalizedAlias: "reelzchannel", Score: 94, NameScore: 94, Reason: "Fuzzy name 94%"},
+		{Key: "denied-low", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-6", StreamKey: "3:6", StreamID: 6, M3UAccountID: 3, ChannelID: "denied-low", StreamName: "Similar but safe", NormalizedAlias: "similarbutsafe", Score: 94, NameScore: 94, Reason: "Fuzzy name 94%"},
+	}
+	if err := service.SetMatchDecisions(lineup.SourceFingerprint, decisions); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []InputChannel{
+		{Key: "confirmed-high", StationID: "1", Number: "1", CallSign: "REELZ"},
+		{Key: "confirmed-low", StationID: "2", Number: "2", CallSign: "MOVIES"},
+		{Key: "confirmed-epg", StationID: "3", Number: "3", CallSign: "EPGONLY"},
+		{Key: "denied-high", StationID: "4", Number: "4", CallSign: "REELZALT"},
+		{Key: "denied-low", StationID: "5", Number: "5", CallSign: "SAFE"},
+	}
+	draft, err := service.Build(context.Background(), lineup, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if channel := channelByID(t, draft, "confirmed-high"); contains(channel.Aliases, "US| REELZ HD") {
+		t.Fatalf("95%%+ confirmation was exported as an alias: %+v", channel)
+	}
+	if channel := channelByID(t, draft, "confirmed-low"); !contains(channel.Aliases, "Provider Movie Network") {
+		t.Fatalf("sub-95%% confirmation was not exported as an alias: %+v", channel)
+	}
+	if channel := channelByID(t, draft, "confirmed-epg"); !contains(channel.Aliases, "Unhelpful provider label") {
+		t.Fatalf("EPG-only confirmation lost its required name alias: %+v", channel)
+	}
+	deniedHigh := channelByID(t, draft, "denied-high")
+	if len(deniedHigh.ExcludedAliases) != 1 || deniedHigh.ExcludedAliases[0] != "US-ReelzChannel" {
+		t.Fatalf("high-score denial exclusions = %+v", deniedHigh.ExcludedAliases)
+	}
+	if channel := channelByID(t, draft, "denied-low"); len(channel.ExcludedAliases) != 0 {
+		t.Fatalf("sub-95%% denial was exported: %+v", channel.ExcludedAliases)
+	}
+
+	export := ExportFromDraft(draft)
+	var exported ExportChannel
+	for _, channels := range export.Categories {
+		for _, channel := range channels {
+			if channel.Name == deniedHigh.Name {
+				exported = channel
+			}
+		}
+	}
+	if len(exported.ExcludedAliases) != 1 || exported.ExcludedAliases[0] != "US-ReelzChannel" || !strings.Contains(export.Notes, "Exact match sensitivity") {
+		t.Fatalf("threshold export = %+v notes=%q", exported, export.Notes)
+	}
+	encoded, err := json.Marshal(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"excluded_aliases":["US-ReelzChannel"]`) || strings.Contains(string(encoded), "excludedAliases") {
+		t.Fatalf("excluded alias JSON contract = %s", encoded)
+	}
+}
+
+func TestLegacyDecisionNameScoreIsConservative(t *testing.T) {
+	if got := decisionNameScore(MatchDecision{Score: 100, Reason: "Exact EPG ID"}); got != 0 {
+		t.Fatalf("EPG-only legacy name score = %d", got)
+	}
+	if got := decisionNameScore(MatchDecision{Score: 96, Reason: "Fuzzy name 92% + channel number"}); got != 92 {
+		t.Fatalf("channel-number legacy name score = %d", got)
+	}
+	if got := decisionNameScore(MatchDecision{Score: 98, Reason: "Exact normalized name or alias"}); got != 98 {
+		t.Fatalf("name-based legacy score = %d", got)
+	}
+}
+
 func TestExportIsLineuparrCompatibleAndExcludesRemovedChannels(t *testing.T) {
 	service := newTestService(t, "", "")
 	inputs := []InputChannel{
@@ -687,6 +762,13 @@ func TestExportIsLineuparrCompatibleAndExcludesRemovedChannels(t *testing.T) {
 	encoded, err := json.Marshal(export)
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	entryJSON, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("json.Marshal(entry) error = %v", err)
+	}
+	if strings.Contains(string(entryJSON), "excluded_aliases") {
+		t.Fatalf("empty excluded_aliases should be omitted: %s", entryJSON)
 	}
 	var shape map[string]any
 	if err := json.Unmarshal(encoded, &shape); err != nil {

@@ -69,6 +69,7 @@ type DraftChannel struct {
 	Category                string               `json:"category"`
 	Included                bool                 `json:"included"`
 	Aliases                 []string             `json:"aliases,omitempty"`
+	ExcludedAliases         []string             `json:"excludedAliases,omitempty"`
 	AliasEvidence           []AliasEvidence      `json:"aliasEvidence,omitempty"`
 	SuppressedAliasEvidence []AliasEvidence      `json:"suppressedAliasEvidence,omitempty"`
 	EPGIDs                  []string             `json:"epgIds,omitempty"`
@@ -162,6 +163,7 @@ type MatchDecision struct {
 	NormalizedAlias        string    `json:"normalizedAlias,omitempty"`
 	TVGID                  string    `json:"tvgId,omitempty"`
 	Score                  int       `json:"score"`
+	NameScore              int       `json:"nameScore,omitempty"`
 	Reason                 string    `json:"reason"`
 	UpdatedAt              time.Time `json:"updatedAt"`
 }
@@ -183,8 +185,9 @@ type ExportFile struct {
 }
 
 type ExportChannel struct {
-	Name    string   `json:"name"`
-	Number  any      `json:"number"`
-	Aliases []string `json:"aliases,omitempty"`
-	EPGIDs  []string `json:"epg_ids,omitempty"`
+	Name            string   `json:"name"`
+	Number          any      `json:"number"`
+	Aliases         []string `json:"aliases,omitempty"`
+	ExcludedAliases []string `json:"excluded_aliases,omitempty"`
+	EPGIDs          []string `json:"epg_ids,omitempty"`
 }

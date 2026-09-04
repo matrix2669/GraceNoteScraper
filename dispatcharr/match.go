@@ -28,9 +28,10 @@ type preparedChannel struct {
 }
 
 type scoredCandidate struct {
-	channel int
-	score   int
-	reason  string
+	channel   int
+	score     int
+	nameScore int
+	reason    string
 }
 
 // MatchStreams returns one current proposal per unreviewed stream. Call
@@ -128,10 +129,14 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			if eventFeedName(stream.Name) && !channelAcceptsEventFeed(channel) {
 				continue
 			}
-			score, reason := scoreStream(stream, streamIdentities, prepared[index])
-			if typoScores[index] > score {
-				score = typoScores[index]
-				reason = fmt.Sprintf("Fuzzy name %d%%", score)
+			nameScore, nameReason := scoreStreamName(stream, streamIdentities, prepared[index])
+			if typoScores[index] > nameScore {
+				nameScore = typoScores[index]
+				nameReason = fmt.Sprintf("Fuzzy name %d%%", nameScore)
+			}
+			score, reason := nameScore, nameReason
+			if tvgID := strings.ToLower(strings.TrimSpace(stream.TVGID)); tvgID != "" && prepared[index].epgIDs[tvgID] {
+				score, reason = 100, "Exact EPG ID"
 			}
 			if score < minimumCandidateScore {
 				continue
@@ -139,7 +144,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			if denied[decisionPairKey(streamHash, channel.ID)] || deniedAliases[aliasDecisionKey(normalizedAlias, channel.ID)] {
 				continue
 			}
-			scored = append(scored, scoredCandidate{channel: index, score: score, reason: reason})
+			scored = append(scored, scoredCandidate{channel: index, score: score, nameScore: nameScore, reason: reason})
 		}
 		if len(scored) == 0 {
 			continue
@@ -172,6 +177,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 				StreamHash:      streamHash,
 				Source:          sourceFingerprint,
 				Score:           match.score,
+				NameScore:       match.nameScore,
 				Reason:          match.reason,
 				NormalizedAlias: normalizedAlias,
 				KnownEPGID:      strings.TrimSpace(stream.TVGID) != "" && prepared[match.channel].epgIDs[strings.ToLower(strings.TrimSpace(stream.TVGID))],
@@ -530,10 +536,7 @@ func singleTypo(left, right string) bool {
 	return false
 }
 
-func scoreStream(stream Stream, streamIdentities []preparedIdentity, channel preparedChannel) (int, string) {
-	if tvgID := strings.ToLower(strings.TrimSpace(stream.TVGID)); tvgID != "" && channel.epgIDs[tvgID] {
-		return 100, "Exact EPG ID"
-	}
+func scoreStreamName(stream Stream, streamIdentities []preparedIdentity, channel preparedChannel) (int, string) {
 	bestScore := 0
 	bestReason := ""
 	sameNumber := sameChannelNumber(stream.StreamChannelNo, channel.channel.Number)

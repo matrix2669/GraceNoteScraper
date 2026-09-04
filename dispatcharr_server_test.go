@@ -142,6 +142,7 @@ func TestDispatcharrConfigNeverReturnsAPIKey(t *testing.T) {
 
 func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	server, fake := newDispatcharrTestServer(t, true)
+	fake.streams = []dispatcharr.Stream{{ID: 10, Name: "TWO East", M3UAccountID: 3}}
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
@@ -179,7 +180,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 		t.Fatal(err)
 	}
 	channel := draft.Channels[0]
-	if !containsString(channel.Aliases, "US| TWO HD") || containsString(channel.EPGIDs, "Two.us") {
+	if !containsString(channel.Aliases, "TWO East") || containsString(channel.EPGIDs, "Two.us") {
 		t.Fatalf("confirmed draft channel = %+v", channel)
 	}
 
@@ -193,10 +194,11 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()
 	server.lineup.handleDraft(recorder, request)
+	draft = lineuparrbuilder.Draft{}
 	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
 		t.Fatal(err)
 	}
-	if containsString(draft.Channels[0].Aliases, "US| TWO HD") || containsString(draft.Channels[0].EPGIDs, "Two.us") {
+	if containsString(draft.Channels[0].Aliases, "TWO East") || containsString(draft.Channels[0].EPGIDs, "Two.us") {
 		t.Fatalf("cleared decision still applied: %+v", draft.Channels[0])
 	}
 }
@@ -231,7 +233,7 @@ func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 	candidate := dispatcharr.Candidate{
 		Key: "alternate-candidate", ChannelID: "1001", ChannelNumber: "2", ChannelName: "TWO",
 		StreamID: 10, StreamKey: "3:10", StreamName: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3,
-		StreamHash: "stream-hash", Source: dispatchConfig.Fingerprint(), Score: 82, Reason: "Fuzzy name 82%", NormalizedAlias: "two",
+		StreamHash: "stream-hash", Source: dispatchConfig.Fingerprint(), Score: 82, NameScore: 82, Reason: "Fuzzy name 82%", NormalizedAlias: "two",
 	}
 	groups := dispatcharr.GroupCandidates([]dispatcharr.Candidate{candidate})
 	if len(groups) != 1 {
@@ -278,6 +280,36 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 		if decision.Decision != "denied" {
 			t.Fatalf("stored denial = %+v", decision)
 		}
+		if decision.NameScore < 95 {
+			t.Fatalf("denied name score was not persisted: %+v", decision)
+		}
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.lineup.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.Channels) == 0 || !containsString(draft.Channels[0].ExcludedAliases, "US| TWO HD") {
+		t.Fatalf("denied exact match was not exported as a channel exclusion: %+v", draft.Channels)
+	}
+	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleDecision(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("clear denial response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.lineup.handleDraft(recorder, request)
+	draft = lineuparrbuilder.Draft{}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.Channels) == 0 || len(draft.Channels[0].ExcludedAliases) != 0 {
+		t.Fatalf("cleared denial still exported exclusions: %+v", draft.Channels)
 	}
 }
 
@@ -321,6 +353,9 @@ func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *test
 		}
 		if decision.NormalizedAlias != "two" {
 			t.Fatalf("normalized group identity was not persisted: %+v", decision)
+		}
+		if decision.NameScore < 95 {
+			t.Fatalf("name score was not persisted: %+v", decision)
 		}
 	}
 }

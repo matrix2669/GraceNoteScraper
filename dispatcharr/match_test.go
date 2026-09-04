@@ -88,8 +88,19 @@ func TestMatchStreamsUsesExactEPGID(t *testing.T) {
 		[]Stream{{ID: 5, M3UAccountID: 3, Name: "Unhelpful provider label", TVGID: "cnn.US"}},
 		nil,
 	)
-	if len(got) != 1 || got[0].ChannelID != "cnn" || got[0].Score != 100 || got[0].Reason != "Exact EPG ID" {
+	if len(got) != 1 || got[0].ChannelID != "cnn" || got[0].Score != 100 || got[0].NameScore >= 95 || got[0].Reason != "Exact EPG ID" {
 		t.Fatalf("EPG candidate = %+v", got)
+	}
+}
+
+func TestMatchStreamsRetainsIndependentNameScoreForExactEPGID(t *testing.T) {
+	got := MatchStreams("source",
+		[]MatchChannel{{ID: "reelz", Number: "692", Name: "REELZ", EPGIDs: []string{"Reelz.us"}}},
+		[]Stream{{ID: 5, M3UAccountID: 3, Name: "US| REELZ HD", TVGID: "Reelz.us"}},
+		nil,
+	)
+	if len(got) != 1 || got[0].Score != 100 || got[0].NameScore < 95 || got[0].Reason != "Exact EPG ID" {
+		t.Fatalf("combined EPG/name candidate = %+v", got)
 	}
 }
 

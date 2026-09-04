@@ -304,7 +304,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
 			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
 			StreamName: candidate.StreamName, NormalizedAlias: candidate.NormalizedAlias,
-			TVGID: tvgID, Score: candidate.Score, Reason: candidate.Reason,
+			TVGID: tvgID, Score: candidate.Score, NameScore: candidate.NameScore, Reason: candidate.Reason,
 		})
 	}
 	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
