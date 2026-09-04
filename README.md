@@ -23,7 +23,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 1. Run the scraper in server mode (see below).
 2. Open `http://<your-host>:8080/setup` and choose your provider lineup.
-3. When the first guide finishes building, add an XMLTV guide source in your DVR software pointing to:
+3. When the first guide finishes building, click the XMLTV guide URL on the setup page to copy it, or add this equivalent URL to your DVR software:
    ```
    http://<your-host>:8080/xmlguide.xmltv
    ```
@@ -52,7 +52,7 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 4. Open `http://<your-host>:8080/setup`, enter your ZIP or postal code, and choose a provider lineup.
 
-5. After the first guide finishes building, point your DVR software at `http://<your-host>:8080/xmlguide.xmltv`.
+5. After the first guide finishes building, click the XMLTV guide URL shown on the setup page to copy it into your DVR software.
 
 6. Open `http://<your-host>:8080/lineuparr` to review and export a Lineuparr-compatible JSON file for the same active lineup.
 
