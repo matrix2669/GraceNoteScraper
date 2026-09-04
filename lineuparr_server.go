@@ -19,7 +19,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 )
 
@@ -30,7 +30,7 @@ type lineuparrServer struct {
 	store           *appconfig.Store
 	state           *GuideState
 	builder         *lineuparrbuilder.Service
-	marketIndex     *marketindex.Service
+	marketIndex     *lineupindex.Service
 	addressSearcher providerAddressSearcher
 }
 
@@ -372,7 +372,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			}
 			known[normalized] = true
 			method := "same Gracenote station ID across scanned lineups"
-			if candidate.Kind == marketindex.NameEventCallSign {
+			if candidate.Kind == lineupindex.NameEventCallSign {
 				method = "event callsign on the same Gracenote station ID"
 			} else if candidate.Method != "" {
 				method = candidate.Method
@@ -424,8 +424,8 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 	}
 	snapshot := s.marketIndex.SnapshotForPostal(country, postalCode)
 	statuses := []lineuparrbuilder.SourceStatus{{
-		ID: "gracenote-market-index", Label: "Gracenote market alias index", Status: "local", Matched: matched,
-		Message: fmt.Sprintf("%d markets and %d unique lineups scanned; exact station-ID aliases only", snapshot.Summary.CompletedMarkets, snapshot.Summary.Lineups),
+		ID: "gracenote-market-index", Label: "Gracenote lineup alias index", Status: "local", Matched: matched,
+		Message: fmt.Sprintf("%d unique lineups indexed; exact station-ID aliases only", snapshot.Summary.Lineups),
 	}}
 	if snapshot.PostalScan != nil {
 		for _, source := range snapshot.PostalScan.Sources {
@@ -483,8 +483,8 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 		return
 	}
 	var body struct {
-		marketindex.RunRequest
-		ProviderAddress marketindex.ProviderAddress `json:"providerAddress,omitempty"`
+		lineupindex.RunRequest
+		ProviderAddress lineupindex.ProviderAddress `json:"providerAddress,omitempty"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -514,7 +514,7 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	job, err := s.marketIndex.Start(request)
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, marketindex.ErrAlreadyRunning) || errors.Is(err, marketindex.ErrNoWork) {
+		if errors.Is(err, lineupindex.ErrAlreadyRunning) || errors.Is(err, lineupindex.ErrNoWork) {
 			status = http.StatusConflict
 		}
 		http.Error(w, err.Error(), status)
@@ -523,7 +523,7 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
 }
 
-func validateEphemeralProviderAddress(value marketindex.ProviderAddress, postalCode string) (marketindex.ProviderAddress, error) {
+func validateEphemeralProviderAddress(value lineupindex.ProviderAddress, postalCode string) (lineupindex.ProviderAddress, error) {
 	value.FormattedAddress = strings.Join(strings.Fields(strings.TrimSpace(value.FormattedAddress)), " ")
 	value.StreetAddress = strings.Join(strings.Fields(strings.TrimSpace(value.StreetAddress)), " ")
 	value.City = strings.Join(strings.Fields(strings.TrimSpace(value.City)), " ")
@@ -531,10 +531,10 @@ func validateEphemeralProviderAddress(value marketindex.ProviderAddress, postalC
 	value.PostalCode = strings.Join(strings.Fields(strings.TrimSpace(value.PostalCode)), " ")
 	value.CountryCode = strings.ToUpper(strings.TrimSpace(value.CountryCode))
 	if value.FormattedAddress == "" {
-		return marketindex.ProviderAddress{}, nil
+		return lineupindex.ProviderAddress{}, nil
 	}
 	if len(value.FormattedAddress) > 300 || len(value.StreetAddress) > 180 || len(value.City) > 100 || len(value.State) > 100 || len(value.PostalCode) > 20 || len(value.CountryCode) > 2 {
-		return marketindex.ProviderAddress{}, errors.New("provider address is too long")
+		return lineupindex.ProviderAddress{}, errors.New("provider address is too long")
 	}
 	if postalCode = strings.TrimSpace(postalCode); postalCode != "" {
 		selected := compactLocationValue(value.PostalCode)
@@ -544,7 +544,7 @@ func validateEphemeralProviderAddress(value marketindex.ProviderAddress, postalC
 			matches = strings.HasPrefix(selected, active)
 		}
 		if !matches {
-			return marketindex.ProviderAddress{}, errors.New("provider address must match the active lineup postal code")
+			return lineupindex.ProviderAddress{}, errors.New("provider address must match the active lineup postal code")
 		}
 	}
 	return value, nil

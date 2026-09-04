@@ -99,8 +99,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
-| `MARKET_INDEX_PATH` | Saved station/alias observations from on-demand market scans | `market_index.json` |
-| `MARKET_ZIPS_PATH` | Optional replacement for the embedded representative-market catalog | embedded catalog |
+| `MARKET_INDEX_PATH` | Persistent lineup evidence (legacy setting name retained) | `market_index.json` |
 | `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
 | `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
@@ -125,16 +124,14 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 ## Station Alias Discovery
 
+The ranked major-market scanner is not included in this branch. Its source remains on `feature/gracenote-market-index`; it is not a runtime dependency. Only an explicit **Scan providers in this ZIP** request is accepted. Legacy ranked `continue`, `refresh`, and `rebuild` requests are rejected without changing saved evidence. The existing `MARKET_INDEX_PATH` setting and `market_index.json` default remain valid; keep that file to preserve collected aliases/categories. Local refreshes update the existing index without deleting historical station evidence.
+
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP, loads one six-hour grid per provider, and joins supported live official provider sources to their own provider grids. Categories and aliases reach the selected lineup only through the exact same Gracenote station ID.
 - Every successfully downloaded lineup produces its own schema-versioned JSON file under `LINEUP_SNAPSHOT_DIR`. It contains provider positions, Gracenote station IDs, identity aliases, normalized category evidence, source URLs, match methods, and fuzzy confidence, but never programme events, credentials, service addresses, or stream URLs.
 - Runtime adapters now cover Verizon FiOS, Optimum, DIRECTV, DISH, AFN, Glorystar, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set.
-- The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
-- **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
-- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, observed-name provenance, and attributable category evidence are retained; programme events are discarded.
-- Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
 - Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
 - Official provider aliases and categories retain their source URL and exact join method. Conflicting categories and aliases shared by multiple station IDs are not applied automatically.
 
@@ -153,7 +150,6 @@ Provider coverage is intentionally explicit about source limitations:
 | Spectrum | Public lineup page | No stable no-login residential payload is currently exposed; account/login automation is intentionally disabled |
 | BroadStar | Official public PDF | Categories are used only where the provider document has explicit Sports, Premium, Music, or service sections |
 
-The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
 
 ## Lineuparr JSON Builder
 
@@ -190,7 +186,7 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET /api/lineuparr/provider-address/config` | Read Nominatim availability and active-lineup constraints for an address-gated provider source |
 | `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
-| `GET /api/lineuparr/alias-index` | Read market-scan progress and marginal alias yield |
+| `GET /api/lineuparr/alias-index` | Read configured-ZIP scan progress and attributed alias evidence |
 | `POST /api/lineuparr/alias-index/run` | Scan all providers in the configured ZIP, continue ranked markets, selectively refresh, or rebuild the on-demand index |
 | `POST /api/lineuparr/alias-index/stop` | Stop a running batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
@@ -225,7 +221,7 @@ tvlogo/          TV logo resolver and cache
 util/            Shared helpers
 index.html       The Grid web UI (embedded at build time)
 setup.html       Provider-selection UI (embedded at build time)
-marketindex/     Ranked ZIP catalog, resumable scanner, alias index, and yield reporting
+lineupindex/     Scanner-independent lineup evidence, local provider scans and storage
 providersource/  Focused official provider evidence adapters and generated snapshots
 tools/           Deterministic source-catalog maintenance generators
 lineuparr.html   Lineuparr review/export UI (embedded at build time)

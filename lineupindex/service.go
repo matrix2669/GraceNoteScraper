@@ -1,12 +1,10 @@
-package marketindex
+package lineupindex
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,13 +65,10 @@ func (WebGridFetcher) FetchGrid(ctx context.Context, preferences web.Preferences
 
 func NewService(config ServiceConfig) (*Service, error) {
 	if strings.TrimSpace(config.Path) == "" {
-		return nil, errors.New("market index path is required")
+		return nil, errors.New("lineup index path is required")
 	}
 	if config.Providers == nil || config.Grids == nil {
-		return nil, errors.New("market index provider and grid clients are required")
-	}
-	if len(config.Catalog.Markets) == 0 {
-		return nil, errors.New("market index seed catalog is empty")
+		return nil, errors.New("lineup index provider and grid clients are required")
 	}
 	if config.Now == nil {
 		config.Now = time.Now
@@ -102,59 +97,13 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func (s *Service) Start(request RunRequest) (JobView, error) {
-	action := strings.ToLower(strings.TrimSpace(request.Action))
-	if action == "" {
-		action = "continue"
+	if strings.ToLower(strings.TrimSpace(request.Action)) != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
+		return JobView{}, errors.New("only configured-postal scans are supported; ranked-market scanning is not enabled")
 	}
-	if action != "continue" && action != "refresh" && action != "rebuild" && action != "postal" {
-		return JobView{}, fmt.Errorf("unsupported market-index action %q", action)
+	if strings.TrimSpace(request.Country) == "" || strings.TrimSpace(request.PostalCode) == "" {
+		return JobView{}, errors.New("postal scan requires country and postal code")
 	}
-	if action == "postal" {
-		return s.startPostal(request)
-	}
-	batchSize := request.BatchSize
-	if batchSize == 0 {
-		batchSize = DefaultBatchSize
-	}
-	if batchSize < 1 || batchSize > MaxBatchSize {
-		return JobView{}, fmt.Errorf("batch size must be between 1 and %d", MaxBatchSize)
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.job.Running {
-		return s.job, ErrAlreadyRunning
-	}
-
-	if action == "rebuild" {
-		if len(s.index.Markets) > 0 || len(s.index.Lineups) > 0 || len(s.index.Stations) > 0 {
-			if err := writeIndex(s.path+".bak", s.index); err != nil {
-				return JobView{}, fmt.Errorf("backing up existing market index: %w", err)
-			}
-		}
-		rebuilt := newIndex(s.catalog, s.now())
-		if err := writeIndex(s.path, rebuilt); err != nil {
-			return JobView{}, err
-		}
-		s.index = rebuilt
-	}
-
-	seeds, err := s.selectSeedsLocked(action, request.Ranks, batchSize)
-	if err != nil {
-		return JobView{}, err
-	}
-	startedAt := s.now().UTC().Format(time.RFC3339)
-	ctx, cancel := context.WithCancel(context.Background())
-	s.cancel = cancel
-	s.job = JobView{
-		Running:    true,
-		Action:     action,
-		StartedAt:  startedAt,
-		TotalCount: len(seeds),
-	}
-	job := s.job
-	go s.run(ctx, action, seeds)
-	return job, nil
+	return s.startPostal(request)
 }
 
 func (s *Service) startPostal(request RunRequest) (JobView, error) {
@@ -210,120 +159,6 @@ func (s *Service) Stop() bool {
 	}
 	s.cancel()
 	return true
-}
-
-func (s *Service) selectSeedsLocked(action string, ranks []int, batchSize int) ([]MarketSeed, error) {
-	if action == "refresh" {
-		if len(ranks) == 0 {
-			return nil, errors.New("refresh requires at least one market rank")
-		}
-		if len(ranks) > MaxBatchSize {
-			return nil, fmt.Errorf("refresh accepts at most %d market ranks", MaxBatchSize)
-		}
-		wanted := make(map[int]bool, len(ranks))
-		for _, rank := range ranks {
-			if rank < 1 || rank > len(s.catalog.Markets) {
-				return nil, fmt.Errorf("market rank %d is outside the catalog", rank)
-			}
-			wanted[rank] = true
-		}
-		selected := make([]MarketSeed, 0, len(wanted))
-		for _, seed := range s.catalog.Markets {
-			if wanted[seed.Rank] {
-				selected = append(selected, seed)
-			}
-		}
-		return selected, nil
-	}
-
-	selected := make([]MarketSeed, 0, batchSize)
-	for _, seed := range s.catalog.Markets {
-		record := s.index.Markets[strconv.Itoa(seed.Rank)]
-		if record != nil && record.Status == StatusComplete && record.PostalCode == seed.PostalCode {
-			continue
-		}
-		selected = append(selected, seed)
-		if len(selected) == batchSize {
-			break
-		}
-	}
-	if len(selected) == 0 {
-		return nil, ErrNoWork
-	}
-	return selected, nil
-}
-
-func (s *Service) run(ctx context.Context, action string, seeds []MarketSeed) {
-	report := BatchReport{
-		Action:    action,
-		StartedAt: s.now().UTC().Format(time.RFC3339),
-		FromRank:  seeds[0].Rank,
-		ToRank:    seeds[len(seeds)-1].Rank,
-	}
-	current := normalizeCurrentStations(s.readCurrentStations())
-	owners := s.callSignOwners()
-	var lastProviderRequest time.Time
-	var lastGridRequest time.Time
-	var fatalErr error
-
-	for _, seed := range seeds {
-		if err := ctx.Err(); err != nil {
-			report.Stopped = true
-			break
-		}
-		s.mu.Lock()
-		s.job.CurrentRank = seed.Rank
-		s.job.CurrentMarket = seed.Name
-		s.mu.Unlock()
-
-		if err := waitBetween(ctx, lastProviderRequest, s.providerDelay, s.now); err != nil {
-			report.Stopped = true
-			break
-		}
-		lastProviderRequest = s.now()
-		force := action == "refresh"
-		if err := s.processMarket(ctx, seed, force, current, owners, &lastGridRequest, &report); err != nil {
-			if errors.Is(err, context.Canceled) {
-				report.Stopped = true
-				break
-			}
-			fatalErr = err
-			break
-		}
-		report.MarketsProcessed++
-		s.mu.Lock()
-		s.job.CompletedCount = report.MarketsProcessed
-		s.mu.Unlock()
-	}
-
-	s.mu.Lock()
-	report.CompletedAt = s.now().UTC().Format(time.RFC3339)
-	summary := s.summaryLocked(current)
-	report.CumulativeLineups = summary.Lineups
-	report.CumulativeStations = summary.Stations
-	report.CumulativeAliases = summary.MeaningfulAliases
-	report.CumulativeCurrentAliases = summary.CurrentLineupAliases
-	s.index.Batches = append(s.index.Batches, report)
-	if len(s.index.Batches) > 100 {
-		s.index.Batches = append([]BatchReport(nil), s.index.Batches[len(s.index.Batches)-100:]...)
-	}
-	s.index.UpdatedAt = report.CompletedAt
-	persistErr := writeIndex(s.path, s.index)
-	s.job.Running = false
-	s.job.CompletedAt = report.CompletedAt
-	s.job.CurrentRank = 0
-	s.job.CurrentMarket = ""
-	if fatalErr != nil {
-		s.job.LastError = fatalErr.Error()
-	} else if persistErr != nil {
-		s.job.LastError = persistErr.Error()
-	} else if report.Stopped {
-		s.job.LastError = "Scan stopped before the batch completed"
-	} else {
-		s.job.LastError = ""
-	}
-	s.cancel = nil
-	s.mu.Unlock()
 }
 
 func (s *Service) runPostal(ctx context.Context, request RunRequest) {
@@ -557,146 +392,6 @@ func mergeEvidenceSources(existing, incoming []EvidenceSourceRecord) []EvidenceS
 	return existing
 }
 
-func (s *Service) processMarket(ctx context.Context, seed MarketSeed, force bool, current map[string]map[string]bool, owners map[string]map[string]bool, lastGridRequest *time.Time, report *BatchReport) error {
-	startedAt := s.now().UTC().Format(time.RFC3339)
-	record := &MarketRecord{
-		Rank:       seed.Rank,
-		Name:       seed.Name,
-		Country:    seed.Country,
-		PostalCode: seed.PostalCode,
-		Status:     StatusRunning,
-		StartedAt:  startedAt,
-	}
-	if err := s.replaceMarketRecord(seed.Rank, record); err != nil {
-		return err
-	}
-
-	result, err := s.providers.FindProviders(ctx, seed.Country, seed.PostalCode, "en-us")
-	report.ProviderLookups++
-	if err != nil {
-		if ctx.Err() != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return ctx.Err()
-		}
-		report.Errors++
-		record.Status = StatusError
-		record.LastError = err.Error()
-		record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-		return s.replaceMarketRecord(seed.Rank, record)
-	}
-	if result == nil {
-		report.Errors++
-		record.Status = StatusError
-		record.LastError = "provider lookup returned no response"
-		record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-		return s.replaceMarketRecord(seed.Rank, record)
-	}
-
-	providers := uniqueProviders(result.Providers)
-	record.ProviderCount = len(providers)
-	report.ProvidersFound += len(providers)
-	marketErrors := make([]string, 0)
-	for _, provider := range providers {
-		if err := ctx.Err(); err != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return err
-		}
-
-		lineup, isNew, needsScan, err := s.prepareLineup(seed, provider, force)
-		if err != nil {
-			return err
-		}
-		if isNew {
-			record.NewLineups++
-			report.NewLineups++
-		} else if !needsScan {
-			record.ReusedLineups++
-			report.ReusedLineups++
-			continue
-		}
-
-		if err := waitBetween(ctx, *lastGridRequest, s.gridDelay, s.now); err != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return err
-		}
-		*lastGridRequest = s.now()
-		at := utcMidnight(s.now()).Unix()
-		grid, err := s.grids.FetchGrid(ctx, lineupPreferences(lineup), at)
-		record.GridRequests++
-		report.GridRequests++
-		if err != nil {
-			if ctx.Err() != nil {
-				record.Status = StatusPending
-				record.LastError = "Scan stopped before this market completed"
-				if persistErr := s.pendingLineup(lineup.Key); persistErr != nil {
-					return persistErr
-				}
-				if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-					return persistErr
-				}
-				return ctx.Err()
-			}
-			report.Errors++
-			marketErrors = append(marketErrors, provider.Name+": "+err.Error())
-			if updateErr := s.failLineup(lineup.Key, err); updateErr != nil {
-				return updateErr
-			}
-			continue
-		}
-		if grid == nil {
-			err = errors.New("grid lookup returned no response")
-			report.Errors++
-			marketErrors = append(marketErrors, provider.Name+": "+err.Error())
-			if updateErr := s.failLineup(lineup.Key, err); updateErr != nil {
-				return updateErr
-			}
-			continue
-		}
-
-		metrics, err := s.ingestGrid(seed.Rank, lineup.Key, grid, current, owners)
-		if err != nil {
-			return err
-		}
-		record.NewStations += metrics.newStations
-		record.NewAliases += metrics.newCallSignAliases
-		record.CurrentAliases += metrics.currentLineupAliases
-		record.CosmeticVariants += metrics.cosmeticVariants
-		record.Conflicts += metrics.conflicts
-		report.NewStations += metrics.newStations
-		report.NewNamesOnKnownStations += metrics.newNamesOnKnownStations
-		report.NewCallSignAliases += metrics.newCallSignAliases
-		report.NewAffiliateNames += metrics.newAffiliateNames
-		report.CosmeticVariants += metrics.cosmeticVariants
-		report.Conflicts += metrics.conflicts
-		report.CurrentLineupAliases += metrics.currentLineupAliases
-		if err := s.completeLineup(lineup.Key, len(grid.Channels)); err != nil {
-			return err
-		}
-	}
-
-	record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-	if len(marketErrors) > 0 {
-		record.Status = StatusError
-		record.LastError = strings.Join(marketErrors, "; ")
-	} else {
-		record.Status = StatusComplete
-		record.LastError = ""
-	}
-	return s.replaceMarketRecord(seed.Rank, record)
-}
-
 func uniqueProviders(providers []web.Provider) []web.Provider {
 	byLineup := make(map[string]web.Provider)
 	for _, provider := range providers {
@@ -783,15 +478,6 @@ func waitBetween(ctx context.Context, previous time.Time, delay time.Duration, n
 	case <-timer.C:
 		return nil
 	}
-}
-
-func (s *Service) replaceMarketRecord(rank int, record *MarketRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	copy := *record
-	s.index.Markets[strconv.Itoa(rank)] = &copy
-	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
-	return writeIndex(s.path, s.index)
 }
 
 func (s *Service) prepareLineup(seed MarketSeed, provider web.Provider, force bool) (*LineupRecord, bool, bool, error) {

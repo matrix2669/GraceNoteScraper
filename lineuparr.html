@@ -162,28 +162,16 @@
     button.secondary { border: 1px solid var(--line); background: transparent; color: var(--text); }
     button.secondary:hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
     button.danger { color: var(--danger); }
-    .batch-section { margin-top: 24px; }
-    .batch-section h3 { margin: 0 0 11px; font-size: 14px; }
     .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
     table { width: 100%; border-collapse: collapse; font-size: 12px; }
     th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
     th:first-child, td:first-child { text-align: left; }
     th { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
     tr:last-child td { border-bottom: 0; }
-    .market-details { margin: 18px 0 0; }
-    .market-details summary { color: var(--muted); cursor: pointer; font-size: 12px; }
-    .market-list { display: grid; gap: 7px; margin-top: 12px; }
-    .market-row { display: grid; grid-template-columns: 48px minmax(180px,1fr) 72px 96px auto; gap: 10px; align-items: center; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--muted); font-size: 12px; }
-    .market-name { color: var(--text); font-weight: 660; }
     .status-pill { justify-self: start; padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); }
     .status-pill.complete { color: var(--accent); background: rgba(124,230,166,.08); }
     .status-pill.error { color: var(--danger); background: rgba(255,95,87,.08); }
     .status-pill.running { color: var(--warning); }
-    .market-refresh { min-height: 34px; padding: 0 10px; font-size: 11px; }
-    .market-provenance { margin: 14px 2px 0; color: #789087; font-size: 11px; line-height: 1.5; }
-    .advanced-scanner { margin-top: 18px; padding-top: 4px; border-top: 1px solid rgba(43,70,59,.72); }
-    .advanced-scanner > summary { width: 100%; padding: 14px 0 2px; color: var(--muted); font-size: 12px; font-weight: 720; cursor: pointer; }
-    .advanced-scanner-copy { margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 
     .builder-panel { overflow: hidden; }
     .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
@@ -266,8 +254,6 @@
       .channel-card > details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
       .provider-address { grid-template-columns: 1fr; }
-      .market-row { grid-template-columns: 40px 1fr auto; }
-      .market-zip { display: none; }
     }
   </style>
 </head>
@@ -354,35 +340,12 @@
             <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
           </div>
         </div>
-        <details class="advanced-scanner">
-          <summary>Advanced: ranked major-market scanner</summary>
-          <p class="advanced-scanner-copy">Existing ranked scans found one canonical callsign per station and no reusable aliases. This optional scanner remains available for station-coverage audits and future data-source changes.</p>
-          <div class="metric-grid" aria-live="polite">
-            <div class="metric"><div class="metric-value" id="markets-metric">—</div><div class="metric-label">Markets completed</div></div>
-            <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
-            <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
-            <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
-            <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
-          </div>
-          <div class="action-row">
-            <button id="continue-scan" type="button">Scan next 25 markets</button>
-            <button class="secondary danger" id="rebuild-index" type="button">Rebuild index</button>
-          </div>
-          <section class="batch-section">
-            <h3>Marginal yield by batch</h3>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th>Markets</th><th>New lineups</th><th>New stations</th><th>Names on known IDs</th><th>Callsign aliases</th><th>Affiliate names</th><th>Cosmetic only</th><th>Current lineup</th><th>Conflicts</th><th>Errors</th></tr></thead>
-                <tbody id="batch-rows"><tr><td colspan="10">No market batches have run yet.</td></tr></tbody>
-              </table>
-            </div>
-          </section>
-          <details class="market-details">
-            <summary id="market-list-summary">View curated market ZIP list</summary>
-            <div class="market-list" id="market-list"></div>
-          </details>
-          <p class="market-provenance" id="market-provenance"></p>
-        </details>
+        <div class="metric-grid" aria-live="polite">
+          <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups indexed</div></div>
+          <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
+          <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
+          <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
+        </div>
       </div>
     </details>
 
@@ -461,16 +424,13 @@
       includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
       included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
-      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'),
-      marketsMetric: document.getElementById('markets-metric'), lineupsMetric: document.getElementById('lineups-metric'),
+      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'), lineupsMetric: document.getElementById('lineups-metric'),
       stationsMetric: document.getElementById('stations-metric'), aliasesMetric: document.getElementById('aliases-metric'),
       currentAliasesMetric: document.getElementById('current-aliases-metric'), scanStatus: document.getElementById('scan-status'),
       scanProgressCount: document.getElementById('scan-progress-count'), scanProgressBar: document.getElementById('scan-progress-bar'),
-      marketMessage: document.getElementById('market-message'), continueScan: document.getElementById('continue-scan'),
+      marketMessage: document.getElementById('market-message'),
       postalScan: document.getElementById('postal-scan'),
-      stopScan: document.getElementById('stop-scan'), rebuildIndex: document.getElementById('rebuild-index'),
-      batchRows: document.getElementById('batch-rows'), marketList: document.getElementById('market-list'),
-      marketListSummary: document.getElementById('market-list-summary'), marketProvenance: document.getElementById('market-provenance'),
+      stopScan: document.getElementById('stop-scan'),
       aliasLastRefresh: document.getElementById('alias-last-refresh')
     };
 
@@ -575,105 +535,31 @@
       els.marketMessage.className = `alias-message${text ? ' show' : ''}${kind ? ` ${kind}` : ''}`;
     }
 
-    function marketStatusLabel(status) {
-      if (status === 'complete') return 'Complete';
-      if (status === 'running') return 'Scanning';
-      if (status === 'error') return 'Needs retry';
-      return 'Pending';
-    }
-
     function renderAliasIndex(data) {
-      const summary = data.summary;
-      const catalog = data.catalog;
-      const job = data.job;
-      const postalScan = data.postalScan;
-      const completed = summary.completedMarkets || 0;
-      const total = catalog.marketCount || 0;
-      const batchPercent = job.running && job.totalCount ? Math.round(job.completedCount * 100 / job.totalCount) : postalScan?.status === 'complete' ? 100 : 0;
+      const summary = data.summary || {}, job = data.job || {}, postalScan = data.postalScan;
+      const queue = data.queue || {};
 
-      els.marketsMetric.textContent = `${completed} / ${total}`;
       els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
       els.stationsMetric.textContent = (summary.stations || 0).toLocaleString();
       els.aliasesMetric.textContent = (summary.meaningfulAliases || 0).toLocaleString();
-      els.currentAliasesMetric.textContent = summary.currentLineupStations ? (summary.currentLineupAliases || 0).toLocaleString() : '—';
-      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : postalScan?.status === 'complete' ? `${postalScan.lineupsScanned} lineups` : '';
-      els.scanProgressBar.style.width = `${batchPercent}%`;
-      if (postalScan?.completedAt) {
-        const completed = new Date(postalScan.completedAt);
-        const suffix = postalScan.status === 'complete' ? '' : ' · incomplete';
-        els.aliasLastRefresh.textContent = `Last provider refresh: ${Number.isNaN(completed.getTime()) ? postalScan.completedAt : completed.toLocaleString()}${suffix}`;
-      } else if (job.running && job.action === 'postal' && job.startedAt) {
-        const started = new Date(job.startedAt);
-        els.aliasLastRefresh.textContent = `Provider refresh started: ${Number.isNaN(started.getTime()) ? job.startedAt : started.toLocaleString()}`;
-      } else {
-        els.aliasLastRefresh.textContent = 'Last provider refresh: never';
-      }
-
-      if (job.running && job.action === 'postal') {
-        els.scanStatus.textContent = `Scanning ${job.currentProvider || `provider lineups in ${job.currentMarket}`}`;
-      } else if (job.running) {
-        els.scanStatus.textContent = `Scanning #${job.currentRank || '—'} ${job.currentMarket || 'next market'}`;
-      } else if (postalScan?.status === 'complete') {
-        els.scanStatus.textContent = `Provider lineup scan for ZIP ${postalScan.postalCode} complete`;
-      } else {
-        els.scanStatus.textContent = 'Ready to scan provider lineups in the configured ZIP';
-      }
-
-      els.continueScan.disabled = job.running || (completed === total && !summary.errorMarkets);
-      els.continueScan.textContent = completed ? 'Scan next 25 markets' : 'Scan first 25 markets';
-      els.postalScan.disabled = job.running;
-      els.postalScan.textContent = postalScan?.status === 'complete' ? `Refresh providers in ${postalScan.postalCode}` : 'Scan providers in this ZIP';
+      els.currentAliasesMetric.textContent = (summary.currentLineupAliases || 0).toLocaleString();
+      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
+      els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
+      els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
+      els.postalScan.disabled = !!job.running;
+      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
-      els.rebuildIndex.disabled = job.running;
-      if (job.lastError && !job.running) {
-        setMarketMessage(job.lastError, 'error');
-      } else if (!job.running && postalScan?.status === 'complete' && !marketWasRunning) {
-        setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} of ${postalScan.providerCount} provider lineups, ${postalScan.aliases} official aliases, and ${postalScan.categories} official categories captured for exact station-ID reuse.`, 'success');
-      } else if (!job.running && completed > 0 && !summary.meaningfulAliases) {
-        setMarketMessage(`Gracenote returned one canonical callsign per station across ${completed} completed market${completed === 1 ? '' : 's'}, so this index has no cross-lineup aliases yet. More markets may add station coverage; provider guides, exact catalogs, and confirmed M3U names are the useful alternate-name sources.`);
-      } else if (!job.running && !marketWasRunning) {
-        setMarketMessage('');
-      }
-
-      els.batchRows.replaceChildren();
-      const batches = (data.batches || []).slice().reverse().slice(0, 8);
-      if (!batches.length) {
-        const row = document.createElement('tr');
-        const cell = document.createElement('td'); cell.colSpan = 10; cell.textContent = 'No market batches have run yet.';
-        row.append(cell); els.batchRows.append(row);
-      }
-      for (const batch of batches) {
-        const row = document.createElement('tr');
-        for (const value of [batch.fromRank + '–' + batch.toRank, batch.newLineups, batch.newStations, batch.newNamesOnKnownStations, batch.newCallSignAliases, batch.newAffiliateNames, batch.cosmeticVariants, batch.currentLineupAliases, batch.conflicts, batch.errors]) {
-          const cell = document.createElement('td'); cell.textContent = String(value || 0); row.append(cell);
-        }
-        els.batchRows.append(row);
-      }
-
-      els.marketList.replaceChildren();
-      for (const market of data.markets || []) {
-        const row = document.createElement('div'); row.className = 'market-row';
-        const rank = document.createElement('span'); rank.textContent = `#${market.rank}`;
-        const name = document.createElement('span'); name.className = 'market-name'; name.textContent = market.name;
-        const zip = document.createElement('span'); zip.className = 'market-zip'; zip.textContent = market.postalCode;
-        const status = document.createElement('span'); status.className = `status-pill ${market.status}`; status.textContent = marketStatusLabel(market.status);
-        const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'secondary market-refresh'; refresh.textContent = 'Refresh'; refresh.disabled = job.running;
-        refresh.addEventListener('click', () => startAliasScan('refresh', [market.rank]));
-        row.append(rank, name, zip, status, refresh); els.marketList.append(row);
-      }
-      els.marketListSummary.textContent = `View curated market ZIP list (${total})`;
-      els.marketProvenance.textContent = `${catalog.selectionMethod} Ranking snapshot: ${catalog.asOf}.`;
-
-      if (job.running && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
-      if (!job.running && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
-      if (marketWasRunning && !job.running) {
-        if (job.action === 'postal' && postalScan?.status === 'complete') {
-          setMarketMessage(`ZIP ${postalScan.postalCode} scan complete: ${postalScan.lineupsScanned} provider lineups contributed ${postalScan.aliases} official aliases and ${postalScan.categories} official categories.`, 'success');
-        } else if (summary.meaningfulAliases) {
-          setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
-        }
-        reloadDraft().catch(error => showMessage(error.message, true));
-      }
+      const refreshed = postalScan?.completedAt || job.completedAt;
+      const refreshLabel = document.getElementById('alias-last-refresh');
+      if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
+      if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
+      else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
+      else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
+      else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
+      const polling = job.running || queue.queued || queue.guideBusy;
+      if (polling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
+      if (!polling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
+      if (marketWasRunning && !job.running) reloadDraft().catch(error => showMessage(error.message, true));
       marketWasRunning = job.running;
     }
 
@@ -686,15 +572,14 @@
       }
     }
 
-    async function startAliasScan(action, ranks = []) {
-      els.continueScan.disabled = true;
-      els.rebuildIndex.disabled = true;
-      setMarketMessage(action === 'refresh' ? 'Refreshing the selected market…' : action === 'postal' ? 'Finding and scanning every provider lineup in the configured ZIP…' : 'Starting the alias scan…');
+    async function startAliasScan(action) {
+      els.postalScan.disabled = true;
+      setMarketMessage('Finding and scanning provider lineups in the configured ZIP…');
       try {
         await api('/api/lineuparr/alias-index/run', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
-            action, batchSize: action === 'refresh' ? 1 : action === 'postal' ? 0 : 25, ranks,
+            action,
             providerAddress: action === 'postal' ? (selectedProviderAddress || {}) : {}
           })
         });
@@ -958,7 +843,6 @@
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
     els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
     els.sourceEvidenceClose.addEventListener('click', () => els.sourceEvidenceDialog.close());
-    els.continueScan.addEventListener('click', () => startAliasScan('continue'));
     els.postalScan.addEventListener('click', () => startAliasScan('postal'));
     els.stopScan.addEventListener('click', async () => {
       try {
@@ -966,9 +850,6 @@
         setMarketMessage('Stop requested. Completed checkpoints remain saved.');
         await loadAliasIndex();
       } catch (error) { setMarketMessage(error.message, 'error'); }
-    });
-    els.rebuildIndex.addEventListener('click', () => {
-      if (confirm('Rebuild the alias index from the beginning? The current index will be kept as a .bak file.')) startAliasScan('rebuild');
     });
     initCollapsibleSections();
     loadAliasIndex();
