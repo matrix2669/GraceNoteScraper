@@ -301,6 +301,27 @@ func TestDuplicateSuggestionsAreExplicitAndReversible(t *testing.T) {
 	}
 }
 
+func TestBuildCategorizesExplicitPEGAndBroadcastIdentities(t *testing.T) {
+	service := newTestService(t, "", "")
+	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{
+		{Key: "peg", Number: "24", CallSign: "PEG024"},
+		{Key: "pbs", Number: "23", CallSign: "WNJN", Affiliate: "PUBLIC BROADCASTING SERVICE"},
+		{Key: "cable", Number: "46", CallSign: "AETVHD"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"peg", "pbs"} {
+		channel := channelByID(t, draft, id)
+		if channel.Category != "Local & Public" || channel.CategorySource != "gracenote" {
+			t.Fatalf("local channel %s = %+v", id, channel)
+		}
+	}
+	if channel := channelByID(t, draft, "cable"); channel.Category != uncategorized {
+		t.Fatalf("ordinary cable identity was classified = %+v", channel)
+	}
+}
+
 func TestDuplicateSuggestionRecognizesLocalDigitalCallsign(t *testing.T) {
 	catalog := `{"package":"Local test","categories":{"Local":[{"name":"CBS 2 New York","number":502,"aliases":["WCBS","WCBSDT"]}]}}`
 	service := newTestService(t, catalog, "")

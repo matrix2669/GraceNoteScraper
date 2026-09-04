@@ -46,7 +46,7 @@ func TestLineupSnapshotPersistsOnlyReusableIdentityEvidence(t *testing.T) {
 	if err := json.Unmarshal(data, &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.SchemaVersion != CurrentLineupSnapshotVersion || snapshot.CategoryTaxonomyVersion != 1 || len(snapshot.Channels) != 1 {
+	if snapshot.SchemaVersion != CurrentLineupSnapshotVersion || snapshot.CategoryTaxonomyVersion != 2 || len(snapshot.Channels) != 1 {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
 	channel := snapshot.Channels[0]

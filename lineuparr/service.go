@@ -517,6 +517,11 @@ func newChannelWork(input InputChannel) *channelWork {
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
+	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, input.EventCallSigns...); ok {
+		channel.draft.Category = category.Category
+		channel.draft.CategorySource = "gracenote"
+		channel.draft.CategoryMethod = category.Method
+	}
 	channel.addAlias(input.CallSign, "gracenote", "channel callsign")
 	channel.addAlias(input.StationID, "gracenote", "station ID")
 	channel.addAlias(input.PlacementID, "gracenote", "lineup position ID")

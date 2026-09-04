@@ -101,6 +101,37 @@ func newServiceWithOptions(client *http.Client, options Options) *Service {
 	return &Service{httpClient: client, catalog: sources}
 }
 
+// OfficialSourceID returns the runtime official-source identifier used for a
+// provider. It lets selected-lineup consumers distinguish that provider's own
+// exact evidence from category facts copied through competing lineups.
+func OfficialSourceID(providerName string) string {
+	providerName = strings.ToLower(strings.TrimSpace(providerName))
+	switch {
+	case strings.Contains(providerName, "broadstar") || strings.Contains(providerName, "broadstream"):
+		return "broadstar-official-lineup"
+	case strings.Contains(providerName, "verizon") || strings.Contains(providerName, "fios"):
+		return "verizon-fios-official-lineup"
+	case strings.Contains(providerName, "optimum") || strings.Contains(providerName, "cablevision"):
+		return "optimum-official-lineup"
+	case strings.Contains(providerName, "directv"):
+		return "directv-official-lineup"
+	case strings.Contains(providerName, "dish"):
+		return "dish-official-lineup"
+	case strings.Contains(providerName, "armed forces") || strings.Contains(providerName, "afn"):
+		return "afn-official-guide"
+	case strings.Contains(providerName, "glorystar"):
+		return "glorystar-official-lineup"
+	case strings.Contains(providerName, "u-verse") || strings.Contains(providerName, "uverse") || strings.Contains(providerName, "at&t"):
+		return "att-uverse-official-lineup"
+	case strings.Contains(providerName, "xfinity") || strings.Contains(providerName, "comcast"):
+		return "xfinity-official-lineup"
+	case strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner"):
+		return "spectrum-official-lineup"
+	default:
+		return ""
+	}
+}
+
 func (s *Service) FetchProviderEvidence(ctx context.Context, request marketindex.ProviderEvidenceRequest) (marketindex.ProviderEvidenceResult, error) {
 	providerName := strings.ToLower(strings.TrimSpace(request.Provider.Name))
 	if providerName == "" || request.Grid == nil {

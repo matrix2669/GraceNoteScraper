@@ -3,6 +3,7 @@ package marketindex
 import (
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
@@ -159,6 +160,17 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 // official sources. Conflicting provider classifications remain visible in the
 // persisted evidence but are not applied automatically.
 func (s *Service) CategoriesForStations(stationIDs []string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, "")
+}
+
+// CategoriesForStationsWithPreferredSource prefers one unambiguous category
+// from the selected provider's own official source. If that source has no
+// category evidence for a station, all other official sources must still agree.
+func (s *Service) CategoriesForStationsWithPreferredSource(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, strings.TrimSpace(preferredSourceID))
+}
+
+func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := make(map[string]CategoryCandidate)
@@ -172,12 +184,28 @@ func (s *Service) CategoriesForStations(stationIDs []string) map[string]Category
 		if station == nil {
 			continue
 		}
-		byCategory := make(map[string][]StationFact)
+		allCategories := make(map[string][]StationFact)
+		preferredCategories := make(map[string][]StationFact)
+		identities := make([]string, 0, len(station.Names))
+		for _, name := range station.Names {
+			identities = append(identities, name.Value)
+		}
 		for _, fact := range station.Facts {
 			if fact.Kind != FactCategory {
 				continue
 			}
-			match, ok := channelcategory.Resolve(fact.Value)
+			categoryValue := fact.Value
+			if strings.TrimSpace(fact.RawValue) != "" {
+				if remapped, ok := channelcategory.Resolve(fact.RawValue, identities...); ok {
+					categoryValue = remapped.Category
+				} else if !strings.EqualFold(strings.TrimSpace(fact.RawValue), strings.TrimSpace(fact.Value)) {
+					// The raw provider label no longer maps to the canonical value.
+					// This primarily protects existing indexes from broad headings
+					// such as Optimum's "Networks" that were mapped too eagerly.
+					continue
+				}
+			}
+			match, ok := channelcategory.Resolve(categoryValue)
 			if !ok {
 				continue
 			}
@@ -186,7 +214,14 @@ func (s *Service) CategoriesForStations(stationIDs []string) map[string]Category
 			if match.Method != channelcategory.MethodCanonical {
 				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
 			}
-			byCategory[fact.Normalized] = append(byCategory[fact.Normalized], fact)
+			allCategories[fact.Normalized] = append(allCategories[fact.Normalized], fact)
+			if preferredSourceID != "" && fact.SourceID == preferredSourceID {
+				preferredCategories[fact.Normalized] = append(preferredCategories[fact.Normalized], fact)
+			}
+		}
+		byCategory := allCategories
+		if len(preferredCategories) > 0 {
+			byCategory = preferredCategories
 		}
 		if len(byCategory) != 1 {
 			continue

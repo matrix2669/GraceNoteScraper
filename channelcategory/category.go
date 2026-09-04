@@ -9,7 +9,7 @@ import (
 	"unicode"
 )
 
-const CurrentVersion = 1
+const CurrentVersion = 2
 
 const (
 	LocalPublic   = "Local & Public"
@@ -70,7 +70,7 @@ var definitions = []definition{
 		"movies and premium", "movie channels",
 	}},
 	{name: Entertainment, aliases: []string{
-		"general entertainment", "general", "generalistas", "network", "networks", "network channels", "classic", "series", "comedy", "crime",
+		"general entertainment", "general", "generalistas", "classic", "series", "comedy", "crime",
 		"discovery", "documentary", "documentaries", "documentales", "science", "culture", "education",
 		"reality", "reality lifestyle", "reality and lifestyle", "reality game shows", "reality and game shows",
 		"food", "travel", "food travel", "food and travel", "cooking", "shopping", "shop",
@@ -189,6 +189,17 @@ func resolveOne(value string, identities ...string) (Match, bool) {
 	if normalized == "" {
 		return Match{}, false
 	}
+	if isGenericNetworkGroup(normalized) {
+		if match, ok := inferLocalPublic(identities); ok {
+			match.MatchedAlias = strings.TrimSpace(value)
+			match.Method = MethodAlias + "; broad provider network group disambiguated by explicit local/public identity"
+			return match, true
+		}
+		// Provider headings such as Optimum's "Networks" combine local
+		// stations with unrelated cable networks. They are useful grouping
+		// labels, but are not category evidence on their own.
+		return Match{}, false
+	}
 	if isMixedAdultPPV(normalized) {
 		if hasEventIdentity(identities) {
 			return Match{Category: PPVEvents, MatchedAlias: strings.TrimSpace(value), Method: MethodAlias + "; mixed Adult/PPV label disambiguated by explicit event identity", Confidence: 1}, true
@@ -242,6 +253,140 @@ func resolveOne(value string, identities ...string) (Match, bool) {
 		return Match{}, false
 	}
 	return ranked[0], true
+}
+
+// ResolveIdentity maps only channel identities that carry direct, auditable
+// category meaning. It deliberately avoids classifying ordinary network names.
+func ResolveIdentity(callSign, affiliate string, identities ...string) (Match, bool) {
+	values := append([]string{callSign, affiliate}, identities...)
+	for _, identity := range values {
+		key := strings.ToUpper(compact(identity))
+		if isPEGIdentity(key) || isPublicIdentity(key) {
+			return Match{Category: LocalPublic, MatchedAlias: strings.TrimSpace(identity), Method: "explicit public/PEG channel identity", Confidence: 1}, true
+		}
+	}
+	key := strings.ToUpper(compact(callSign))
+	if isQualifiedBroadcastCallSign(key) || (strings.TrimSpace(affiliate) != "" && isBroadcastCallSign(key)) {
+		return Match{Category: LocalPublic, MatchedAlias: strings.TrimSpace(callSign), Method: "explicit broadcast callsign and affiliate identity", Confidence: 1}, true
+	}
+	return Match{}, false
+}
+
+func inferLocalPublic(identities []string) (Match, bool) {
+	for _, identity := range identities {
+		key := strings.ToUpper(compact(identity))
+		if isPEGIdentity(key) || isPublicIdentity(key) {
+			return Match{Category: LocalPublic, MatchedAlias: strings.TrimSpace(identity), Method: "explicit public/PEG channel identity", Confidence: 1}, true
+		}
+	}
+
+	hasAffiliate := false
+	for _, identity := range identities {
+		key := strings.ToUpper(compact(identity))
+		if isBroadcastAffiliateIdentity(key) {
+			hasAffiliate = true
+		}
+	}
+	for _, identity := range identities {
+		key := strings.ToUpper(compact(identity))
+		if isQualifiedBroadcastCallSign(key) || (hasAffiliate && isBroadcastCallSign(key)) {
+			return Match{Category: LocalPublic, MatchedAlias: strings.TrimSpace(identity), Method: "explicit broadcast callsign and affiliate identity", Confidence: 1}, true
+		}
+	}
+	return Match{}, false
+}
+
+func isBroadcastAffiliateIdentity(value string) bool {
+	switch value {
+	case "ABC", "AMERICANBROADCASTINGCOMPANY",
+		"CBS", "CBSTELEVISIONNETWORK",
+		"NBC", "NATIONALBROADCASTINGCOMPANY",
+		"FOX", "FOXENTERTAINMENT",
+		"CW", "THECWTELEVISIONNETWORK",
+		"MYNETWORKTV", "IONINDEPENDENTTELEVISION",
+		"TELEMUNDO", "UNIVISION", "UNIMAS", "ESTRELLATV", "INDEPENDENT":
+		return true
+	default:
+		return false
+	}
+}
+
+func isGenericNetworkGroup(value string) bool {
+	switch value {
+	case "network", "networks", "network channel", "network channels":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPEGIdentity(value string) bool {
+	if !strings.HasPrefix(value, "PEG") || len(value) == 3 {
+		return false
+	}
+	for _, character := range value[3:] {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isPublicIdentity(value string) bool {
+	for _, marker := range []string{
+		"PUBLICBROADCASTINGSERVICE", "PUBLICACCESS", "COMMUNITYACCESS", "GOVERNMENTACCESS",
+		"EDUCATIONALACCESS", "PUBLICEDUCATIONALGOVERNMENTACCESS",
+	} {
+		if strings.Contains(value, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func isQualifiedBroadcastCallSign(value string) bool {
+	base, qualified := broadcastCallSignBase(value)
+	return qualified && validBroadcastCallSignBase(base)
+}
+
+func isBroadcastCallSign(value string) bool {
+	base, _ := broadcastCallSignBase(value)
+	return validBroadcastCallSignBase(base)
+}
+
+func broadcastCallSignBase(value string) (string, bool) {
+	value = strings.ToUpper(strings.TrimSpace(value))
+	for _, suffix := range []string{"HD", "SD"} {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix)
+			break
+		}
+	}
+	qualified := false
+	if len(value) > 0 && value[len(value)-1] >= '2' && value[len(value)-1] <= '9' {
+		value = value[:len(value)-1]
+		qualified = true
+	}
+	for _, suffix := range []string{"DT", "TV", "CA", "LP", "LD", "CD"} {
+		if strings.HasSuffix(value, suffix) {
+			value = strings.TrimSuffix(value, suffix)
+			qualified = true
+			break
+		}
+	}
+	return value, qualified
+}
+
+func validBroadcastCallSignBase(value string) bool {
+	if len(value) != 4 || (value[0] != 'K' && value[0] != 'W') {
+		return false
+	}
+	for _, character := range value[1:] {
+		if character < 'A' || character > 'Z' {
+			return false
+		}
+	}
+	return true
 }
 
 func categoryParts(value string) []string {
