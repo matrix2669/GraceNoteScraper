@@ -1,0 +1,2613 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "id": "prismcast-network-catalog",
+    "label": "PrismCast network catalog",
+    "url": "https://github.com/hjdhjd/prismcast",
+    "license": "ISC",
+    "commit": "0aed952e80ec6a1bd997a7cb16a3abe256bf253c",
+    "method": "exact Gracenote station ID from the maintained PrismCast channel registry"
+  },
+  "channels": [
+    {
+      "stationId": "14765",
+      "name": "Starz Encore Westerns",
+      "aliases": [
+        "STARZ Encore Westerns (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencorewesterns"
+    },
+    {
+      "stationId": "14886",
+      "name": "Starz Encore Family",
+      "aliases": [
+        "STARZ Encore Family (East)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids",
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencorefamily"
+    },
+    {
+      "stationId": "19548",
+      "name": "HBO",
+      "aliases": [
+        "HBO East"
+      ],
+      "category": "Movies",
+      "tags": [
+        "HBO",
+        "Movies"
+      ],
+      "url": "https://play.hbomax.com",
+      "key": "hbo"
+    },
+    {
+      "stationId": "26849",
+      "name": "CNBC World",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "cnbcworld"
+    },
+    {
+      "stationId": "28506",
+      "name": "AXS TV",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Entertainment",
+        "Sports"
+      ],
+      "url": "",
+      "key": "axstv"
+    },
+    {
+      "stationId": "30415",
+      "name": "PBS Chicago (WTTW)",
+      "aliases": [
+        "PBS"
+      ],
+      "category": "Local",
+      "tags": [
+        "Local"
+      ],
+      "url": "https://www.wttw.com/wttw-live-stream",
+      "key": "pbschicago"
+    },
+    {
+      "stationId": "31046",
+      "name": "Discovery Turbo",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/motortrend",
+      "key": "discoveryturbo"
+    },
+    {
+      "stationId": "32571",
+      "name": "NBC Sports Philadelphia",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.nbc.com/live?brand=rsn-philadelphia&callsign=nbcsphiladelphia",
+      "key": "nbcsphiladelphia"
+    },
+    {
+      "stationId": "32645",
+      "name": "ESPN",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=espn",
+      "key": "espn"
+    },
+    {
+      "stationId": "34941",
+      "name": "Starz",
+      "aliases": [
+        "STARZ",
+        "STARZ (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "https://www.starz.com/us/en/play/2",
+      "key": "starz"
+    },
+    {
+      "stationId": "34949",
+      "name": "Starz (Pacific)",
+      "aliases": [
+        "STARZ (West)",
+        "Starz West"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzp"
+    },
+    {
+      "stationId": "35383",
+      "name": "MSG Sportsnet",
+      "aliases": [
+        "MSG Sportsnet HD 635"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "msgsn"
+    },
+    {
+      "stationId": "35402",
+      "name": "MSG",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "msg"
+    },
+    {
+      "stationId": "36225",
+      "name": "Starz Encore",
+      "aliases": [
+        "STARZ Encore (East)",
+        "STZEH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencore"
+    },
+    {
+      "stationId": "42642",
+      "name": "TNT",
+      "aliases": [
+        "TNT (East)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.tntdrama.com/watchtnt/east",
+      "key": "tnt"
+    },
+    {
+      "stationId": "45399",
+      "name": "NFL Network",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "nfl"
+    },
+    {
+      "stationId": "45507",
+      "name": "ESPN2",
+      "aliases": [
+        "ES2HD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=espn2",
+      "key": "espn2"
+    },
+    {
+      "stationId": "45526",
+      "name": "NBA TV",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.nba.com/watch/nba-tv",
+      "key": "nba"
+    },
+    {
+      "stationId": "45540",
+      "name": "NBC Sports California",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.nbc.com/live?brand=rsn-california&callsign=nbcscalifornia",
+      "key": "nbcscalifornia"
+    },
+    {
+      "stationId": "46710",
+      "name": "Hallmark Mystery",
+      "aliases": [
+        "HMYS"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "hallmarkmystery"
+    },
+    {
+      "stationId": "49198",
+      "name": "NBC Sports Boston",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.nbc.com/live?brand=rsn-boston&callsign=nbcsboston",
+      "key": "nbcsboston"
+    },
+    {
+      "stationId": "49237",
+      "name": "PBS Lakeshore (WYIN)",
+      "aliases": [
+        "Lakeshore PBS"
+      ],
+      "category": "Local",
+      "tags": [
+        "Local"
+      ],
+      "url": "https://video.lakeshorepbs.org/livestream",
+      "key": "pbslakeshore"
+    },
+    {
+      "stationId": "49438",
+      "name": "National Geographic",
+      "aliases": [
+        "Nat Geo",
+        "National Geographic Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://www.nationalgeographic.com/tv/watch-live/0826a9a3-3384-4bb5-8841-91f01cb0e3a7",
+      "key": "natgeo"
+    },
+    {
+      "stationId": "49788",
+      "name": "HGTV",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/hgtv",
+      "key": "hgtv"
+    },
+    {
+      "stationId": "50038",
+      "name": "SportsNet New York",
+      "aliases": [
+        "SportsNet New York HD 639"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "sny"
+    },
+    {
+      "stationId": "50747",
+      "name": "Food Network",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/food-network",
+      "key": "food"
+    },
+    {
+      "stationId": "51529",
+      "name": "A&E",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary",
+        "Entertainment"
+      ],
+      "url": "https://play.aetv.com/live",
+      "key": "ae"
+    },
+    {
+      "stationId": "55887",
+      "name": "Lifetime Movie Network",
+      "aliases": [
+        "Lifetime Movies",
+        "LMN"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "lmn"
+    },
+    {
+      "stationId": "56905",
+      "name": "Discovery",
+      "aliases": [
+        "Discovery Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/discovery",
+      "key": "discovery"
+    },
+    {
+      "stationId": "57390",
+      "name": "Science",
+      "aliases": [
+        "Science Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/science",
+      "key": "science"
+    },
+    {
+      "stationId": "57391",
+      "name": "TLC",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/tlc",
+      "key": "tlc"
+    },
+    {
+      "stationId": "57394",
+      "name": "Animal Planet",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/animal-planet",
+      "key": "animal"
+    },
+    {
+      "stationId": "57439",
+      "name": "A&E",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary",
+        "Entertainment"
+      ],
+      "url": "https://play.aetv.com/live",
+      "key": "ae"
+    },
+    {
+      "stationId": "57569",
+      "name": "Starz Comedy",
+      "aliases": [
+        "STARZ Comedy (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzcomedy"
+    },
+    {
+      "stationId": "57573",
+      "name": "Starz Edge",
+      "aliases": [
+        "STARZ Edge (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzedge"
+    },
+    {
+      "stationId": "57575",
+      "name": "Starz Comedy (Pacific)",
+      "aliases": [
+        "STARZ Comedy (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzcomedyp"
+    },
+    {
+      "stationId": "57578",
+      "name": "Starz Edge (Pacific)",
+      "aliases": [
+        "STARZ Edge (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzedgep"
+    },
+    {
+      "stationId": "57581",
+      "name": "Starz Kids",
+      "aliases": [
+        "STARZ Kids (East)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzkids"
+    },
+    {
+      "stationId": "57583",
+      "name": "Starz Kids (Pacific)",
+      "aliases": [
+        "STARZ Kids (West)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzkidsp"
+    },
+    {
+      "stationId": "57708",
+      "name": "History",
+      "aliases": [
+        "HISTORY",
+        "The HISTORY Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://play.history.com/live",
+      "key": "history"
+    },
+    {
+      "stationId": "58321",
+      "name": "Big 10",
+      "aliases": [
+        "Big Ten",
+        "Big Ten Network",
+        "BTN"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.foxsports.com/live/btn",
+      "key": "bigten"
+    },
+    {
+      "stationId": "58452",
+      "name": "USA Network",
+      "aliases": [
+        "USA"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "usa"
+    },
+    {
+      "stationId": "58515",
+      "name": "TBS",
+      "aliases": [
+        "TBS (East)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.tbs.com/watchtbs/east",
+      "key": "tbs"
+    },
+    {
+      "stationId": "58532",
+      "name": "Smithsonian Channel",
+      "aliases": [
+        "Smithsonian",
+        "Smithsonian Channel HD"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "",
+      "key": "smithsonian"
+    },
+    {
+      "stationId": "58574",
+      "name": "FX",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://abc.com/watch-live/93256af4-5e80-4558-aa2e-2bdfffa119a0",
+      "key": "fx"
+    },
+    {
+      "stationId": "58623",
+      "name": "Syfy",
+      "aliases": [
+        "SYFY"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "syfy"
+    },
+    {
+      "stationId": "58625",
+      "name": "Bravo",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.nbc.com/live?brand=bravo&callsign=bravo_east",
+      "key": "bravo"
+    },
+    {
+      "stationId": "58646",
+      "name": "CNN",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.cnn.com/videos/cnn",
+      "key": "cnn"
+    },
+    {
+      "stationId": "58685",
+      "name": "France 24 (French)",
+      "aliases": [
+        "France 24"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.france24.com/fr/direct",
+      "key": "france24fr"
+    },
+    {
+      "stationId": "58690",
+      "name": "NHL Network",
+      "aliases": [
+        "NHL Network HD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "nhl"
+    },
+    {
+      "stationId": "58718",
+      "name": "Fox Business",
+      "aliases": [
+        "FBN",
+        "Fox Business Network"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.foxbusiness.com/video/5640669329001",
+      "key": "fbc"
+    },
+    {
+      "stationId": "58780",
+      "name": "CNBC",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.cnbc.com/live-tv",
+      "key": "cnbc"
+    },
+    {
+      "stationId": "58812",
+      "name": "The Weather Channel",
+      "aliases": [
+        "The Weather Channel HD",
+        "Weather Channel"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "weather"
+    },
+    {
+      "stationId": "58988",
+      "name": "FYI",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://play.fyi.tv/live",
+      "key": "fyi"
+    },
+    {
+      "stationId": "59186",
+      "name": "Paramount Network",
+      "aliases": [
+        "Paramount"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "paramount"
+    },
+    {
+      "stationId": "59250",
+      "name": "CBS Sports Network",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "cbssports"
+    },
+    {
+      "stationId": "59296",
+      "name": "WE tv",
+      "aliases": [
+        "WE TV"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "wetv"
+    },
+    {
+      "stationId": "59303",
+      "name": "Travel",
+      "aliases": [
+        "Travel Channel"
+      ],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/travel-channel",
+      "key": "travel"
+    },
+    {
+      "stationId": "59305",
+      "name": "FS2",
+      "aliases": [
+        "Fox Sports 2",
+        "FOX Sports 2"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.foxsports.com/live/fs2",
+      "key": "fs2"
+    },
+    {
+      "stationId": "59337",
+      "name": "AMC",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "amc"
+    },
+    {
+      "stationId": "59363",
+      "name": "HBO Drama",
+      "aliases": [
+        "HBO Drama East",
+        "HBOSH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "HBO",
+        "Movies"
+      ],
+      "url": "https://play.hbomax.com",
+      "key": "hbodrama"
+    },
+    {
+      "stationId": "59368",
+      "name": "HBO Hits",
+      "aliases": [
+        "HBO Hits East",
+        "HBO2H"
+      ],
+      "category": "Movies",
+      "tags": [
+        "HBO",
+        "Movies"
+      ],
+      "url": "https://play.hbomax.com",
+      "key": "hbohits"
+    },
+    {
+      "stationId": "59440",
+      "name": "CMT",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "cmt"
+    },
+    {
+      "stationId": "59444",
+      "name": "IFC",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "ifc"
+    },
+    {
+      "stationId": "59615",
+      "name": "Freeform",
+      "aliases": [
+        "Freeform HD"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.freeform.com/watch-live/885c669e-fa9a-4039-b42e-6c85c90cc86d",
+      "key": "freeform"
+    },
+    {
+      "stationId": "59684",
+      "name": "Disney",
+      "aliases": [
+        "Disney Channel"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=004",
+      "key": "disney"
+    },
+    {
+      "stationId": "59814",
+      "name": "FX (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://abc.com/watch-live/2cee3401-f63b-42d0-b32e-962fef610b9e",
+      "key": "fxp"
+    },
+    {
+      "stationId": "59839",
+      "name": "HBO Comedy",
+      "aliases": [
+        "HBO Comedy East",
+        "HBOCH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "HBO",
+        "Movies"
+      ],
+      "url": "https://play.hbomax.com",
+      "key": "hbocomedy"
+    },
+    {
+      "stationId": "59845",
+      "name": "HBO Movies",
+      "aliases": [
+        "HBO Movies East",
+        "HBOZH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "HBO",
+        "Movies"
+      ],
+      "url": "https://play.hbomax.com",
+      "key": "hbomovies"
+    },
+    {
+      "stationId": "59976",
+      "name": "ESPNews",
+      "aliases": [
+        "ESPNEWS",
+        "ESWHD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=espnews",
+      "key": "espnews"
+    },
+    {
+      "stationId": "60006",
+      "name": "Disney XD",
+      "aliases": [],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=009",
+      "key": "disneyxd"
+    },
+    {
+      "stationId": "60046",
+      "name": "VH1",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.vh1.com/live-tv",
+      "key": "vh1"
+    },
+    {
+      "stationId": "60048",
+      "name": "Cartoon Network",
+      "aliases": [
+        "Cartoon Network (East)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "",
+      "key": "cartoon"
+    },
+    {
+      "stationId": "60150",
+      "name": "Lifetime",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://play.mylifetime.com/live",
+      "key": "lifetime"
+    },
+    {
+      "stationId": "60179",
+      "name": "Fox News",
+      "aliases": [
+        "FNC",
+        "Fox News Channel"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.foxnews.com/video/5614615980001",
+      "key": "fnc"
+    },
+    {
+      "stationId": "60250",
+      "name": "Lifetime",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://play.mylifetime.com/live",
+      "key": "lifetime"
+    },
+    {
+      "stationId": "60316",
+      "name": "Tennis Channel",
+      "aliases": [
+        "Tennis Channel HD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "tennis"
+    },
+    {
+      "stationId": "60468",
+      "name": "Destination America",
+      "aliases": [
+        "Destination America HD"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/destination-america",
+      "key": "destinationamerica"
+    },
+    {
+      "stationId": "60696",
+      "name": "ESPNU",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=espnu",
+      "key": "espnu"
+    },
+    {
+      "stationId": "60961",
+      "name": "France 24",
+      "aliases": [
+        "France 24 (English)"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.france24.com/en/live",
+      "key": "france24"
+    },
+    {
+      "stationId": "60964",
+      "name": "MTV",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "mtv"
+    },
+    {
+      "stationId": "61340",
+      "name": "TNT (Pacific)",
+      "aliases": [
+        "TNT (West)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.tntdrama.com/watchtnt/west",
+      "key": "tntp"
+    },
+    {
+      "stationId": "61812",
+      "name": "E!",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "e"
+    },
+    {
+      "stationId": "61854",
+      "name": "Golf",
+      "aliases": [
+        "gc",
+        "Golf Channel"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.golfchannel.com/watch/live",
+      "key": "golf"
+    },
+    {
+      "stationId": "62081",
+      "name": "MLB Network",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "mlb"
+    },
+    {
+      "stationId": "62420",
+      "name": "Comedy Central",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "comedycentral"
+    },
+    {
+      "stationId": "63138",
+      "name": "NBC Sports Bay Area",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.nbc.com/live?brand=rsn-bay-area&callsign=nbcsbayarea",
+      "key": "nbcsbayarea"
+    },
+    {
+      "stationId": "63220",
+      "name": "BET Her",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "bether"
+    },
+    {
+      "stationId": "63236",
+      "name": "BET",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.bet.com/live-tv",
+      "key": "bet"
+    },
+    {
+      "stationId": "63320",
+      "name": "Disney",
+      "aliases": [
+        "Disney Channel"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=004",
+      "key": "disney"
+    },
+    {
+      "stationId": "63322",
+      "name": "Disney XD",
+      "aliases": [],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=009",
+      "key": "disneyxd"
+    },
+    {
+      "stationId": "63324",
+      "name": "Freeform (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.freeform.com/watch-live/3507c750-e86a-4c0f-8ff4-dd23c4859009",
+      "key": "freeformp"
+    },
+    {
+      "stationId": "63558",
+      "name": "YES Network",
+      "aliases": [
+        "Yes Network HD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "yes"
+    },
+    {
+      "stationId": "64241",
+      "name": "MS NOW",
+      "aliases": [
+        "MS Now"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.ms.now/live",
+      "key": "msnow"
+    },
+    {
+      "stationId": "64312",
+      "name": "TCM (Pacific)",
+      "aliases": [
+        "TCM (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "",
+      "key": "tcmp"
+    },
+    {
+      "stationId": "64490",
+      "name": "truTV",
+      "aliases": [
+        "truTV (East)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.trutv.com/watchtrutv/east",
+      "key": "trutv"
+    },
+    {
+      "stationId": "64492",
+      "name": "BBC America",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "bbcamerica"
+    },
+    {
+      "stationId": "64525",
+      "name": "Travel",
+      "aliases": [
+        "Travel Channel"
+      ],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/travel-channel",
+      "key": "travel"
+    },
+    {
+      "stationId": "64549",
+      "name": "HLN",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.cnn.com/videos/hln",
+      "key": "hln"
+    },
+    {
+      "stationId": "64593",
+      "name": "Paramount (Pacific)",
+      "aliases": [
+        "Paramount Network"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "paramountp"
+    },
+    {
+      "stationId": "64599",
+      "name": "Comedy Central",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "comedycentral"
+    },
+    {
+      "stationId": "64610",
+      "name": "CMT",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "cmt"
+    },
+    {
+      "stationId": "64630",
+      "name": "MTV",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "mtv"
+    },
+    {
+      "stationId": "64634",
+      "name": "VH1",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.vh1.com/live-tv",
+      "key": "vh1"
+    },
+    {
+      "stationId": "64673",
+      "name": "BET",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.bet.com/live-tv",
+      "key": "bet"
+    },
+    {
+      "stationId": "65342",
+      "name": "Investigation Discovery",
+      "aliases": [
+        "ID"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/investigation-discovery",
+      "key": "id"
+    },
+    {
+      "stationId": "65626",
+      "name": "Syfy (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "syfyp"
+    },
+    {
+      "stationId": "65687",
+      "name": "MGM+",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "",
+      "key": "mgmplus"
+    },
+    {
+      "stationId": "65717",
+      "name": "truTV (Pacific)",
+      "aliases": [
+        "truTV (West)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "trutvp"
+    },
+    {
+      "stationId": "65732",
+      "name": "Vice",
+      "aliases": [
+        "VICE"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "vice"
+    },
+    {
+      "stationId": "65791",
+      "name": "RetroPlex",
+      "aliases": [
+        "RetroPlex (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "retroplex"
+    },
+    {
+      "stationId": "65793",
+      "name": "RetroPlex (Pacific)",
+      "aliases": [
+        "RetroPlex (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "retroplexp"
+    },
+    {
+      "stationId": "65795",
+      "name": "IndiePlex",
+      "aliases": [
+        "IndiePlex (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "indieplex"
+    },
+    {
+      "stationId": "65796",
+      "name": "IndiePlex (Pacific)",
+      "aliases": [
+        "IndiePlex (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "indieplexp"
+    },
+    {
+      "stationId": "66268",
+      "name": "Hallmark",
+      "aliases": [
+        "Hallmark Channel"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "hallmark"
+    },
+    {
+      "stationId": "66278",
+      "name": "NECN",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.nbc.com/live?brand=necn&callsign=necn",
+      "key": "necn"
+    },
+    {
+      "stationId": "66379",
+      "name": "FXX",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://abc.com/watch-live/49f4a471-8d36-4728-8457-ea65cbbc84ea",
+      "key": "fxx"
+    },
+    {
+      "stationId": "66412",
+      "name": "Hallmark Mystery",
+      "aliases": [
+        "HMYS"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "hallmarkmystery"
+    },
+    {
+      "stationId": "66415",
+      "name": "Hallmark",
+      "aliases": [
+        "Hallmark Channel"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "hallmark"
+    },
+    {
+      "stationId": "66879",
+      "name": "Fox Soccer Plus",
+      "aliases": [
+        "FOX Soccer Plus"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.foxsports.com/live/fsp",
+      "key": "foxsoccerplus"
+    },
+    {
+      "stationId": "67235",
+      "name": "Starz in Black",
+      "aliases": [
+        "STARZ in Black (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzinblack"
+    },
+    {
+      "stationId": "67236",
+      "name": "Starz Cinema",
+      "aliases": [
+        "STARZ Cinema (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzcinema"
+    },
+    {
+      "stationId": "67237",
+      "name": "Starz Encore (Pacific)",
+      "aliases": [
+        "STARZ Encore (West)",
+        "Starz Encore West"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencorep"
+    },
+    {
+      "stationId": "67331",
+      "name": "Nat Geo Wild",
+      "aliases": [
+        "Nat Geo WILD",
+        "NatGeo Wild",
+        "National Geographic WILD"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://www.nationalgeographic.com/tv/watch-live/239b9590-583f-4955-a499-22e9eefff9cf",
+      "key": "natgeowild"
+    },
+    {
+      "stationId": "67365",
+      "name": "Starz Cinema (Pacific)",
+      "aliases": [
+        "STARZ Cinema (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzcinemap"
+    },
+    {
+      "stationId": "67367",
+      "name": "Starz in Black (Pacific)",
+      "aliases": [
+        "STARZ in Black (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzinblackp"
+    },
+    {
+      "stationId": "67375",
+      "name": "Magnolia Network",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/magnolia-network-preview-atve-us",
+      "key": "magnolia"
+    },
+    {
+      "stationId": "67703",
+      "name": "Cartoon Network (Pacific)",
+      "aliases": [
+        "Cartoon Network (West)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "",
+      "key": "cartoonp"
+    },
+    {
+      "stationId": "67890",
+      "name": "TBS (Pacific)",
+      "aliases": [
+        "TBS (West)"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.tbs.com/watchtbs/west",
+      "key": "tbsp"
+    },
+    {
+      "stationId": "68065",
+      "name": "Cooking",
+      "aliases": [
+        "Cooking Channel"
+      ],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/cooking-channel",
+      "key": "cooking"
+    },
+    {
+      "stationId": "68332",
+      "name": "C-SPAN 3",
+      "aliases": [
+        "C-SPAN3",
+        "CPN3H"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.c-span.org/networks/?autoplay=true&channel=c-span-3",
+      "key": "cspan3"
+    },
+    {
+      "stationId": "68334",
+      "name": "C-SPAN 2",
+      "aliases": [
+        "C-SPAN2",
+        "CPN2D"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.c-span.org/networks/?autoplay=true&channel=c-span-2",
+      "key": "cspan2"
+    },
+    {
+      "stationId": "68344",
+      "name": "C-SPAN",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.c-span.org/networks/?autoplay=true&channel=c-span",
+      "key": "cspan"
+    },
+    {
+      "stationId": "68785",
+      "name": "Animal Planet",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/animal-planet",
+      "key": "animal"
+    },
+    {
+      "stationId": "68827",
+      "name": "Game Show Network",
+      "aliases": [
+        "GSN HD"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "gameshow"
+    },
+    {
+      "stationId": "70253",
+      "name": "FXM",
+      "aliases": [
+        "FX Movie Channel"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "https://abc.com/watch-live/d298ab7e-c6b1-4efa-ac6e-a52dceed92ee",
+      "key": "fxm"
+    },
+    {
+      "stationId": "70388",
+      "name": "OWN",
+      "aliases": [
+        "Oprah Winfrey Network"
+      ],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/own",
+      "key": "own"
+    },
+    {
+      "stationId": "70522",
+      "name": "Oxygen",
+      "aliases": [
+        "Oxygen True Crime"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "oxygen"
+    },
+    {
+      "stationId": "71280",
+      "name": "SundanceTV",
+      "aliases": [
+        "Sundance TV"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "",
+      "key": "sundancetv"
+    },
+    {
+      "stationId": "71601",
+      "name": "National Geographic (Pacific)",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://www.nationalgeographic.com/tv/watch-live/91456580-f32f-417c-8e1a-9f82640832a7",
+      "key": "natgeop"
+    },
+    {
+      "stationId": "71799",
+      "name": "Bloomberg Television",
+      "aliases": [
+        "Bloomberg",
+        "Bloomberg TV",
+        "Bloomberg TV+"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "bloomberg"
+    },
+    {
+      "stationId": "71914",
+      "name": "ESPN Deportes",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=espndeportes",
+      "key": "espndeportes"
+    },
+    {
+      "stationId": "72014",
+      "name": "Starz Encore Black",
+      "aliases": [
+        "STARZ Encore Black (East)",
+        "STZBH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreblack"
+    },
+    {
+      "stationId": "72015",
+      "name": "Starz Encore Action",
+      "aliases": [
+        "STARZ Encore Action (East)",
+        "STZAH"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreaction"
+    },
+    {
+      "stationId": "72016",
+      "name": "Starz Encore Español",
+      "aliases": [
+        "STARZ Encore Español (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreespanol"
+    },
+    {
+      "stationId": "72189",
+      "name": "Fox Deportes",
+      "aliases": [
+        "FOX Deportes",
+        "FOXD"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.foxsports.com/live/foxdep",
+      "key": "foxdeportes"
+    },
+    {
+      "stationId": "73541",
+      "name": "TV Land",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "tvland"
+    },
+    {
+      "stationId": "73994",
+      "name": "Bravo (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.nbc.com/live?brand=bravo&callsign=bravo_west",
+      "key": "bravop"
+    },
+    {
+      "stationId": "74030",
+      "name": "USA Network (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "usap"
+    },
+    {
+      "stationId": "74032",
+      "name": "Oxygen (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "oxygenp"
+    },
+    {
+      "stationId": "74134",
+      "name": "TV Land",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "tvland"
+    },
+    {
+      "stationId": "74885",
+      "name": "Disney Jr.",
+      "aliases": [
+        "Disney Junior"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=008",
+      "key": "disneyjr"
+    },
+    {
+      "stationId": "75004",
+      "name": "Disney Jr.",
+      "aliases": [
+        "Disney Junior"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids"
+      ],
+      "url": "https://disneynow.com/watch-live?brand=008",
+      "key": "disneyjr"
+    },
+    {
+      "stationId": "75077",
+      "name": "MTV2",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "mtv2"
+    },
+    {
+      "stationId": "75506",
+      "name": "MTV2",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "mtv2"
+    },
+    {
+      "stationId": "76739",
+      "name": "BBC America",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "bbcamerica"
+    },
+    {
+      "stationId": "78806",
+      "name": "SundanceTV",
+      "aliases": [
+        "Sundance TV"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "",
+      "key": "sundancetv"
+    },
+    {
+      "stationId": "78808",
+      "name": "American Heroes",
+      "aliases": [
+        "American Heroes Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/ahc",
+      "key": "ahc"
+    },
+    {
+      "stationId": "78836",
+      "name": "AMC",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "amc"
+    },
+    {
+      "stationId": "79911",
+      "name": "TLC",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/tlc",
+      "key": "tlc"
+    },
+    {
+      "stationId": "80309",
+      "name": "Investigation Discovery",
+      "aliases": [
+        "ID"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/investigation-discovery",
+      "key": "id"
+    },
+    {
+      "stationId": "80399",
+      "name": "Discovery",
+      "aliases": [
+        "Discovery Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/discovery",
+      "key": "discovery"
+    },
+    {
+      "stationId": "82119",
+      "name": "Food Network",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/food-network",
+      "key": "food"
+    },
+    {
+      "stationId": "82547",
+      "name": "FS1",
+      "aliases": [
+        "FOX Sports 1"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.foxsports.com/live/fs1",
+      "key": "fs1"
+    },
+    {
+      "stationId": "82571",
+      "name": "FXX (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://abc.com/watch-live/e4c83395-62ed-4a49-829a-c55ab3c33e7d",
+      "key": "fxxp"
+    },
+    {
+      "stationId": "82695",
+      "name": "Smithsonian Channel",
+      "aliases": [
+        "Smithsonian",
+        "Smithsonian Channel HD"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "",
+      "key": "smithsonian"
+    },
+    {
+      "stationId": "83075",
+      "name": "MoviePlex",
+      "aliases": [
+        "Movieplex",
+        "MoviePlex (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "movieplex"
+    },
+    {
+      "stationId": "83076",
+      "name": "Starz Encore Suspense",
+      "aliases": [
+        "STARZ Encore Suspense (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoresuspense"
+    },
+    {
+      "stationId": "83110",
+      "name": "CNN International",
+      "aliases": [
+        "CNNi HD East"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.cnn.com/videos/cnn-i",
+      "key": "cnni"
+    },
+    {
+      "stationId": "83404",
+      "name": "Starz Encore Classic",
+      "aliases": [
+        "STARZ Encore Classic (East)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreclassic"
+    },
+    {
+      "stationId": "87317",
+      "name": "HGTV",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/hgtv",
+      "key": "hgtv"
+    },
+    {
+      "stationId": "88545",
+      "name": "History",
+      "aliases": [
+        "HISTORY",
+        "The HISTORY Channel"
+      ],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://play.history.com/live",
+      "key": "history"
+    },
+    {
+      "stationId": "89714",
+      "name": "SEC Network",
+      "aliases": [
+        "SEC"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=sec",
+      "key": "espnsec"
+    },
+    {
+      "stationId": "90210",
+      "name": "Game Show Network",
+      "aliases": [
+        "GSN HD"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "gameshow"
+    },
+    {
+      "stationId": "91579",
+      "name": "E! (Pacific)",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://www.usanetwork.com/live",
+      "key": "ep"
+    },
+    {
+      "stationId": "91620",
+      "name": "Showtime",
+      "aliases": [
+        "PSHOh",
+        "Showtime East"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Showtime"
+      ],
+      "url": "",
+      "key": "showtime"
+    },
+    {
+      "stationId": "91621",
+      "name": "Showtime (Pacific)",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Showtime"
+      ],
+      "url": "",
+      "key": "showtimep"
+    },
+    {
+      "stationId": "92204",
+      "name": "Discovery Life",
+      "aliases": [],
+      "category": "Discovery",
+      "tags": [
+        "Documentary"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/discovery-life",
+      "key": "discoverylife"
+    },
+    {
+      "stationId": "92240",
+      "name": "MTV Classic",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "mtvclassic"
+    },
+    {
+      "stationId": "92372",
+      "name": "FYI",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "https://play.fyi.tv/live",
+      "key": "fyi"
+    },
+    {
+      "stationId": "92373",
+      "name": "Lifetime Movie Network",
+      "aliases": [
+        "Lifetime Movies",
+        "LMN"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "lmn"
+    },
+    {
+      "stationId": "92375",
+      "name": "Vice",
+      "aliases": [
+        "VICE"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "vice"
+    },
+    {
+      "stationId": "95927",
+      "name": "MGM+",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "",
+      "key": "mgmplus"
+    },
+    {
+      "stationId": "97233",
+      "name": "Starz Encore Classic (Pacific)",
+      "aliases": [
+        "STARZ Encore Classic (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreclassicp"
+    },
+    {
+      "stationId": "97360",
+      "name": "BET Her",
+      "aliases": [],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "bether"
+    },
+    {
+      "stationId": "98488",
+      "name": "FXM",
+      "aliases": [
+        "FX Movie Channel"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies"
+      ],
+      "url": "https://abc.com/watch-live/d298ab7e-c6b1-4efa-ac6e-a52dceed92ee",
+      "key": "fxm"
+    },
+    {
+      "stationId": "101449",
+      "name": "BBC News (North America)",
+      "aliases": [
+        "BBC News",
+        "BBC World News"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "bbcnews"
+    },
+    {
+      "stationId": "103829",
+      "name": "Starz Encore Family (Pacific)",
+      "aliases": [
+        "STARZ Encore Family (West)"
+      ],
+      "category": "Kids",
+      "tags": [
+        "Kids",
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencorefamilyp"
+    },
+    {
+      "stationId": "103833",
+      "name": "Starz Encore Action (Pacific)",
+      "aliases": [
+        "STARZ Encore Action (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreactionp"
+    },
+    {
+      "stationId": "103834",
+      "name": "Starz Encore Black (Pacific)",
+      "aliases": [
+        "STARZ Encore Black (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreblackp"
+    },
+    {
+      "stationId": "103836",
+      "name": "Starz Encore Suspense (Pacific)",
+      "aliases": [
+        "STARZ Encore Suspense (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoresuspensep"
+    },
+    {
+      "stationId": "103856",
+      "name": "Starz Encore Westerns (Pacific)",
+      "aliases": [
+        "STARZ Encore Westerns (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencorewesternsp"
+    },
+    {
+      "stationId": "104730",
+      "name": "Starz Encore Español (Pacific)",
+      "aliases": [
+        "STARZ Encore Español (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "starzencoreespanolp"
+    },
+    {
+      "stationId": "104846",
+      "name": "CBS News 24/7",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "cbsnews"
+    },
+    {
+      "stationId": "105723",
+      "name": "Hallmark Family",
+      "aliases": [
+        "HFM"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "hallmarkfamily"
+    },
+    {
+      "stationId": "105963",
+      "name": "MoviePlex (Pacific)",
+      "aliases": [
+        "MoviePlex (West)"
+      ],
+      "category": "Movies",
+      "tags": [
+        "Movies",
+        "Starz"
+      ],
+      "url": "",
+      "key": "movieplexp"
+    },
+    {
+      "stationId": "108192",
+      "name": "WE tv",
+      "aliases": [
+        "WE TV"
+      ],
+      "category": "Entertainment",
+      "tags": [
+        "Entertainment"
+      ],
+      "url": "",
+      "key": "wetv"
+    },
+    {
+      "stationId": "109735",
+      "name": "IFC",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "ifc"
+    },
+    {
+      "stationId": "111871",
+      "name": "ACC Network",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "https://www.espn.com/watch/player?network=acc",
+      "key": "espnacc"
+    },
+    {
+      "stationId": "113380",
+      "name": "ABC News Live",
+      "aliases": [
+        "ABCNL"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "abcnews"
+    },
+    {
+      "stationId": "114174",
+      "name": "NBC News Now",
+      "aliases": [
+        "NBC News NOW"
+      ],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "https://www.nbc.com/live?brand=nbc-news&callsign=nbcnews",
+      "key": "nbcnews"
+    },
+    {
+      "stationId": "115678",
+      "name": "AMC Thrillers",
+      "aliases": [],
+      "category": "Movies",
+      "tags": [
+        "Entertainment",
+        "Movies"
+      ],
+      "url": "",
+      "key": "amcthrillers"
+    },
+    {
+      "stationId": "122081",
+      "name": "Magnolia Network",
+      "aliases": [],
+      "category": "Reality & Lifestyle",
+      "tags": [
+        "Lifestyle"
+      ],
+      "url": "https://watch.foodnetwork.com/channel/magnolia-network-preview-atve-us",
+      "key": "magnolia"
+    },
+    {
+      "stationId": "137752",
+      "name": "Tennis Channel 2",
+      "aliases": [
+        "T2"
+      ],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "tennis2"
+    },
+    {
+      "stationId": "175656",
+      "name": "Bloomberg Originals",
+      "aliases": [],
+      "category": "News",
+      "tags": [
+        "News"
+      ],
+      "url": "",
+      "key": "bloombergoriginals"
+    },
+    {
+      "stationId": "194412",
+      "name": "NBC Sports Network",
+      "aliases": [],
+      "category": "Sports",
+      "tags": [
+        "Sports"
+      ],
+      "url": "",
+      "key": "nbcsn"
+    }
+  ]
+}

@@ -2,14 +2,27 @@ package lineupindex
 
 import (
 	"sort"
+	"strings"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
 func (s *Service) Snapshot() Snapshot {
+	return s.SnapshotForPostal("", "")
+}
+
+func (s *Service) SnapshotForPostal(country, postalCode string) Snapshot {
 	current := normalizeCurrentStations(s.readCurrentStations())
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	return Snapshot{Summary: s.summaryLocked(current), Job: s.job}
+	snapshot := Snapshot{Summary: s.summaryLocked(current), Job: s.job}
+	if record := s.index.PostalScans[postalScanKey(country, postalCode)]; record != nil {
+		copy := *record
+		copy.Sources = append([]EvidenceSourceRecord(nil), record.Sources...)
+		snapshot.PostalScan = &copy
+	}
+	return snapshot
 }
 
 func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary {
@@ -68,9 +81,105 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 				StationID: stationID, Value: name.Value, Kind: name.Kind, LineupKeys: append([]string(nil), name.LineupKeys...),
 			})
 		}
+		for _, fact := range station.Facts {
+			if fact.Kind != FactAlias {
+				continue
+			}
+			result[stationID] = append(result[stationID], AliasCandidate{
+				StationID: stationID, Value: fact.Value, Kind: FactAlias,
+				LineupKeys: append([]string(nil), fact.LineupKeys...), SourceID: fact.SourceID,
+				SourceLabel: fact.SourceLabel, SourceURL: fact.SourceURL, Method: fact.Method,
+			})
+		}
 		sort.SliceStable(result[stationID], func(i, j int) bool {
 			return result[stationID][i].Value < result[stationID][j].Value
 		})
+	}
+	return result
+}
+
+// CategoriesForStations returns only categories that are unambiguous across
+// official sources. Conflicting provider classifications remain visible in the
+// persisted evidence but are not applied automatically.
+func (s *Service) CategoriesForStations(stationIDs []string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, "")
+}
+
+// CategoriesForStationsWithPreferredSource prefers one unambiguous category
+// from the selected provider's own official source. If that source has no
+// category evidence for a station, all other official sources must still agree.
+func (s *Service) CategoriesForStationsWithPreferredSource(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
+	return s.categoriesForStations(stationIDs, strings.TrimSpace(preferredSourceID))
+}
+
+func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID string) map[string]CategoryCandidate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := make(map[string]CategoryCandidate)
+	seenStations := make(map[string]bool)
+	for _, stationID := range stationIDs {
+		if seenStations[stationID] {
+			continue
+		}
+		seenStations[stationID] = true
+		station := s.index.Stations[stationID]
+		if station == nil {
+			continue
+		}
+		allCategories := make(map[string][]StationFact)
+		preferredCategories := make(map[string][]StationFact)
+		identities := make([]string, 0, len(station.Names))
+		for _, name := range station.Names {
+			identities = append(identities, name.Value)
+		}
+		for _, fact := range station.Facts {
+			if fact.Kind != FactCategory {
+				continue
+			}
+			categoryValue := fact.Value
+			if strings.TrimSpace(fact.RawValue) != "" {
+				if remapped, ok := channelcategory.Resolve(fact.RawValue, identities...); ok {
+					categoryValue = remapped.Category
+				} else if !strings.EqualFold(strings.TrimSpace(fact.RawValue), strings.TrimSpace(fact.Value)) {
+					// The raw provider label no longer maps to the canonical value.
+					// This primarily protects existing indexes from broad headings
+					// such as Optimum's "Networks" that were mapped too eagerly.
+					continue
+				}
+			}
+			match, ok := channelcategory.Resolve(categoryValue)
+			if !ok {
+				continue
+			}
+			fact.Value = match.Category
+			fact.Normalized = normalizeName(match.Category)
+			if match.Method != channelcategory.MethodCanonical {
+				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
+			}
+			allCategories[fact.Normalized] = append(allCategories[fact.Normalized], fact)
+			if preferredSourceID != "" && fact.SourceID == preferredSourceID {
+				preferredCategories[fact.Normalized] = append(preferredCategories[fact.Normalized], fact)
+			}
+		}
+		byCategory := allCategories
+		if len(preferredCategories) > 0 {
+			byCategory = preferredCategories
+		}
+		if len(byCategory) != 1 {
+			continue
+		}
+		for _, facts := range byCategory {
+			candidate := CategoryCandidate{StationID: stationID, Value: facts[0].Value}
+			for _, fact := range facts {
+				candidate.SourceIDs = appendUniqueString(candidate.SourceIDs, fact.SourceID)
+				candidate.SourceLabels = appendUniqueString(candidate.SourceLabels, fact.SourceLabel)
+				candidate.Methods = appendUniqueString(candidate.Methods, fact.Method)
+			}
+			sort.Strings(candidate.SourceIDs)
+			sort.Strings(candidate.SourceLabels)
+			sort.Strings(candidate.Methods)
+			result[stationID] = candidate
+		}
 	}
 	return result
 }

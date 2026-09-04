@@ -3,13 +3,14 @@ package lineupindex
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -28,9 +29,11 @@ type CurrentStations func() map[string][]string
 
 type ServiceConfig struct {
 	Path            string
+	SnapshotDir     string
 	Catalog         SeedCatalog
 	Providers       ProviderFinder
 	Grids           GridFetcher
+	Evidence        ProviderEvidenceFetcher
 	CurrentStations CurrentStations
 	ProviderDelay   time.Duration
 	GridDelay       time.Duration
@@ -40,9 +43,11 @@ type ServiceConfig struct {
 type Service struct {
 	mu              sync.RWMutex
 	path            string
+	snapshotDir     string
 	catalog         SeedCatalog
 	providers       ProviderFinder
 	grids           GridFetcher
+	evidence        ProviderEvidenceFetcher
 	currentStations CurrentStations
 	providerDelay   time.Duration
 	gridDelay       time.Duration
@@ -72,11 +77,17 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	snapshotDir := strings.TrimSpace(config.SnapshotDir)
+	if snapshotDir == "" {
+		snapshotDir = filepath.Join(filepath.Dir(config.Path), "lineup_snapshots")
+	}
 	return &Service{
 		path:            config.Path,
+		snapshotDir:     snapshotDir,
 		catalog:         config.Catalog,
 		providers:       config.Providers,
 		grids:           config.Grids,
+		evidence:        config.Evidence,
 		currentStations: config.CurrentStations,
 		providerDelay:   config.ProviderDelay,
 		gridDelay:       config.GridDelay,
@@ -92,18 +103,51 @@ func (s *Service) Start(request RunRequest) (JobView, error) {
 	if strings.TrimSpace(request.Country) == "" || strings.TrimSpace(request.PostalCode) == "" {
 		return JobView{}, errors.New("postal scan requires country and postal code")
 	}
+	return s.startPostal(request)
+}
+
+func (s *Service) startPostal(request RunRequest) (JobView, error) {
+	country := strings.ToUpper(strings.TrimSpace(request.Country))
+	postalCode := strings.ToUpper(strings.TrimSpace(request.PostalCode))
+	language := strings.ToLower(strings.TrimSpace(request.Language))
+	if country == "" || postalCode == "" {
+		return JobView{}, errors.New("postal scan requires country and postal code")
+	}
+	if language == "" {
+		language = "en-us"
+	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.job.Running {
 		return s.job, ErrAlreadyRunning
 	}
+	startedAt := s.now().UTC().Format(time.RFC3339)
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
-	s.job = JobView{Running: true, Action: "postal", StartedAt: s.now().UTC().Format(time.RFC3339), TotalCount: 1}
-	seed := MarketSeed{Country: strings.ToUpper(strings.TrimSpace(request.Country)), PostalCode: strings.TrimSpace(request.PostalCode), Name: strings.TrimSpace(request.PostalCode)}
+	s.job = JobView{
+		Running:       true,
+		Action:        "postal",
+		StartedAt:     startedAt,
+		CurrentMarket: postalCode,
+	}
+	record := &PostalScanRecord{
+		Key: postalScanKey(country, postalCode), Country: country, PostalCode: postalCode,
+		Status: StatusRunning, StartedAt: startedAt,
+	}
+	s.index.PostalScans[record.Key] = record
+	s.index.UpdatedAt = startedAt
+	if err := writeIndex(s.path, s.index); err != nil {
+		s.job = JobView{}
+		s.cancel = nil
+		cancel()
+		return JobView{}, err
+	}
 	job := s.job
-	go s.runPostal(ctx, seed)
+	request.Country = country
+	request.PostalCode = postalCode
+	request.Language = language
+	go s.runPostal(ctx, request)
 	return job, nil
 }
 
@@ -117,161 +161,235 @@ func (s *Service) Stop() bool {
 	return true
 }
 
-func (s *Service) runPostal(ctx context.Context, seed MarketSeed) {
-	report := BatchReport{Action: "postal", StartedAt: s.now().UTC().Format(time.RFC3339)}
+func (s *Service) runPostal(ctx context.Context, request RunRequest) {
+	country := request.Country
+	postalCode := request.PostalCode
+	language := request.Language
+	key := postalScanKey(country, postalCode)
+	current := normalizeCurrentStations(s.readCurrentStations())
+	owners := s.callSignOwners()
 	var lastGridRequest time.Time
-	err := s.processPostal(ctx, seed, true, normalizeCurrentStations(s.readCurrentStations()), s.callSignOwners(), &lastGridRequest, &report)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.job.Running = false
-	s.job.CompletedAt = s.now().UTC().Format(time.RFC3339)
-	s.job.CompletedCount = 1
+	var runErr error
+	gridErrors := make([]string, 0)
+
+	result, err := s.providers.FindProviders(ctx, country, postalCode, language)
 	if err != nil {
-		s.job.LastError = err.Error()
-	} else if report.Errors > 0 {
-		s.job.LastError = "Some provider grids could not be retrieved"
+		runErr = err
+	} else if result == nil {
+		runErr = errors.New("provider lookup returned no response")
 	}
-	s.cancel = nil
-}
-
-func (s *Service) processPostal(ctx context.Context, seed MarketSeed, force bool, current map[string]map[string]bool, owners map[string]map[string]bool, lastGridRequest *time.Time, report *BatchReport) error {
-	startedAt := s.now().UTC().Format(time.RFC3339)
-	record := &MarketRecord{
-		Rank:       seed.Rank,
-		Name:       seed.Name,
-		Country:    seed.Country,
-		PostalCode: seed.PostalCode,
-		Status:     StatusRunning,
-		StartedAt:  startedAt,
+	providers := []web.Provider{}
+	if runErr == nil {
+		providers = uniquePostalProviders(result.Providers)
+		s.updatePostalJob(key, func(record *PostalScanRecord) {
+			record.ProviderCount = len(providers)
+		})
+		s.mu.Lock()
+		s.job.TotalCount = len(providers)
+		s.mu.Unlock()
 	}
-	if err := s.replaceMarketRecord(seed.Rank, record); err != nil {
-		return err
+	if runErr == nil && len(providers) == 0 {
+		runErr = errors.New("Gracenote returned no lineups for this postal code")
 	}
 
-	result, err := s.providers.FindProviders(ctx, seed.Country, seed.PostalCode, "en-us")
-	report.ProviderLookups++
-	if err != nil {
-		if ctx.Err() != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return ctx.Err()
-		}
-		report.Errors++
-		record.Status = StatusError
-		record.LastError = err.Error()
-		record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-		return s.replaceMarketRecord(seed.Rank, record)
-	}
-	if result == nil {
-		report.Errors++
-		record.Status = StatusError
-		record.LastError = "provider lookup returned no response"
-		record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-		return s.replaceMarketRecord(seed.Rank, record)
-	}
-
-	providers := uniqueProviders(result.Providers)
-	record.ProviderCount = len(providers)
-	report.ProvidersFound += len(providers)
-	marketErrors := make([]string, 0)
+	seed := MarketSeed{Name: "Configured postal code " + postalCode, Country: country, PostalCode: postalCode}
+	seenLineupIDs := make(map[string]bool)
 	for _, provider := range providers {
 		if err := ctx.Err(); err != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return err
+			runErr = err
+			break
 		}
+		s.mu.Lock()
+		s.job.CurrentProvider = strings.TrimSpace(provider.Name)
+		s.mu.Unlock()
 
-		lineup, isNew, needsScan, err := s.prepareLineup(seed, provider, force)
-		if err != nil {
-			return err
+		lineupKey := lineupStorageKey(seed, provider)
+		lineupIDKey := strings.ToUpper(strings.TrimSpace(provider.LineupID))
+		if seenLineupIDs[lineupIDKey] {
+			lineupKey = lineupVariantStorageKey(seed, provider)
 		}
-		if isNew {
-			record.NewLineups++
-			report.NewLineups++
-		} else if !needsScan {
-			record.ReusedLineups++
-			report.ReusedLineups++
+		seenLineupIDs[lineupIDKey] = true
+		lineup, _, _, err := s.prepareLineupWithKey(seed, provider, true, lineupKey)
+		if err != nil {
+			runErr = err
+			break
+		}
+		if err := waitBetween(ctx, lastGridRequest, s.gridDelay, s.now); err != nil {
+			runErr = err
+			break
+		}
+		lastGridRequest = s.now()
+		grid, err := s.grids.FetchGrid(ctx, lineupPreferences(lineup), utcMidnight(s.now()).Unix())
+		s.updatePostalJob(key, func(record *PostalScanRecord) { record.GridRequests++ })
+		if err != nil || grid == nil {
+			if err == nil {
+				err = errors.New("grid lookup returned no response")
+			}
+			_ = s.failLineup(lineup.Key, err)
+			s.updatePostalJob(key, func(record *PostalScanRecord) {
+				record.Sources = append(record.Sources, EvidenceSourceRecord{
+					ID: "gracenote-grid-" + lineup.Key, Label: provider.Name + " Gracenote lineup",
+					Status: StatusError, Message: err.Error(),
+				})
+			})
+			gridErrors = append(gridErrors, provider.Name+": "+err.Error())
 			continue
 		}
 
-		if err := waitBetween(ctx, *lastGridRequest, s.gridDelay, s.now); err != nil {
-			record.Status = StatusPending
-			record.LastError = "Scan stopped before this market completed"
-			if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-				return persistErr
-			}
-			return err
+		if _, err := s.ingestGrid(0, lineup.Key, grid, current, owners); err != nil {
+			runErr = err
+			break
 		}
-		*lastGridRequest = s.now()
-		at := utcMidnight(s.now()).Unix()
-		grid, err := s.grids.FetchGrid(ctx, lineupPreferences(lineup), at)
-		record.GridRequests++
-		report.GridRequests++
-		if err != nil {
-			if ctx.Err() != nil {
-				record.Status = StatusPending
-				record.LastError = "Scan stopped before this market completed"
-				if persistErr := s.pendingLineup(lineup.Key); persistErr != nil {
-					return persistErr
+		evidence := ProviderEvidenceResult{}
+		if s.evidence != nil {
+			var evidenceErr error
+			serviceAddress := ProviderAddress{}
+			if sameProviderFamily(provider.Name, request.AddressProvider) {
+				serviceAddress = request.ProviderAddress
+			}
+			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
+				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				ServiceAddress: serviceAddress, Grid: grid,
+			})
+			if evidenceErr != nil {
+				if len(evidence.Sources) == 0 {
+					evidence.Sources = append(evidence.Sources, EvidenceSourceRecord{
+						ID: "provider-evidence-" + lineup.Key, Label: provider.Name + " official source",
+						Status: StatusError, Message: evidenceErr.Error(),
+					})
 				}
-				if persistErr := s.replaceMarketRecord(seed.Rank, record); persistErr != nil {
-					return persistErr
+				// Official enrichment is deliberately best-effort. The source record
+				// preserves the attributable failure without invalidating Gracenote
+				// lineup data or successful evidence from other providers.
+			}
+			_, _, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
+			if ingestErr != nil {
+				runErr = ingestErr
+				break
+			}
+			s.updatePostalJob(key, func(record *PostalScanRecord) {
+				for _, fact := range evidence.Facts {
+					if fact.Kind == FactAlias {
+						record.Aliases++
+					} else if fact.Kind == FactCategory {
+						record.Categories++
+					}
 				}
-				return ctx.Err()
-			}
-			report.Errors++
-			marketErrors = append(marketErrors, provider.Name+": "+err.Error())
-			if updateErr := s.failLineup(lineup.Key, err); updateErr != nil {
-				return updateErr
-			}
-			continue
+				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
+			})
 		}
-		if grid == nil {
-			err = errors.New("grid lookup returned no response")
-			report.Errors++
-			marketErrors = append(marketErrors, provider.Name+": "+err.Error())
-			if updateErr := s.failLineup(lineup.Key, err); updateErr != nil {
-				return updateErr
-			}
-			continue
+		if err := s.writeLineupSnapshot(*lineup, grid, evidence); err != nil {
+			runErr = err
+			break
 		}
-
-		metrics, err := s.ingestGrid(seed.Rank, lineup.Key, grid, current, owners)
-		if err != nil {
-			return err
-		}
-		record.NewStations += metrics.newStations
-		record.NewAliases += metrics.newCallSignAliases
-		record.CurrentAliases += metrics.currentLineupAliases
-		record.CosmeticVariants += metrics.cosmeticVariants
-		record.Conflicts += metrics.conflicts
-		report.NewStations += metrics.newStations
-		report.NewNamesOnKnownStations += metrics.newNamesOnKnownStations
-		report.NewCallSignAliases += metrics.newCallSignAliases
-		report.NewAffiliateNames += metrics.newAffiliateNames
-		report.CosmeticVariants += metrics.cosmeticVariants
-		report.Conflicts += metrics.conflicts
-		report.CurrentLineupAliases += metrics.currentLineupAliases
 		if err := s.completeLineup(lineup.Key, len(grid.Channels)); err != nil {
-			return err
+			runErr = err
+			break
 		}
+		s.updatePostalJob(key, func(record *PostalScanRecord) { record.LineupsScanned++ })
+		s.mu.Lock()
+		s.job.CompletedCount++
+		s.mu.Unlock()
+	}
+	if runErr == nil && len(gridErrors) > 0 {
+		runErr = errors.New(strings.Join(gridErrors, "; "))
 	}
 
-	record.CompletedAt = s.now().UTC().Format(time.RFC3339)
-	if len(marketErrors) > 0 {
-		record.Status = StatusError
-		record.LastError = strings.Join(marketErrors, "; ")
-	} else {
+	completedAt := s.now().UTC().Format(time.RFC3339)
+	s.mu.Lock()
+	record := s.index.PostalScans[key]
+	record.CompletedAt = completedAt
+	if runErr == nil {
 		record.Status = StatusComplete
 		record.LastError = ""
+	} else if errors.Is(runErr, context.Canceled) {
+		record.Status = StatusPending
+		record.LastError = "Scan stopped before all lineups completed"
+	} else {
+		record.Status = StatusError
+		record.LastError = runErr.Error()
 	}
-	return s.replaceMarketRecord(seed.Rank, record)
+	s.index.UpdatedAt = completedAt
+	persistErr := writeIndex(s.path, s.index)
+	s.job.Running = false
+	s.job.CompletedAt = completedAt
+	s.job.CurrentMarket = ""
+	s.job.CurrentProvider = ""
+	if persistErr != nil {
+		s.job.LastError = persistErr.Error()
+	} else {
+		s.job.LastError = record.LastError
+	}
+	s.cancel = nil
+	s.mu.Unlock()
+}
+
+func sameProviderFamily(left, right string) bool {
+	left = providerFamilyKey(left)
+	right = providerFamilyKey(right)
+	return left != "" && right != "" && (left == right || strings.Contains(left, right) || strings.Contains(right, left))
+}
+
+func providerFamilyKey(value string) string {
+	value = strings.ToLower(value)
+	for canonical, aliases := range map[string][]string{
+		"xfinity":  {"xfinity", "comcast"},
+		"optimum":  {"optimum", "cablevision"},
+		"spectrum": {"spectrum", "charter", "time warner"},
+		"fios":     {"verizon", "fios"},
+		"uverse":   {"u-verse", "uverse"},
+	} {
+		for _, alias := range aliases {
+			if strings.Contains(value, alias) {
+				return canonical
+			}
+		}
+	}
+	for _, ignored := range []string{"digital rebuild", "satellite", "television", "tv", "of", "the", "-"} {
+		value = strings.ReplaceAll(value, ignored, " ")
+	}
+	return strings.Join(strings.Fields(value), "")
+}
+
+func postalScanKey(country, postalCode string) string {
+	return strings.ToUpper(strings.TrimSpace(country)) + ":" + strings.ToUpper(strings.TrimSpace(postalCode))
+}
+
+func (s *Service) updatePostalJob(key string, update func(*PostalScanRecord)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record := s.index.PostalScans[key]
+	if record == nil {
+		return
+	}
+	update(record)
+	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
+	_ = writeIndex(s.path, s.index)
+}
+
+func mergeEvidenceSources(existing, incoming []EvidenceSourceRecord) []EvidenceSourceRecord {
+	byID := make(map[string]int, len(existing))
+	for index := range existing {
+		byID[existing[index].ID] = index
+	}
+	for _, source := range incoming {
+		if index, ok := byID[source.ID]; ok {
+			existing[index].Matched += source.Matched
+			existing[index].Aliases += source.Aliases
+			existing[index].Categories += source.Categories
+			if source.Status == StatusError || existing[index].Status == "" {
+				existing[index].Status = source.Status
+			}
+			if source.Message != "" {
+				existing[index].Message = source.Message
+			}
+			continue
+		}
+		byID[source.ID] = len(existing)
+		existing = append(existing, source)
+	}
+	sort.SliceStable(existing, func(i, j int) bool { return existing[i].Label < existing[j].Label })
+	return existing
 }
 
 func uniqueProviders(providers []web.Provider) []web.Provider {
@@ -291,6 +409,40 @@ func uniqueProviders(providers []web.Provider) []web.Provider {
 		result = append(result, provider)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].LineupID < result[j].LineupID })
+	return result
+}
+
+// uniquePostalProviders retains Gracenote device variants as distinct
+// configured-ZIP lineups. Gracenote commonly returns basic cable, digital,
+// digital-rebuild, and generic digital grids with one shared lineup ID; each
+// grid can contain different station IDs and provider positions.
+func uniquePostalProviders(providers []web.Provider) []web.Provider {
+	byVariant := make(map[string]web.Provider)
+	for _, provider := range providers {
+		provider.LineupID = strings.TrimSpace(provider.LineupID)
+		provider.HeadendID = strings.TrimSpace(provider.HeadendID)
+		provider.Device = strings.TrimSpace(provider.Device)
+		if provider.LineupID == "" || provider.HeadendID == "" {
+			continue
+		}
+		key := strings.ToUpper(provider.LineupID) + "\x00" + strings.ToUpper(provider.Device)
+		if _, exists := byVariant[key]; !exists {
+			byVariant[key] = provider
+		}
+	}
+	result := make([]web.Provider, 0, len(byVariant))
+	for _, provider := range byVariant {
+		result = append(result, provider)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].LineupID != result[j].LineupID {
+			return result[i].LineupID < result[j].LineupID
+		}
+		if result[i].Device != result[j].Device {
+			return result[i].Device < result[j].Device
+		}
+		return result[i].Name < result[j].Name
+	})
 	return result
 }
 
@@ -328,19 +480,13 @@ func waitBetween(ctx context.Context, previous time.Time, delay time.Duration, n
 	}
 }
 
-func (s *Service) replaceMarketRecord(rank int, record *MarketRecord) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	copy := *record
-	s.index.Markets[strconv.Itoa(rank)] = &copy
-	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
-	return writeIndex(s.path, s.index)
+func (s *Service) prepareLineup(seed MarketSeed, provider web.Provider, force bool) (*LineupRecord, bool, bool, error) {
+	return s.prepareLineupWithKey(seed, provider, force, lineupStorageKey(seed, provider))
 }
 
-func (s *Service) prepareLineup(seed MarketSeed, provider web.Provider, force bool) (*LineupRecord, bool, bool, error) {
+func (s *Service) prepareLineupWithKey(seed MarketSeed, provider web.Provider, force bool, key string) (*LineupRecord, bool, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	key := lineupStorageKey(seed, provider)
 	lineup, exists := s.index.Lineups[key]
 	if !exists {
 		lineup = &LineupRecord{Key: key, LineupID: provider.LineupID, Status: StatusPending}
@@ -357,8 +503,10 @@ func (s *Service) prepareLineup(seed MarketSeed, provider web.Provider, force bo
 		lineup.PostalCode = seed.PostalCode
 		lineup.Language = "en-us"
 	}
-	lineup.MarketRanks = appendUniqueInt(lineup.MarketRanks, seed.Rank)
-	sort.Ints(lineup.MarketRanks)
+	if seed.Rank > 0 {
+		lineup.MarketRanks = appendUniqueInt(lineup.MarketRanks, seed.Rank)
+		sort.Ints(lineup.MarketRanks)
+	}
 	if needsScan {
 		lineup.Status = StatusRunning
 		lineup.LastError = ""
@@ -378,6 +526,23 @@ func lineupStorageKey(seed MarketSeed, provider web.Provider) string {
 		return lineupID + "@" + seed.PostalCode
 	}
 	return lineupID
+}
+
+func lineupVariantStorageKey(seed MarketSeed, provider web.Provider) string {
+	device := strings.ToUpper(strings.TrimSpace(provider.Device))
+	if device == "" {
+		device = "NONE"
+	}
+	device = strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) || character == '-' {
+			return character
+		}
+		return -1
+	}, device)
+	if device == "" {
+		device = "NONE"
+	}
+	return lineupStorageKey(seed, provider) + "@device=" + device
 }
 
 func (s *Service) failLineup(lineupKey string, scanErr error) error {
@@ -489,6 +654,82 @@ func (s *Service) ingestGrid(marketRank int, lineupKey string, grid *web.GridRes
 		return ingestMetrics{}, err
 	}
 	return metrics, nil
+}
+
+func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (int, int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	aliases := 0
+	categories := 0
+	for _, fact := range facts {
+		stationID := strings.TrimSpace(fact.StationID)
+		value := strings.TrimSpace(fact.Value)
+		kind := strings.TrimSpace(fact.Kind)
+		if stationID == "" || value == "" || (kind != FactAlias && kind != FactCategory) {
+			continue
+		}
+		if kind == FactCategory {
+			match, ok := channelcategory.Resolve(value)
+			if !ok {
+				continue
+			}
+			value = match.Category
+			if match.Method != channelcategory.MethodCanonical {
+				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
+			}
+		}
+		station := s.index.Stations[stationID]
+		if station == nil {
+			continue
+		}
+		normalized := normalizeName(value)
+		if ignoredName(normalized) {
+			continue
+		}
+		found := false
+		for index := range station.Facts {
+			current := &station.Facts[index]
+			if current.Kind != kind || current.Normalized != normalized || current.SourceID != fact.SourceID {
+				continue
+			}
+			current.LineupKeys = appendUniqueString(current.LineupKeys, lineupKey)
+			sort.Strings(current.LineupKeys)
+			found = true
+			break
+		}
+		if found {
+			continue
+		}
+		station.Facts = append(station.Facts, StationFact{
+			Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
+			SourceID:    strings.TrimSpace(fact.SourceID),
+			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
+			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey},
+		})
+		if kind == FactAlias {
+			aliases++
+		} else {
+			categories++
+		}
+	}
+	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
+	if err := writeIndex(s.path, s.index); err != nil {
+		return 0, 0, err
+	}
+	return aliases, categories, nil
+}
+
+func appendMethod(existing, addition string) string {
+	existing = strings.TrimSpace(existing)
+	addition = strings.TrimSpace(addition)
+	if existing == "" {
+		return addition
+	}
+	if addition == "" || strings.Contains(existing, addition) {
+		return existing
+	}
+	return existing + "; " + addition
 }
 
 func addStationName(stations map[string]*Station, station *Station, owners map[string]map[string]bool, kind, value, lineupKey string, marketRank int) (added bool, cosmetic bool, conflict bool) {

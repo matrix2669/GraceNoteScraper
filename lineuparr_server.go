@@ -20,6 +20,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
+	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 )
 
 //go:embed lineuparr.html
@@ -84,6 +85,10 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
 		return
 	}
 	config, configured, _ := s.store.Get()
@@ -318,7 +323,13 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		return nil, appconfig.Config{}, nil, false
 	}
 	additionalSources := lineuparrbuilder.ApplyProviderGuideAliasesForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode, inputs)
-	additionalSources = append(additionalSources, s.applyMarketAliases(inputs)...)
+	additionalSources = append(additionalSources, s.builder.ApplyEmbeddedCatalogs(inputs)...)
+	additionalSources = append(additionalSources, s.applyMarketAliases(
+		config.Gracenote.Country,
+		config.Gracenote.PostalCode,
+		providersource.OfficialSourceID(config.Gracenote.ProviderName),
+		inputs,
+	)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),
 		Country:           config.Gracenote.Country,
@@ -339,7 +350,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	return draft, config, inputs, true
 }
 
-func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
+func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourceID string, inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
 	if s.marketIndex == nil {
 		return nil
 	}
@@ -350,7 +361,10 @@ func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChan
 		}
 	}
 	candidates := s.marketIndex.AliasesForStations(stationIDs)
+	categories := s.marketIndex.CategoriesForStationsWithPreferredSource(stationIDs, preferredSourceID)
 	matched := 0
+	providerMatched := make(map[string]map[int]bool)
+	providerConflicts := make(map[string]int)
 	for index := range inputs {
 		known := map[string]bool{normalizeAlias(inputs[index].CallSign): true, normalizeAlias(inputs[index].Affiliate): true}
 		for _, value := range inputs[index].EventCallSigns {
@@ -366,21 +380,68 @@ func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChan
 			method := "same Gracenote station ID across scanned lineups"
 			if candidate.Kind == lineupindex.NameEventCallSign {
 				method = "event callsign on the same Gracenote station ID"
+			} else if candidate.Method != "" {
+				method = candidate.Method
+			}
+			sourceID := candidate.SourceID
+			if sourceID == "" {
+				sourceID = "gracenote-market-index"
 			}
 			inputs[index].ExternalAliases = append(inputs[index].ExternalAliases, lineuparrbuilder.AttributedAlias{
-				Value: candidate.Value, Source: "gracenote-market-index", Method: method,
+				Value: candidate.Value, Source: sourceID, Method: method,
 			})
+			if providerMatched[sourceID] == nil {
+				providerMatched[sourceID] = make(map[int]bool)
+			}
+			providerMatched[sourceID][index] = true
 			added = true
+		}
+		if category, ok := categories[inputs[index].StationID]; ok {
+			sourceID := "same-zip-provider-evidence"
+			label := "Same-ZIP official provider evidence"
+			if len(category.SourceIDs) > 0 {
+				sourceID = category.SourceIDs[0]
+			}
+			if len(category.SourceLabels) > 0 {
+				label = strings.Join(category.SourceLabels, ", ")
+			}
+			providerCategory := &lineuparrbuilder.AttributedCategory{
+				Value: category.Value, Source: sourceID, Label: label,
+				Method: strings.Join(category.Methods, "; "),
+			}
+			if inputs[index].CategoryConflict {
+				providerConflicts[sourceID]++
+			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
+				inputs[index].CategoryHint = nil
+				inputs[index].CategoryConflict = true
+				providerConflicts[sourceID]++
+			} else {
+				inputs[index].CategoryHint = providerCategory
+				if providerMatched[sourceID] == nil {
+					providerMatched[sourceID] = make(map[int]bool)
+				}
+				providerMatched[sourceID][index] = true
+				added = true
+			}
 		}
 		if added {
 			matched++
 		}
 	}
-	snapshot := s.marketIndex.Snapshot()
-	return []lineuparrbuilder.SourceStatus{{
+	snapshot := s.marketIndex.SnapshotForPostal(country, postalCode)
+	statuses := []lineuparrbuilder.SourceStatus{{
 		ID: "gracenote-market-index", Label: "Gracenote lineup alias index", Status: "local", Matched: matched,
 		Message: fmt.Sprintf("%d unique lineups indexed; exact station-ID aliases only", snapshot.Summary.Lineups),
 	}}
+	if snapshot.PostalScan != nil {
+		for _, source := range snapshot.PostalScan.Sources {
+			statuses = append(statuses, lineuparrbuilder.SourceStatus{
+				ID: source.ID, Label: source.Label, URL: source.URL, Status: source.Status,
+				Matched: len(providerMatched[source.ID]), Ambiguous: providerConflicts[source.ID], Message: fmt.Sprintf("%d provider joins, %d aliases and %d categories captured for ZIP %s. %s", source.Matched, source.Aliases, source.Categories, postalCode, source.Message),
+			})
+		}
+	}
+	return statuses
 }
 
 func normalizeAlias(value string) string {
@@ -402,10 +463,19 @@ func (s *lineuparrServer) handleAliasIndex(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Alias discovery is unavailable; check the application log", http.StatusServiceUnavailable)
 		return
 	}
-	response := aliasIndexResponse{Snapshot: s.marketIndex.Snapshot()}
 	if s.aliasQueue != nil {
 		s.aliasQueue.TryStart()
-		response.Snapshot = s.marketIndex.Snapshot()
+	}
+	response := aliasIndexResponse{Snapshot: s.marketIndex.Snapshot()}
+	if s.store != nil {
+		config, configured, _ := s.store.Get()
+		if !configured {
+			http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+			return
+		}
+		response.Snapshot = s.marketIndex.SnapshotForPostal(config.Gracenote.Country, config.Gracenote.PostalCode)
+	}
+	if s.aliasQueue != nil {
 		response.Queue = s.aliasQueue.View()
 	}
 	writeLineuparrJSON(w, http.StatusOK, response)
@@ -432,26 +502,36 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	if !requireJSONContentType(w, r) {
 		return
 	}
-	var request lineupindex.RunRequest
-	if !decodeLineuparrRequest(w, r, &request) {
+	var body struct {
+		lineupindex.RunRequest
+		ProviderAddress lineupindex.ProviderAddress `json:"providerAddress,omitempty"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
 		return
 	}
-	if request.Action != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
-		http.Error(w, "Only configured-postal scans are supported", http.StatusBadRequest)
-		return
+	request := body.RunRequest
+	if strings.EqualFold(strings.TrimSpace(request.Action), "postal") {
+		if s.store == nil {
+			http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+			return
+		}
+		config, configured, _ := s.store.Get()
+		if !configured {
+			http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+			return
+		}
+		request.Country = config.Gracenote.Country
+		request.PostalCode = config.Gracenote.PostalCode
+		request.Language = config.Gracenote.Language
+		request.AddressProvider = config.Gracenote.ProviderName
+		providerAddress, err := validateEphemeralProviderAddress(body.ProviderAddress, config.Gracenote.PostalCode)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		request.ProviderAddress = providerAddress
+
 	}
-	if s.store == nil {
-		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
-		return
-	}
-	config, configured, _ := s.store.Get()
-	if !configured {
-		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
-		return
-	}
-	request.Country = config.Gracenote.Country
-	request.PostalCode = config.Gracenote.PostalCode
-	request.Language = config.Gracenote.Language
 	if s.aliasQueue != nil {
 		queueView := s.aliasQueue.View()
 		if queueView.Queued {
@@ -479,6 +559,42 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 		return
 	}
 	writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"started": true, "job": job})
+}
+
+func validateEphemeralProviderAddress(value lineupindex.ProviderAddress, postalCode string) (lineupindex.ProviderAddress, error) {
+	value.FormattedAddress = strings.Join(strings.Fields(strings.TrimSpace(value.FormattedAddress)), " ")
+	value.StreetAddress = strings.Join(strings.Fields(strings.TrimSpace(value.StreetAddress)), " ")
+	value.City = strings.Join(strings.Fields(strings.TrimSpace(value.City)), " ")
+	value.State = strings.Join(strings.Fields(strings.TrimSpace(value.State)), " ")
+	value.PostalCode = strings.Join(strings.Fields(strings.TrimSpace(value.PostalCode)), " ")
+	value.CountryCode = strings.ToUpper(strings.TrimSpace(value.CountryCode))
+	if value.FormattedAddress == "" {
+		return lineupindex.ProviderAddress{}, nil
+	}
+	if len(value.FormattedAddress) > 300 || len(value.StreetAddress) > 180 || len(value.City) > 100 || len(value.State) > 100 || len(value.PostalCode) > 20 || len(value.CountryCode) > 2 {
+		return lineupindex.ProviderAddress{}, errors.New("provider address is too long")
+	}
+	if postalCode = strings.TrimSpace(postalCode); postalCode != "" {
+		selected := compactLocationValue(value.PostalCode)
+		active := compactLocationValue(postalCode)
+		matches := selected == active
+		if value.CountryCode == "US" && len(active) == 5 && len(selected) == 9 {
+			matches = strings.HasPrefix(selected, active)
+		}
+		if !matches {
+			return lineupindex.ProviderAddress{}, errors.New("provider address must match the active lineup postal code")
+		}
+	}
+	return value, nil
+}
+
+func compactLocationValue(value string) string {
+	return strings.Map(func(character rune) rune {
+		if unicode.IsLetter(character) || unicode.IsDigit(character) {
+			return unicode.ToUpper(character)
+		}
+		return -1
+	}, value)
 }
 
 func (s *lineuparrServer) handleAliasIndexStop(w http.ResponseWriter, r *http.Request) {

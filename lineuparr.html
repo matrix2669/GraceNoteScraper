@@ -83,17 +83,47 @@
     .stat-label { margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
     .stat.warning .stat-value { color: var(--warning); }
 
-    .panel { border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
-    .source-panel { margin-bottom: 18px; padding: 19px 21px; }
+    .panel { min-width: 0; max-width: 100%; border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
+    .collapsible-panel { margin-bottom: 18px; }
+    .collapsible-panel > .panel-summary {
+      display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 18px;
+      margin: 0; padding: 19px 21px; color: var(--text); list-style: none; cursor: pointer;
+    }
+    .collapsible-panel > .panel-summary::-webkit-details-marker { display: none; }
+    .panel-summary-copy { min-width: 0; }
+    .panel-summary-copy > .panel-title, .panel-summary-copy > .panel-help, .panel-summary-copy > .eyebrow { display: block; }
+    .panel-summary-copy h2 { margin: 0; }
+    .panel-chevron { flex: 0 0 auto; color: var(--accent); font-size: 18px; line-height: 1; transition: transform .15s ease; }
+    .collapsible-panel[open] > .panel-summary .panel-chevron { transform: rotate(90deg); }
+    .collapsible-panel > .panel-body { min-width: 0; padding: 0 21px 21px; }
+    .source-panel { overflow: hidden; }
     .panel-title { margin: 0; font-size: 15px; }
     .panel-help { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-    .sources { display: grid; gap: 9px; margin-top: 15px; }
-    .source-row { justify-content: space-between; gap: 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
-    .source-name { min-width: 0; font-size: 13px; font-weight: 700; }
-    .source-message { overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-    .source-state { flex: 0 0 auto; color: var(--muted); font-size: 11px; text-align: right; }
+    .sources { display: grid; min-width: 0; gap: 9px; margin-top: 15px; }
+    .source-row { width: 100%; min-width: 0; max-width: 100%; flex-wrap: wrap; justify-content: space-between; gap: 8px 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .source-copy { min-width: 0; flex: 1 1 440px; overflow-wrap: anywhere; }
+    .source-name { min-width: 0; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
+    .source-name-button { display: inline; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; text-align: left; text-decoration: underline; }
+    .source-message { min-width: 0; margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.4; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+    .source-state { max-width: 100%; flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 11px; text-align: right; white-space: normal; overflow-wrap: anywhere; }
     .source-state.good { color: var(--accent); }
     .source-state.bad { color: var(--danger); }
+    .source-state-button { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; }
+    .source-state-button:disabled { cursor: default; opacity: 1; text-decoration: none; }
+    .source-evidence-dialog { width: min(1060px, calc(100% - 28px)); max-height: min(82vh, 820px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    .source-evidence-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .source-evidence-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px; border-bottom: 1px solid var(--line); }
+    .source-evidence-header h2 { margin: 0; font-size: 19px; }
+    .source-evidence-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .source-evidence-close { min-height: 34px; padding: 0 10px; }
+    .source-evidence-tools { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+    .source-evidence-tools input { flex: 1 1 280px; }
+    .source-evidence-site { min-height: 42px; }
+    .source-evidence-table-wrap { max-height: 58vh; overflow: auto; }
+    .source-evidence-table { min-width: 760px; }
+    .source-evidence-table th, .source-evidence-table td { vertical-align: top; text-align: left; white-space: normal; }
+    .source-evidence-table td:first-child { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 720; }
+    .source-evidence-detail { color: var(--muted); font-size: 10px; line-height: 1.4; overflow-wrap: anywhere; }
     .provider-address {
       display: grid; grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr); gap: 18px;
       align-items: center; margin-top: 15px; padding: 15px; border: 1px solid rgba(140,200,255,.26);
@@ -111,9 +141,10 @@
     .provider-address-status.good { color: var(--accent); }
     .provider-address-status.bad { color: var(--danger); }
 
-    .alias-panel { margin-bottom: 18px; padding: 24px 21px; }
+    .alias-panel > .panel-summary { padding-top: 24px; padding-bottom: 18px; }
     .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
     .alias-header p { max-width: 760px; margin: 9px 0 0; color: var(--muted); line-height: 1.55; }
+    .alias-refresh-time { margin: 8px 0 0; color: #8da59c; font-size: 11px; line-height: 1.4; }
     .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
     .metric { min-height: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,17,14,.48); }
     .metric-value { font-size: 24px; font-weight: 820; letter-spacing: -.03em; }
@@ -143,6 +174,9 @@
     .status-pill.running { color: var(--warning); }
 
     .builder-panel { overflow: hidden; }
+    .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
+    .builder-panel[open] > .panel-summary { border-bottom-color: var(--line); }
+    .builder-panel > .builder-body { padding: 0; }
     .toolbar { flex-wrap: wrap; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); }
     .field { display: grid; gap: 6px; min-width: 150px; }
     .field.search { flex: 1 1 250px; }
@@ -182,8 +216,8 @@
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
     .category-input { height: 38px; font-size: 13px; }
-    details { margin: 11px 0 0 103px; }
-    summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+    .channel-card > details { margin: 11px 0 0 103px; }
+    .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
     .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
     .alias { padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
     .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
@@ -217,9 +251,8 @@
       .channel-number { flex-basis: 48px; }
       .channel-copy { flex-basis: calc(100% - 96px); }
       .channel-actions { margin-left: 83px; }
-      details { margin-left: 83px; }
+      .channel-card > details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
-      .source-message { white-space: normal; }
       .provider-address { grid-template-columns: 1fr; }
     }
   </style>
@@ -257,56 +290,74 @@
       <div class="stat warning"><div class="stat-value" id="stat-unresolved">—</div><div class="stat-label">Needs category</div></div>
     </section>
 
-    <section class="panel source-panel" id="source-panel" hidden>
-      <h2 class="panel-title">Enrichment sources</h2>
-      <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
-      <div class="sources" id="sources"></div>
-      <section class="provider-address" id="provider-address" hidden>
-        <div>
-          <h3 id="provider-address-title">Official provider location</h3>
-          <p id="provider-address-help"></p>
-        </div>
-        <div>
-          <form class="provider-address-input" id="provider-address-form">
-            <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
-            <button type="submit" id="provider-address-search">Search</button>
-          </form>
-          <div class="provider-address-results" id="provider-address-results"></div>
-          <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
-          <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
-        </div>
-      </section>
-    </section>
-
-    <section class="panel alias-panel" id="alias-panel">
-      <div class="alias-header">
-        <p class="eyebrow">Alias discovery</p>
-        <h2>Build a reusable station-name index</h2>
-        <p>Scan provider lineups in the configured ZIP. Exact Gracenote station IDs, event callsigns, official provider sources, and reviewed network renames can contribute attributable aliases to this Lineuparr draft.</p>
+    <details class="panel source-panel collapsible-panel" id="source-panel" data-section-key="sources" hidden>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Enrichment sources</span>
+          <span class="panel-help">Inspect the evidence used to build this lineup.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
+        <div class="sources" id="sources"></div>
+        <section class="provider-address" id="provider-address" hidden>
+          <div>
+            <h3 id="provider-address-title">Official provider location</h3>
+            <p id="provider-address-help"></p>
+          </div>
+          <div>
+            <form class="provider-address-input" id="provider-address-form">
+              <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
+              <button type="submit" id="provider-address-search">Search</button>
+            </form>
+            <div class="provider-address-results" id="provider-address-results"></div>
+            <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
+            <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
+          </div>
+        </section>
       </div>
-      <div class="metric-grid" aria-live="polite">
-        <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
-        <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
-        <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
-        <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
-      </div>
-      <p id="alias-last-refresh">Last provider refresh: never</p>
-      <div class="scan-progress">
-        <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
-        <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
-        <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
-        <div class="action-row">
-          <button id="postal-scan" type="button">Scan providers in this ZIP</button>
-          <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
+    </details>
 
+    <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
+      <summary class="panel-summary alias-header">
+        <span class="panel-summary-copy">
+          <span class="eyebrow">Alias discovery</span>
+          <h2>Build a reusable station-name index</h2>
+          <span class="panel-help">Scan provider lineups in the configured ZIP and reuse only exact, attributable evidence.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared with this lineup only through an exact station ID.</p>
+        <p class="alias-refresh-time" id="alias-last-refresh">Last provider refresh: never</p>
+        <div class="scan-progress">
+          <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
+          <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
+          <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
+          <div class="action-row">
+            <button id="postal-scan" type="button">Scan providers in this ZIP</button>
+            <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
+          </div>
+        </div>
+        <div class="metric-grid" aria-live="polite">
+          <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups indexed</div></div>
+          <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
+          <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
+          <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
         </div>
       </div>
+    </details>
 
-
-
-    </section>
-
-    <section class="panel builder-panel">
+    <details class="panel builder-panel collapsible-panel" data-section-key="channels" open>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Channels</span>
+          <span class="panel-help">Filter, categorize, include, or exclude channels before export.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body builder-body">
       <div class="toolbar" id="toolbar" hidden>
         <div class="field search">
           <label for="search">Find a channel</label>
@@ -334,8 +385,27 @@
       <div class="channel-list" id="channel-list">
         <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
       </div>
-    </section>
+      </div>
+    </details>
   </main>
+
+  <dialog class="source-evidence-dialog" id="source-evidence-dialog">
+    <div class="source-evidence-header">
+      <div><h2 id="source-evidence-title">Source evidence</h2><p id="source-evidence-summary"></p></div>
+      <button class="secondary source-evidence-close" type="button" id="source-evidence-close">Close</button>
+    </div>
+    <div class="source-evidence-tools">
+      <input id="source-evidence-search" type="search" placeholder="Filter matched channels">
+      <a class="export-button source-evidence-site" id="source-evidence-site" target="_blank" rel="noreferrer" hidden>Provider website</a>
+    </div>
+    <div class="source-evidence-table-wrap">
+      <table class="source-evidence-table">
+        <thead><tr><th>Channel</th><th>Identity</th><th>Category</th><th>Captured evidence</th></tr></thead>
+        <tbody id="source-evidence-rows"></tbody>
+      </table>
+      <div class="empty" id="source-evidence-empty" hidden>No attributable records from this source matched the selected lineup.</div>
+    </div>
+  </dialog>
 
   <script>
     const els = {
@@ -346,6 +416,10 @@
       providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
       providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
       providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
+      sourceEvidenceDialog: document.getElementById('source-evidence-dialog'), sourceEvidenceTitle: document.getElementById('source-evidence-title'),
+      sourceEvidenceSummary: document.getElementById('source-evidence-summary'), sourceEvidenceSearch: document.getElementById('source-evidence-search'),
+      sourceEvidenceSite: document.getElementById('source-evidence-site'), sourceEvidenceRows: document.getElementById('source-evidence-rows'),
+      sourceEvidenceEmpty: document.getElementById('source-evidence-empty'), sourceEvidenceClose: document.getElementById('source-evidence-close'),
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
       includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
@@ -355,7 +429,9 @@
       currentAliasesMetric: document.getElementById('current-aliases-metric'), scanStatus: document.getElementById('scan-status'),
       scanProgressCount: document.getElementById('scan-progress-count'), scanProgressBar: document.getElementById('scan-progress-bar'),
       marketMessage: document.getElementById('market-message'),
-      postalScan: document.getElementById('postal-scan'), stopScan: document.getElementById('stop-scan'),
+      postalScan: document.getElementById('postal-scan'),
+      stopScan: document.getElementById('stop-scan'),
+      aliasLastRefresh: document.getElementById('alias-last-refresh')
     };
 
     let draft = null;
@@ -365,6 +441,7 @@
     let aliasQueue = {};
     let selectedProviderAddress = null;
     let providerAddressConfig = null;
+    let sourceEvidence = null;
     const providerAddressCache = new Map();
 
     function showMessage(text, error = false) {
@@ -390,6 +467,7 @@
         if (!config.required) return;
         providerAddressConfig = config;
         els.providerAddress.hidden = false;
+        els.sourcePanel.open = true;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
         els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
         if (!config.enabled) {
@@ -417,7 +495,7 @@
         button.className = 'provider-address-result';
         button.textContent = result.formattedAddress;
         button.addEventListener('click', () => {
-          selectedProviderAddress = {placeId: result.id, formattedAddress: result.formattedAddress, postalCode: result.postalCode};
+          selectedProviderAddress = {...result};
           setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
         });
         els.providerAddressResults.append(button);
@@ -501,7 +579,10 @@
       try {
         const result = await api('/api/lineuparr/alias-index/run', {
           method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({action, })
+          body: JSON.stringify({
+            action,
+            providerAddress: action === 'postal' ? (selectedProviderAddress || {}) : {}
+          })
         });
         setMarketMessage(result?.queued ? 'Scan queued until the guide is ready. Click the queued button to cancel.' : 'Scan started. Progress is saved after every lineup.', 'success');
       } catch (error) {
@@ -569,23 +650,65 @@
       els.sources.replaceChildren();
       for (const source of draft.sources) {
         const row = document.createElement('div'); row.className = 'source-row';
-        const copy = document.createElement('div'); copy.style.minWidth = '0';
-        const name = source.url ? document.createElement('a') : document.createElement('div');
+        const copy = document.createElement('div'); copy.className = 'source-copy';
+        const directDocument = sourceIsDirectDocument(source.url);
+        const name = directDocument ? document.createElement('a') : document.createElement('button');
         name.className = 'source-name'; name.textContent = source.label;
-        if (source.url) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
+        if (directDocument) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
+        else { name.type = 'button'; name.classList.add('source-name-button'); name.addEventListener('click', () => openSourceEvidence(source)); }
         const message = document.createElement('div'); message.className = 'source-message'; message.textContent = source.message || '';
         copy.append(name, message);
-        const state = document.createElement('div');
+        const state = document.createElement('button'); state.type = 'button';
         const good = !['error'].includes(source.status);
-        state.className = 'source-state ' + (good ? 'good' : 'bad');
+        state.className = 'source-state source-state-button ' + (good ? 'good' : 'bad');
         state.textContent = source.id === 'gracenote' ? `${source.matched} positions` : `${source.matched} matched${source.ambiguous ? ` · ${source.ambiguous} ambiguous` : ''}`;
+        state.disabled = !(source.matches || []).length;
+        if (!state.disabled) state.addEventListener('click', () => openSourceEvidence(source));
         row.append(copy, state); els.sources.append(row);
       }
     }
 
+    function sourceIsDirectDocument(url) {
+      if (!url) return false;
+      try { return new URL(url, location.href).pathname.toLowerCase().endsWith('.pdf'); }
+      catch (_) { return false; }
+    }
+
+    function openSourceEvidence(source) {
+      sourceEvidence = source;
+      els.sourceEvidenceTitle.textContent = source.label;
+      const count = (source.matches || []).length;
+      els.sourceEvidenceSummary.textContent = `${count.toLocaleString()} attributable selected-lineup match${count === 1 ? '' : 'es'}. ${source.message || ''}`.trim();
+      els.sourceEvidenceSearch.value = '';
+      els.sourceEvidenceSite.hidden = !source.url || sourceIsDirectDocument(source.url);
+      if (!els.sourceEvidenceSite.hidden) els.sourceEvidenceSite.href = source.url;
+      renderSourceEvidenceRows();
+      els.sourceEvidenceDialog.showModal();
+    }
+
+    function renderSourceEvidenceRows() {
+      const query = els.sourceEvidenceSearch.value.trim().toLowerCase();
+      const matches = (sourceEvidence?.matches || []).filter(item => !query || [item.number, item.callSign, item.name, item.category, ...(item.aliases || []), ...(item.epgIds || [])].join(' ').toLowerCase().includes(query));
+      els.sourceEvidenceRows.replaceChildren();
+      for (const item of matches) {
+        const row = document.createElement('tr');
+        const number = document.createElement('td'); number.textContent = item.number || '—';
+        const identity = document.createElement('td');
+        const identityName = document.createElement('strong'); identityName.textContent = [item.callSign, item.name && item.name !== item.callSign ? item.name : ''].filter(Boolean).join(' · ') || 'Unnamed channel';
+        const ids = document.createElement('div'); ids.className = 'source-evidence-detail'; ids.textContent = (item.epgIds || []).length ? `EPG IDs: ${item.epgIds.join(', ')}` : '';
+        identity.append(identityName, ids);
+        const category = document.createElement('td'); category.textContent = item.category || 'Uncategorized';
+        const evidence = document.createElement('td');
+        const aliases = document.createElement('div'); aliases.textContent = (item.aliases || []).length ? `Aliases: ${item.aliases.join(', ')}` : 'Matched identity/category';
+        const methods = document.createElement('div'); methods.className = 'source-evidence-detail'; methods.textContent = (item.methods || []).join(' · ');
+        evidence.append(aliases, methods);
+        row.append(number, identity, category, evidence); els.sourceEvidenceRows.append(row);
+      }
+      els.sourceEvidenceEmpty.hidden = matches.length !== 0;
+    }
+
     function categories() {
-      const defaults = ['Local','News','Sports','Regional Sports','Movies','Kids','Entertainment','Reality & Lifestyle','Comedy','Discovery','Crime','Faith','Music','Shopping','Spanish','International','Outdoors','Food & Travel','Adult & PPV','Uncategorized'];
-      return [...new Set([...defaults, ...draft.channels.map(channel => channel.category).filter(Boolean)])].sort((a,b) => a.localeCompare(b));
+      return draft.categories || ['Local & Public','News & Weather','Sports','Movies','Entertainment','Kids & Family','Music','Faith','International','PPV & Events','Other','Uncategorized'];
     }
 
     function renderCategoryOptions() {
@@ -600,7 +723,7 @@
     }
 
     function sourceLabel(id) {
-      return draft.sources.find(source => source.id === id)?.label || id;
+      return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
     function renderChannels() {
@@ -709,6 +832,19 @@
       finally { saving = false; renderSummary(); renderChannels(); }
     }
 
+    function initCollapsibleSections() {
+      for (const section of document.querySelectorAll('.collapsible-panel[data-section-key]')) {
+        const storageKey = `lineuparr-section-${section.dataset.sectionKey}`;
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved !== null) section.open = saved === 'open';
+          section.addEventListener('toggle', () => localStorage.setItem(storageKey, section.open ? 'open' : 'closed'));
+        } catch (_) {
+          // Browser storage is optional; native details behavior still works.
+        }
+      }
+    }
+
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
     els.categoryFilter.addEventListener('change', renderChannels);
@@ -716,6 +852,8 @@
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
+    els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
+    els.sourceEvidenceClose.addEventListener('click', () => els.sourceEvidenceDialog.close());
     els.postalScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('postal'));
     els.stopScan.addEventListener('click', async () => {
       try {
@@ -724,6 +862,7 @@
         await loadAliasIndex();
       } catch (error) { setMarketMessage(error.message, 'error'); }
     });
+    initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
     loadDraft();

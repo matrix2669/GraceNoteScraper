@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestLineuparrPostalScanUsesConfiguredLocation(t *testing.T) {
+func TestAliasQueuePostalScanUsesConfiguredLocation(t *testing.T) {
 	catalog := lineupindex.SeedCatalog{}
 	finder := &fakeProviderFinder{response: &web.ProviderResponse{Providers: []web.Provider{}}}
 	service, err := lineupindex.NewService(lineupindex.ServiceConfig{
