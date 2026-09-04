@@ -512,21 +512,20 @@ func invalidateCurrentGuideArtifacts() {
 
 // ---------- File rotation ----------
 
-// rotateFiles copies the current xmlguide.xmltv to a dated file and prunes old ones.
+// rotateFiles links the current xmlguide.xmltv to a dated file when possible,
+// falls back to a streamed copy across filesystems, and prunes old rotations.
 func rotateFiles() {
 	dated := fmt.Sprintf("xmlguide.%s.xmltv", time.Now().UTC().Format("20060102"))
-
-	src, err := os.ReadFile("xmlguide.xmltv")
+	linked, err := rotateGuideFile("xmlguide.xmltv", dated, os.Link)
 	if err != nil {
-		applog.Errorf("rotate failed to read xmlguide.xmltv: %v", err)
+		applog.Errorf("rotate failed to create %s: %v", dated, err)
 		return
 	}
-
-	if err := os.WriteFile(dated, src, 0644); err != nil {
-		applog.Errorf("rotate failed to write %s: %v", dated, err)
-		return
+	if linked {
+		log.Printf("Rotated guide to %s without duplicating file data", dated)
+	} else {
+		log.Printf("Rotated guide to %s with a cross-filesystem copy", dated)
 	}
-	log.Printf("Rotated guide to %s", dated)
 
 	// Prune: keep only the 7 most recent dated files
 	matches, _ := filepath.Glob("xmlguide.*.xmltv")
@@ -540,6 +539,74 @@ func rotateFiles() {
 		log.Printf("Pruning old guide: %s", old)
 		os.Remove(old)
 	}
+}
+
+func rotateGuideFile(source, destination string, link func(string, string) error) (bool, error) {
+	if _, err := os.Stat(source); err != nil {
+		return false, err
+	}
+	directory := filepath.Dir(destination)
+	temporary, err := os.CreateTemp(directory, ".xmlguide-rotation-*.tmp")
+	if err != nil {
+		return false, err
+	}
+	temporaryPath := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(temporaryPath)
+		return false, err
+	}
+	if err := os.Remove(temporaryPath); err != nil {
+		return false, err
+	}
+	keepTemporary := false
+	defer func() {
+		if !keepTemporary {
+			_ = os.Remove(temporaryPath)
+		}
+	}()
+
+	linked := false
+	if err := link(source, temporaryPath); err == nil {
+		linked = true
+	} else {
+		if copyErr := copyGuideFile(source, temporaryPath); copyErr != nil {
+			return false, copyErr
+		}
+	}
+	if err := os.Rename(temporaryPath, destination); err != nil {
+		return false, err
+	}
+	keepTemporary = true
+	return linked, nil
+}
+
+func copyGuideFile(source, destination string) error {
+	sourceFile, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer sourceFile.Close()
+	destinationFile, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = destinationFile.Close()
+		}
+	}()
+	if _, err := io.Copy(destinationFile, sourceFile); err != nil {
+		return err
+	}
+	if err := destinationFile.Sync(); err != nil {
+		return err
+	}
+	if err := destinationFile.Close(); err != nil {
+		return err
+	}
+	closed = true
+	return nil
 }
 
 // ---------- Background scraper ----------
