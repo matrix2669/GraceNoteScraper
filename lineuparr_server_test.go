@@ -67,7 +67,7 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(body, "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
-	for _, expected := range []string{`id="match-alternative-dialog"`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
+	for _, expected := range []string{`id="match-alternative-dialog"`, `const hasMore = matchReview.candidateCount > candidates.length`, `Current review page is complete. Load more to continue.`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("page is missing stable review control %q", expected)
 		}

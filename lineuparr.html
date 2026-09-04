@@ -615,18 +615,22 @@
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} matching stream${grouped === 1 ? '' : 's'} are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
-      if (!(matchReview.candidates || []).length) {
-        els.matchList.append(emptyMessage('No current proposals remain. Unmatched streams stay unchanged.'));
-      } else {
-        for (const candidate of matchReview.candidates) els.matchList.append(matchCard(candidate));
-        if (matchReview.candidateCount > matchReview.candidates.length) {
-          const remaining = matchReview.candidateCount - matchReview.candidates.length;
-          const amount = Math.min(100, remaining);
-          const loadMore = document.createElement('button'); loadMore.type = 'button'; loadMore.className = 'match-load-more';
-          loadMore.textContent = `Load ${amount} more (${remaining.toLocaleString()} remaining)`;
-          loadMore.addEventListener('click', () => loadMoreMatches());
-          els.matchList.append(loadMore);
-        }
+      const candidates = matchReview.candidates || [];
+      const hasMore = matchReview.candidateCount > candidates.length;
+      if (!candidates.length) {
+        const message = hasMore
+          ? 'Current review page is complete. Load more to continue.'
+          : 'No current proposals remain. Unmatched streams stay unchanged.';
+        els.matchList.append(emptyMessage(message));
+      }
+      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
+      if (hasMore) {
+        const remaining = matchReview.candidateCount - candidates.length;
+        const amount = Math.min(100, remaining);
+        const loadMore = document.createElement('button'); loadMore.type = 'button'; loadMore.className = 'match-load-more';
+        loadMore.textContent = `Load ${amount} more (${remaining.toLocaleString()} remaining)`;
+        loadMore.addEventListener('click', () => loadMoreMatches());
+        els.matchList.append(loadMore);
       }
       els.decisionList.replaceChildren();
       for (const decision of matchReview.decisions || []) els.decisionList.append(decisionRow(decision));
