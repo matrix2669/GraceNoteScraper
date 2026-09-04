@@ -1,4 +1,4 @@
-package marketindex
+package lineupindex
 
 import "errors"
 
@@ -136,9 +136,12 @@ type BatchReport struct {
 }
 
 type RunRequest struct {
-	Action    string `json:"action"`
-	BatchSize int    `json:"batchSize,omitempty"`
-	Ranks     []int  `json:"ranks,omitempty"`
+	Country    string `json:"country,omitempty"`
+	PostalCode string `json:"postalCode,omitempty"`
+	Language   string `json:"language,omitempty"`
+	Action     string `json:"action"`
+	BatchSize  int    `json:"batchSize,omitempty"`
+	Ranks      []int  `json:"ranks,omitempty"`
 }
 
 type JobView struct {

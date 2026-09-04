@@ -9,7 +9,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
-- On-demand, resumable station-alias discovery across ranked representative US markets
+- On-demand station-alias discovery from provider lineups in the configured postal code
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
 - Guide data cached on disk — fast restarts without re-scraping
@@ -99,8 +99,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
-| `MARKET_INDEX_PATH` | Saved station/alias observations from on-demand market scans | `market_index.json` |
-| `MARKET_ZIPS_PATH` | Optional replacement for the embedded representative-market catalog | embedded catalog |
+| `MARKET_INDEX_PATH` | Persistent lineup evidence (legacy setting name retained) | `market_index.json` |
 | `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
@@ -123,16 +122,13 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 ## Station Alias Discovery
 
+The ranked major-market scanner is not included in this branch. Its source remains on `feature/gracenote-market-index`; it is not a runtime dependency. Only an explicit **Scan providers in this ZIP** request is accepted. Legacy ranked `continue`, `refresh`, and `rebuild` requests are rejected without changing saved evidence. The existing `MARKET_INDEX_PATH` setting and `market_index.json` default remain valid; keep that file to preserve collected aliases/categories. Local refreshes update the existing index without deleting historical station evidence.
+
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
-- The embedded catalog contains one representative central-city ZIP for each of the top 100 publicly reported 2025-26 US television markets. These ZIPs are discovery seeds, not official market boundaries or ZIP-to-DMA assignments.
-- **Scan first/next 25 markets** creates a checkpoint and then pauses so marginal yield can be reviewed before continuing.
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
-- Each previously unseen lineup uses one six-hour grid slice. Only provider, lineup, station ID, channel number, and observed-name provenance are retained; programme events are discarded.
-- Failed or stopped batches resume from incomplete lineups. **Refresh** deliberately rescans one market. **Rebuild index** first preserves the prior file at `<MARKET_INDEX_PATH>.bak`.
 - Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
 
-The default catalog and its provenance are in `marketindex/market_zips.json`. Set `MARKET_ZIPS_PATH` to a compatible catalog if you want to maintain a different list without rebuilding the binary.
 
 ## Lineuparr JSON Builder
 
@@ -163,7 +159,7 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET /api/lineuparr/provider-address/config` | Read Nominatim availability and active-lineup constraints for an address-gated provider source |
 | `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
-| `GET /api/lineuparr/alias-index` | Read market-scan progress and marginal alias yield |
+| `GET /api/lineuparr/alias-index` | Read configured-ZIP scan progress and attributed alias evidence |
 | `POST /api/lineuparr/alias-index/run` | Continue, selectively refresh, or rebuild the on-demand index |
 | `POST /api/lineuparr/alias-index/stop` | Stop a running batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
@@ -198,7 +194,7 @@ tvlogo/          TV logo resolver and cache
 util/            Shared helpers
 index.html       The Grid web UI (embedded at build time)
 setup.html       Provider-selection UI (embedded at build time)
-marketindex/     Ranked ZIP catalog, resumable scanner, alias index, and yield reporting
+lineupindex/     Scanner-independent lineup evidence, local provider scans and storage
 lineuparr.html   Lineuparr review/export UI (embedded at build time)
 guide.tmpl       XMLTV output template (embedded at build time)
 ```

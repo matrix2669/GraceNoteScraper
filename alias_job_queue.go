@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 var errAliasJobAlreadyQueued = errors.New("an alias-index job is already queued; cancel it before choosing another")
 
 type aliasJobStarter interface {
-	Start(marketindex.RunRequest) (marketindex.JobView, error)
+	Start(lineupindex.RunRequest) (lineupindex.JobView, error)
 }
 
 type aliasQueueView struct {
@@ -31,7 +31,7 @@ type aliasJobQueue struct {
 	mu          sync.Mutex
 	guideStatus *scrapeStatus
 	starter     aliasJobStarter
-	queued      *marketindex.RunRequest
+	queued      *lineupindex.RunRequest
 	queuedAt    time.Time
 	lastError   string
 }
@@ -43,7 +43,7 @@ func newAliasJobQueue(status *scrapeStatus, starter aliasJobStarter) *aliasJobQu
 	return &aliasJobQueue{guideStatus: status, starter: starter}
 }
 
-func (q *aliasJobQueue) Queue(request marketindex.RunRequest) (aliasQueueView, error) {
+func (q *aliasJobQueue) Queue(request lineupindex.RunRequest) (aliasQueueView, error) {
 	request, err := normalizeQueuedAliasRequest(request)
 	if err != nil {
 		return q.View(), err
@@ -118,7 +118,7 @@ func (q *aliasJobQueue) TryStart() {
 		}
 	}
 	_, err := q.starter.Start(*q.queued)
-	if errors.Is(err, marketindex.ErrAlreadyRunning) {
+	if errors.Is(err, lineupindex.ErrAlreadyRunning) {
 		return
 	}
 	q.queued = nil
@@ -146,26 +146,13 @@ func (q *aliasJobQueue) Run(ctx context.Context) {
 	}
 }
 
-func normalizeQueuedAliasRequest(request marketindex.RunRequest) (marketindex.RunRequest, error) {
+func normalizeQueuedAliasRequest(request lineupindex.RunRequest) (lineupindex.RunRequest, error) {
 	request.Action = strings.ToLower(strings.TrimSpace(request.Action))
-	if request.Action == "" {
-		request.Action = "continue"
+	if request.Action != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
+		return lineupindex.RunRequest{}, errors.New("only configured-postal scans may be queued")
 	}
-	if request.BatchSize == 0 {
-		request.BatchSize = marketindex.DefaultBatchSize
-	}
-	if request.BatchSize < 1 || request.BatchSize > marketindex.MaxBatchSize {
-		return marketindex.RunRequest{}, errors.New("batch size must be between 1 and 25")
-	}
-	switch request.Action {
-	case "continue", "rebuild":
-		request.Ranks = nil
-	case "refresh":
-		if len(request.Ranks) == 0 || len(request.Ranks) > marketindex.MaxBatchSize {
-			return marketindex.RunRequest{}, errors.New("refresh requires between 1 and 25 market ranks")
-		}
-	default:
-		return marketindex.RunRequest{}, errors.New("unsupported alias-index action")
+	if strings.TrimSpace(request.Country) == "" || strings.TrimSpace(request.PostalCode) == "" {
+		return lineupindex.RunRequest{}, errors.New("postal scan requires country and postal code")
 	}
 	return request, nil
 }

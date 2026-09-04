@@ -19,7 +19,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 //go:embed lineuparr.html
@@ -29,7 +29,7 @@ type lineuparrServer struct {
 	store           *appconfig.Store
 	state           *GuideState
 	builder         *lineuparrbuilder.Service
-	marketIndex     *marketindex.Service
+	marketIndex     *lineupindex.Service
 	addressSearcher providerAddressSearcher
 	aliasQueue      *aliasJobQueue
 }
@@ -39,7 +39,7 @@ type providerAddressSearcher interface {
 }
 
 type aliasIndexResponse struct {
-	marketindex.Snapshot
+	lineupindex.Snapshot
 	Queue aliasQueueView `json:"queue"`
 }
 
@@ -364,7 +364,7 @@ func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChan
 			}
 			known[normalized] = true
 			method := "same Gracenote station ID across scanned lineups"
-			if candidate.Kind == marketindex.NameEventCallSign {
+			if candidate.Kind == lineupindex.NameEventCallSign {
 				method = "event callsign on the same Gracenote station ID"
 			}
 			inputs[index].ExternalAliases = append(inputs[index].ExternalAliases, lineuparrbuilder.AttributedAlias{
@@ -378,8 +378,8 @@ func (s *lineuparrServer) applyMarketAliases(inputs []lineuparrbuilder.InputChan
 	}
 	snapshot := s.marketIndex.Snapshot()
 	return []lineuparrbuilder.SourceStatus{{
-		ID: "gracenote-market-index", Label: "Gracenote market alias index", Status: "local", Matched: matched,
-		Message: fmt.Sprintf("%d markets and %d unique lineups scanned; exact station-ID aliases only", snapshot.Summary.CompletedMarkets, snapshot.Summary.Lineups),
+		ID: "gracenote-market-index", Label: "Gracenote lineup alias index", Status: "local", Matched: matched,
+		Message: fmt.Sprintf("%d unique lineups indexed; exact station-ID aliases only", snapshot.Summary.Lineups),
 	}}
 }
 
@@ -432,10 +432,26 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	if !requireJSONContentType(w, r) {
 		return
 	}
-	var request marketindex.RunRequest
+	var request lineupindex.RunRequest
 	if !decodeLineuparrRequest(w, r, &request) {
 		return
 	}
+	if request.Action != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
+		http.Error(w, "Only configured-postal scans are supported", http.StatusBadRequest)
+		return
+	}
+	if s.store == nil {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+		return
+	}
+	config, configured, _ := s.store.Get()
+	if !configured {
+		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
+		return
+	}
+	request.Country = config.Gracenote.Country
+	request.PostalCode = config.Gracenote.PostalCode
+	request.Language = config.Gracenote.Language
 	if s.aliasQueue != nil {
 		queueView := s.aliasQueue.View()
 		if queueView.Queued {
@@ -456,7 +472,7 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	job, err := s.marketIndex.Start(request)
 	if err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, marketindex.ErrAlreadyRunning) || errors.Is(err, marketindex.ErrNoWork) {
+		if errors.Is(err, lineupindex.ErrAlreadyRunning) || errors.Is(err, lineupindex.ErrNoWork) {
 			status = http.StatusConflict
 		}
 		http.Error(w, err.Error(), status)

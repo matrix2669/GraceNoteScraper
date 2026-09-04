@@ -5,20 +5,20 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 type fakeAliasJobStarter struct {
 	mu       sync.Mutex
-	requests []marketindex.RunRequest
+	requests []lineupindex.RunRequest
 	err      error
 }
 
-func (f *fakeAliasJobStarter) Start(request marketindex.RunRequest) (marketindex.JobView, error) {
+func (f *fakeAliasJobStarter) Start(request lineupindex.RunRequest) (lineupindex.JobView, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, request)
-	return marketindex.JobView{Running: f.err == nil, Action: request.Action}, f.err
+	return lineupindex.JobView{Running: f.err == nil, Action: request.Action}, f.err
 }
 
 func (f *fakeAliasJobStarter) requestCount() int {
@@ -32,8 +32,8 @@ func TestAliasJobQueueWaitsForReadyGuideAndCanBeCancelled(t *testing.T) {
 	status.start("Downloading guide data")
 	starter := &fakeAliasJobStarter{}
 	queue := newAliasJobQueue(status, starter)
-	view, err := queue.Queue(marketindex.RunRequest{Action: "continue"})
-	if err != nil || !view.Queued || !view.GuideBusy || view.Action != "continue" {
+	view, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"})
+	if err != nil || !view.Queued || !view.GuideBusy || view.Action != "postal" {
 		t.Fatalf("queued view = %+v err=%v", view, err)
 	}
 	queue.TryStart()
@@ -50,7 +50,7 @@ func TestAliasJobQueueStartsOnceAfterGuideIsReady(t *testing.T) {
 	status.queue("Guide build queued")
 	starter := &fakeAliasJobStarter{}
 	queue := newAliasJobQueue(status, starter)
-	if _, err := queue.Queue(marketindex.RunRequest{Action: "refresh", Ranks: []int{7}, BatchSize: 1}); err != nil {
+	if _, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"}); err != nil {
 		t.Fatal(err)
 	}
 	status.ready(335, 115409)
@@ -66,9 +66,9 @@ func TestAliasJobQueueStartsOnceAfterGuideIsReady(t *testing.T) {
 
 func TestAliasJobQueueRetainsQueuedWorkWhileAnotherScanRuns(t *testing.T) {
 	status := newScrapeStatus(true, 335, 115409)
-	starter := &fakeAliasJobStarter{err: marketindex.ErrAlreadyRunning}
+	starter := &fakeAliasJobStarter{err: lineupindex.ErrAlreadyRunning}
 	queue := newAliasJobQueue(status, starter)
-	if _, err := queue.Queue(marketindex.RunRequest{Action: "rebuild"}); err != nil {
+	if _, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"}); err != nil {
 		t.Fatal(err)
 	}
 	queue.TryStart()

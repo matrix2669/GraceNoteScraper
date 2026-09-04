@@ -1,8 +1,7 @@
-package marketindex
+package lineupindex
 
 import (
 	"sort"
-	"strconv"
 )
 
 func (s *Service) Snapshot() Snapshot {
@@ -10,40 +9,7 @@ func (s *Service) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	markets := make([]MarketView, 0, len(s.catalog.Markets))
-	for _, seed := range s.catalog.Markets {
-		view := MarketView{
-			Rank:       seed.Rank,
-			Name:       seed.Name,
-			Country:    seed.Country,
-			PostalCode: seed.PostalCode,
-			Status:     StatusPending,
-		}
-		if record := s.index.Markets[strconv.Itoa(seed.Rank)]; record != nil {
-			copy := *record
-			view.Record = &copy
-			view.Status = record.Status
-			if record.Status == StatusComplete && record.PostalCode != seed.PostalCode {
-				view.Status = StatusPending
-			}
-		}
-		markets = append(markets, view)
-	}
-	batches := append([]BatchReport(nil), s.index.Batches...)
-	return Snapshot{
-		Catalog: CatalogView{
-			Name:            s.catalog.Name,
-			AsOf:            s.catalog.AsOf,
-			RankingSource:   s.catalog.RankingSource,
-			SelectionMethod: s.catalog.SelectionMethod,
-			Digest:          s.catalog.Digest,
-			MarketCount:     len(s.catalog.Markets),
-		},
-		Summary: s.summaryLocked(current),
-		Job:     s.job,
-		Markets: markets,
-		Batches: batches,
-	}
+	return Snapshot{Summary: s.summaryLocked(current), Job: s.job}
 }
 
 func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary {
@@ -52,30 +18,6 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 		Lineups:               len(s.index.Lineups),
 		Stations:              len(s.index.Stations),
 		CurrentLineupStations: len(current),
-	}
-	for _, seed := range s.catalog.Markets {
-		record := s.index.Markets[strconv.Itoa(seed.Rank)]
-		if record == nil || record.PostalCode != seed.PostalCode {
-			summary.PendingMarkets++
-			if summary.NextRank == 0 {
-				summary.NextRank = seed.Rank
-			}
-			continue
-		}
-		switch record.Status {
-		case StatusComplete:
-			summary.CompletedMarkets++
-		case StatusError:
-			summary.ErrorMarkets++
-			if summary.NextRank == 0 {
-				summary.NextRank = seed.Rank
-			}
-		default:
-			summary.PendingMarkets++
-			if summary.NextRank == 0 {
-				summary.NextRank = seed.Rank
-			}
-		}
 	}
 
 	conflictingNames := make(map[string]bool)
