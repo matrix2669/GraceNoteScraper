@@ -44,6 +44,9 @@ var guideTmplFS embed.FS
 //go:embed index.html
 var indexHTML []byte
 
+//go:embed favicon.svg
+var faviconSVG []byte
+
 // ---------- GuideState ----------
 
 // GuideState holds the current guide data, safe for concurrent access.
@@ -125,31 +128,28 @@ func currentStationNames(g *guide.TVGuide) map[string][]string {
 
 // ---------- Conversion ----------
 
+func apiProgram(p guide.Program) APIProgram {
+	category := ""
+	if len(p.Categories) > 0 {
+		category = p.Categories[0].Name
+	}
+	description := html.UnescapeString(p.Description)
+	if description == "Unavailable" {
+		description = ""
+	}
+	return APIProgram{
+		Title: html.UnescapeString(p.Title), SubTitle: html.UnescapeString(p.SubTitle),
+		Start: xmltvTimeToISO(p.Start), End: xmltvTimeToISO(p.Stop), Category: category,
+		IsNew: p.New, Rating: p.Rating, IconURL: p.IconSrc, Description: description,
+	}
+}
+
 // guideToJSON converts a TVGuide into the simplified JSON API format.
 func guideToJSON(g *guide.TVGuide) APIGuide {
 	// Build channel-id -> programs map
 	chanProgs := make(map[string][]APIProgram)
 	for _, p := range g.Programs {
-		cat := ""
-		if len(p.Categories) > 0 {
-			cat = p.Categories[0].Name
-		}
-		desc := html.UnescapeString(p.Description)
-		if desc == "Unavailable" {
-			desc = ""
-		}
-		ap := APIProgram{
-			Title:       html.UnescapeString(p.Title),
-			SubTitle:    html.UnescapeString(p.SubTitle),
-			Start:       xmltvTimeToISO(p.Start),
-			End:         xmltvTimeToISO(p.Stop),
-			Category:    cat,
-			IsNew:       p.New,
-			Rating:      p.Rating,
-			IconURL:     p.IconSrc,
-			Description: desc,
-		}
-		chanProgs[p.Channel] = append(chanProgs[p.Channel], ap)
+		chanProgs[p.Channel] = append(chanProgs[p.Channel], apiProgram(p))
 	}
 
 	// Sort programs by start time within each channel
@@ -676,6 +676,19 @@ func handleIndex(store *appconfig.Store) http.HandlerFunc {
 		if r.Method == http.MethodGet {
 			_, _ = w.Write(indexHTML)
 		}
+	}
+}
+
+func handleFavicon(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "image/svg+xml")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	if r.Method == http.MethodGet {
+		_, _ = w.Write(faviconSVG)
 	}
 }
 
@@ -1255,6 +1268,7 @@ func main() {
 	lineuparrHandlers := &lineuparrServer{
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
+		exportDir: util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1272,6 +1286,7 @@ func main() {
 	// HTTP server
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleIndex(configStore))
+	mux.HandleFunc("/favicon.svg", handleFavicon)
 	mux.HandleFunc("/setup", setupHandlers.handlePage)
 	mux.HandleFunc("/api/setup/config", setupHandlers.handleConfig)
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
@@ -1282,12 +1297,16 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
+	mux.HandleFunc("/api/lineuparr/categories", lineuparrHandlers.handleCategories)
+	mux.HandleFunc("/api/lineuparr/channel-programs", lineuparrHandlers.handleChannelPrograms)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
 	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
 	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
 	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
+	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)
+	mux.HandleFunc(lineuparrPublishedPrefix, lineuparrHandlers.handlePublishedExport)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)
