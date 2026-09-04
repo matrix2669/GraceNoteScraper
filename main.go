@@ -550,7 +550,7 @@ func loadGuideCache(sourceFingerprint string) guideCacheLoadResult {
 	}
 	if c.Version != guideCacheVersion || len(c.Guide.LineupChannels) == 0 {
 		log.Println("guide cache: missing full provider lineup data, ignoring cached guide")
-		return nil, 0, false
+		return guideCacheLoadResult{Status: guideCacheCorrupt, Err: errors.New("missing full provider lineup data")}
 	}
 	if c.SourceFingerprint != sourceFingerprint {
 		return guideCacheLoadResult{Status: guideCacheSourceChanged}

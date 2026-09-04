@@ -294,6 +294,13 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	if len(draft.Channels) == 0 || !containsString(draft.Channels[0].ExcludedAliases, "US| TWO HD") {
 		t.Fatalf("denied exact match was not exported as a channel exclusion: %+v", draft.Channels)
 	}
+	// Exercise the combination of durable decisions and explicit URL publication.
+	server.lineup.exportDir = t.TempDir()
+	url := publishLineuparrForTest(t, server.lineup)
+	response := readLineuparrExport(server.lineup, http.MethodGet, url)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"excluded_aliases"`) || !strings.Contains(response.Body.String(), "US| TWO HD") {
+		t.Fatalf("published denial missing: %d %s", response.Code, response.Body.String())
+	}
 	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()

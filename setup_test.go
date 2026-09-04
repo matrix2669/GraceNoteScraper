@@ -209,11 +209,10 @@ func TestLineuparrAliasIndexFlow(t *testing.T) {
 }
 
 func TestLineuparrPostalScanUsesConfiguredLocation(t *testing.T) {
-	catalog := lineupindex.SeedCatalog{}
 	finder := &fakeProviderFinder{response: &web.ProviderResponse{Providers: []web.Provider{}}}
 	service, err := lineupindex.NewService(lineupindex.ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
-		Providers: &fakeProviderFinder{response: &web.ProviderResponse{}},
+		Providers: finder,
 		Grids:     fakeMarketGridFetcher{},
 	})
 	if err != nil {
@@ -301,6 +300,9 @@ func TestGuideCacheRequiresMatchingSource(t *testing.T) {
 	got := loadGuideCache("source-one")
 	if got.Status != guideCacheReady || got.Guide == nil {
 		t.Fatalf("matching cache = %+v", got)
+	}
+	if len(got.Guide.LineupChannels) != 1 || got.Guide.LineupChannels[0].PlacementID != "position" {
+		t.Fatalf("cached provider positions = %+v", got.Guide.LineupChannels)
 	}
 	if matches, err := filepath.Glob("guide-cache-*.tmp"); err != nil || len(matches) != 0 {
 		t.Fatalf("temporary cache files = %v, error = %v", matches, err)
@@ -427,9 +429,6 @@ func TestRestoreMissingGuideFileFromCache(t *testing.T) {
 	plan := planGuideStartup(cache, xmltvErr)
 	if plan.Guide != want || plan.NextScrapeIn != 22*time.Hour {
 		t.Fatalf("restored startup plan = %+v", plan)
-	}
-	if len(got.LineupChannels) != 1 || got.LineupChannels[0].PlacementID != "position" {
-		t.Fatalf("cached provider positions = %+v", got.LineupChannels)
 	}
 }
 
