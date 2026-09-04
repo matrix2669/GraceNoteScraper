@@ -28,10 +28,11 @@ func (f *fakeProviders) FindProviders(_ context.Context, _, postalCode, _ string
 }
 
 type fakeGrids struct {
-	mu        sync.Mutex
-	responses map[string]*web.GridResponse
-	failures  map[string]int
-	calls     map[string]int
+	mu          sync.Mutex
+	responses   map[string]*web.GridResponse
+	responsesAt map[string]map[int64]*web.GridResponse
+	failures    map[string]int
+	calls       map[string]int
 }
 
 type variantGrids struct {
@@ -44,6 +45,8 @@ type blockingGrid struct {
 }
 
 type fakeEvidence struct{}
+
+type crossStationCategoryEvidence struct{}
 
 type captureEvidence struct {
 	requests chan ProviderEvidenceRequest
@@ -75,19 +78,34 @@ func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvi
 	}, nil
 }
 
+func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
+	if request.Provider.LineupID != "L2" {
+		return ProviderEvidenceResult{}, nil
+	}
+	return ProviderEvidenceResult{
+		Facts: []ProviderFact{{
+			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "exact provider channel number",
+		}},
+		Sources: []EvidenceSourceRecord{{ID: "directv-official", Label: "DIRECTV official lineup", Status: StatusComplete, Matched: 1, Categories: 1}},
+	}, nil
+}
+
 func (f *blockingGrid) FetchGrid(ctx context.Context, _ web.Preferences, _ int64) (*web.GridResponse, error) {
 	close(f.started)
 	<-ctx.Done()
 	return nil, ctx.Err()
 }
 
-func (f *fakeGrids) FetchGrid(_ context.Context, preferences web.Preferences, _ int64) (*web.GridResponse, error) {
+func (f *fakeGrids) FetchGrid(_ context.Context, preferences web.Preferences, at int64) (*web.GridResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls[preferences.LineupId]++
 	if f.failures[preferences.LineupId] > 0 {
 		f.failures[preferences.LineupId]--
 		return nil, errors.New("temporary grid failure")
+	}
+	if byTime := f.responsesAt[preferences.LineupId]; byTime != nil && byTime[at] != nil {
+		return byTime[at], nil
 	}
 	return f.responses[preferences.LineupId], nil
 }
@@ -324,6 +342,135 @@ func TestPostalScanKeepsProviderAddressEphemeralAndSourceFailuresPartial(t *test
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPostalScanConfirmsCrossStationAliasesWithTwoWeekdayBlocks(t *testing.T) {
+	now := time.Date(2026, time.August, 30, 12, 0, 0, 0, time.UTC)
+	directory := t.TempDir()
+	providerOne := testProvider("L1")
+	providerOne.Name = "Optimum of Woodbury"
+	providerOne.Timezone = "America/New_York"
+	providerTwo := testProvider("L2")
+	providerTwo.Name = "DIRECTV"
+	providerTwo.Timezone = "America/New_York"
+	providers := &fakeProviders{responses: map[string][]web.Provider{"11743": {providerOne, providerTwo}}}
+	blocks, _, err := weekdayEPGBlocks(now, []web.Provider{providerOne, providerTwo}, &web.ProviderResponse{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grids := &fakeGrids{
+		responses: map[string]*web.GridResponse{}, responsesAt: map[string]map[int64]*web.GridResponse{},
+		failures: map[string]int{}, calls: map[string]int{},
+	}
+	for _, provider := range []web.Provider{providerOne, providerTwo} {
+		stationID := "LEFT"
+		callSign := "WCBSDT"
+		programPrefix := "LEFT"
+		if provider.LineupID == "L2" {
+			stationID, callSign, programPrefix = "RIGHT", "WCBSHD", "RIGHT"
+		}
+		grids.responsesAt[provider.LineupID] = map[int64]*web.GridResponse{
+			blocks[0].Start.Unix(): {Channels: []web.JSONChannel{testEPGChannel(stationID, callSign, "CBS", blocks[0], []string{"News", "Prime 1", "Prime 2", "Prime 3", "Prime 4", "Late News"}, programPrefix)}},
+			blocks[1].Start.Unix(): {Channels: []web.JSONChannel{testEPGChannel(stationID, callSign, "CBS", blocks[1], []string{"Talk 1", "Talk 2", "Drama 1", "Drama 2", "News 1", "News 2"}, programPrefix)}},
+		}
+	}
+	service, err := NewService(ServiceConfig{
+		Path:        filepath.Join(directory, "market_index.json"),
+		SnapshotDir: filepath.Join(directory, "snapshots"),
+		Catalog:     testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers:   providers, Grids: grids, Evidence: crossStationCategoryEvidence{}, Now: func() time.Time { return now },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(RunRequest{Action: "postal", Country: "USA", PostalCode: "11743", Language: "en-us"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForPostal(t, service, "USA", "11743")
+	if snapshot.PostalScan.Status != StatusComplete || snapshot.PostalScan.EPGMatches != 1 || snapshot.PostalScan.EPGQuestionable != 0 || snapshot.PostalScan.EPGRejected != 0 {
+		t.Fatalf("postal scan = %+v", snapshot.PostalScan)
+	}
+	if grids.calls["L1"] != 2 || grids.calls["L2"] != 2 {
+		t.Fatalf("grid calls = %+v", grids.calls)
+	}
+	if snapshot.Job.CompletedCount != 4 || snapshot.Job.TotalCount != 4 {
+		t.Fatalf("EPG request progress = %+v", snapshot.Job)
+	}
+	aliases := service.AliasesForStations([]string{"LEFT"})["LEFT"]
+	foundRaw, foundNormalized := false, false
+	for _, alias := range aliases {
+		foundRaw = foundRaw || alias.Value == "WCBSHD"
+		foundNormalized = foundNormalized || alias.Value == "WCBS"
+	}
+	if !foundRaw || !foundNormalized {
+		t.Fatalf("cross-station aliases = %+v", aliases)
+	}
+	category, ok := service.CategoriesForStations([]string{"LEFT"})["LEFT"]
+	if !ok || category.Value != "Movies" {
+		t.Fatalf("cross-station category = %+v, %v", category, ok)
+	}
+	snapshotData, err := os.ReadFile(lineupSnapshotPath(service.snapshotDir, "USA", "11743", "L1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lineupSnapshot LineupSnapshot
+	if err := json.Unmarshal(snapshotData, &lineupSnapshot); err != nil {
+		t.Fatal(err)
+	}
+	if len(lineupSnapshot.Channels) != 1 || lineupSnapshot.Channels[0].Category != "Movies" {
+		t.Fatalf("rewritten lineup snapshot = %+v", lineupSnapshot.Channels)
+	}
+	data, err := os.ReadFile(service.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "Prime 1") || strings.Contains(string(data), "Talk 1") || strings.Contains(string(data), "events") {
+		t.Fatal("programme payloads were persisted with EPG evidence")
+	}
+}
+
+func TestProviderFamilyKeySupportsNationalLineupVariants(t *testing.T) {
+	tests := map[string]string{
+		"DIRECTV New York": "directv",
+		"DISH Network":     "dish",
+		"DISH New York":    "dish",
+		"GLORYSTAR":        "glorystar",
+	}
+	for input, want := range tests {
+		if got := providerFamilyKey(input); got != want {
+			t.Errorf("providerFamilyKey(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestReplaceEPGFactsReplacesPriorPostalEvidence(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1"}
+	service.mu.Unlock()
+	sourceID := weekdayEPGSourceID("USA", "11743")
+	if _, _, _, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
+		ProviderFact: ProviderFact{StationID: "S1", Kind: FactAlias, Value: "OLD", SourceID: sourceID}, LineupKeys: []string{"L1"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
+		ProviderFact: ProviderFact{StationID: "S1", Kind: FactAlias, Value: "NEW", SourceID: sourceID}, LineupKeys: []string{"L2"},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	aliases := service.AliasesForStations([]string{"S1"})["S1"]
+	if len(aliases) != 1 || aliases[0].Value != "NEW" || len(aliases[0].LineupKeys) != 1 || aliases[0].LineupKeys[0] != "L2" {
+		t.Fatalf("replacement aliases = %+v", aliases)
 	}
 }
 
