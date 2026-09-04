@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -289,14 +290,143 @@ func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
 func TestGuideCacheRequiresMatchingSource(t *testing.T) {
 	t.Chdir(t.TempDir())
 	want := &guide.TVGuide{LineupChannels: []guide.Channel{{ID: "station", PlacementID: "position", ChannelNo: "10", CallSign: "TEST"}}}
-	saveGuideCache(want, "source-one")
-
-	if _, _, ok := loadGuideCache(time.Hour, "source-two"); ok {
-		t.Fatal("cache loaded for a different source")
+	if err := saveGuideCache(want, "source-one"); err != nil {
+		t.Fatalf("saveGuideCache() error = %v", err)
 	}
-	got, _, ok := loadGuideCache(time.Hour, "source-one")
-	if !ok || got == nil {
-		t.Fatal("cache did not load for matching source")
+
+	mismatch := loadGuideCache("source-two")
+	if mismatch.Status != guideCacheSourceChanged || mismatch.Guide != nil {
+		t.Fatalf("mismatched cache = %+v", mismatch)
+	}
+	got := loadGuideCache("source-one")
+	if got.Status != guideCacheReady || got.Guide == nil {
+		t.Fatalf("matching cache = %+v", got)
+	}
+	if matches, err := filepath.Glob("guide-cache-*.tmp"); err != nil || len(matches) != 0 {
+		t.Fatalf("temporary cache files = %v, error = %v", matches, err)
+	}
+}
+
+func TestLoadGuideCacheReportsMissingAndCorrupt(t *testing.T) {
+	t.Chdir(t.TempDir())
+
+	missing := loadGuideCache("source-one")
+	if missing.Status != guideCacheMissing || missing.Err != nil {
+		t.Fatalf("missing cache = %+v", missing)
+	}
+
+	if err := os.WriteFile(guideCachePath, []byte("not-json"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	corrupt := loadGuideCache("source-one")
+	if corrupt.Status != guideCacheCorrupt || corrupt.Err == nil {
+		t.Fatalf("corrupt cache = %+v", corrupt)
+	}
+
+	if err := os.Remove(guideCachePath); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if err := os.Mkdir(guideCachePath, 0755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	unreadable := loadGuideCache("source-one")
+	if unreadable.Status != guideCacheUnreadable || unreadable.Err == nil {
+		t.Fatalf("unreadable cache = %+v", unreadable)
+	}
+	if strings.Contains(unreadable.Err.Error(), "not-json") {
+		t.Fatalf("unreadable cache retained stale parse error: %v", unreadable.Err)
+	}
+}
+
+func TestPlanGuideStartupUsesFreshCacheForRemainingInterval(t *testing.T) {
+	want := &guide.TVGuide{}
+	plan := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    3 * time.Hour,
+		Status: guideCacheReady,
+	}, nil)
+
+	if plan.Guide != want {
+		t.Fatal("fresh cache guide was not retained")
+	}
+	if plan.NextScrapeIn != 21*time.Hour {
+		t.Fatalf("next scrape = %s, want 21h", plan.NextScrapeIn)
+	}
+	if plan.Warn || plan.InvalidateArtifacts || !strings.Contains(plan.Message, "fresh") {
+		t.Fatalf("fresh plan = %+v", plan)
+	}
+}
+
+func TestPlanGuideStartupServesStaleCacheDuringRefresh(t *testing.T) {
+	want := &guide.TVGuide{}
+	plan := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    25 * time.Hour,
+		Status: guideCacheReady,
+	}, nil)
+
+	if plan.Guide != want {
+		t.Fatal("stale cache guide was not retained")
+	}
+	if plan.NextScrapeIn != immediateGuideRefreshWait {
+		t.Fatalf("next scrape = %s, want %s", plan.NextScrapeIn, immediateGuideRefreshWait)
+	}
+	if plan.Warn || plan.InvalidateArtifacts || !strings.Contains(plan.Message, "stale") {
+		t.Fatalf("stale plan = %+v", plan)
+	}
+}
+
+func TestPlanGuideStartupRejectsUnservableOrWrongSourceCache(t *testing.T) {
+	want := &guide.TVGuide{}
+	missingXML := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    time.Hour,
+		Status: guideCacheReady,
+	}, &os.PathError{Op: "stat", Path: "xmlguide.xmltv", Err: os.ErrNotExist})
+	if missingXML.Guide != nil || !missingXML.Warn || missingXML.InvalidateArtifacts {
+		t.Fatalf("missing XMLTV plan = %+v", missingXML)
+	}
+	if !strings.Contains(missingXML.Message, "xmlguide.xmltv is missing") {
+		t.Fatalf("missing XMLTV message = %q", missingXML.Message)
+	}
+
+	wrongSource := planGuideStartup(guideCacheLoadResult{Status: guideCacheSourceChanged}, nil)
+	if wrongSource.Guide != nil || wrongSource.Warn || !wrongSource.InvalidateArtifacts {
+		t.Fatalf("wrong-source plan = %+v", wrongSource)
+	}
+	if wrongSource.NextScrapeIn != immediateGuideRefreshWait {
+		t.Fatalf("wrong-source next scrape = %s", wrongSource.NextScrapeIn)
+	}
+}
+
+func TestRestoreMissingGuideFileFromCache(t *testing.T) {
+	t.Chdir(t.TempDir())
+	want := &guide.TVGuide{}
+	cache := guideCacheLoadResult{
+		Guide:  want,
+		Age:    2 * time.Hour,
+		Status: guideCacheReady,
+	}
+
+	xmltvErr, rebuilt := restoreMissingGuideFile(cache, &os.PathError{
+		Op:   "stat",
+		Path: "xmlguide.xmltv",
+		Err:  os.ErrNotExist,
+	})
+	if xmltvErr != nil || !rebuilt {
+		t.Fatalf("restoreMissingGuideFile() error = %v, rebuilt = %v", xmltvErr, rebuilt)
+	}
+	data, err := os.ReadFile("xmlguide.xmltv")
+	if err != nil {
+		t.Fatalf("ReadFile(xmlguide.xmltv) error = %v", err)
+	}
+	if !strings.Contains(string(data), "<tv") {
+		t.Fatalf("rebuilt XMLTV does not contain a tv root: %q", data)
+	}
+
+	plan := planGuideStartup(cache, xmltvErr)
+	if plan.Guide != want || plan.NextScrapeIn != 22*time.Hour {
+		t.Fatalf("restored startup plan = %+v", plan)
 	}
 	if len(got.LineupChannels) != 1 || got.LineupChannels[0].PlacementID != "position" {
 		t.Fatalf("cached provider positions = %+v", got.LineupChannels)
