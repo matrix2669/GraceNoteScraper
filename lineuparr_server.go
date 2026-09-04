@@ -21,9 +21,10 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	store   *appconfig.Store
-	state   *GuideState
-	builder *lineuparrbuilder.Service
+	store     *appconfig.Store
+	state     *GuideState
+	builder   *lineuparrbuilder.Service
+	exportDir string
 }
 
 func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -364,6 +365,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		http.Error(w, "The active provider changed while the draft was building; reload and try again", http.StatusConflict)
 		return nil, appconfig.Config{}, nil, false
 	}
+	draft.SourceFingerprint = config.Fingerprint()
 	return draft, config, inputs, true
 }
 

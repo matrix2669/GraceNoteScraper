@@ -1156,7 +1156,10 @@ func main() {
 			queueScrape(scrapeTrigger)
 		},
 	}
-	lineuparrHandlers := &lineuparrServer{store: configStore, state: state, builder: lineuparrBuilder}
+	lineuparrHandlers := &lineuparrServer{
+		store: configStore, state: state, builder: lineuparrBuilder,
+		exportDir: util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
+	}
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1182,6 +1185,8 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
+	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)
+	mux.HandleFunc(lineuparrPublishedPrefix, lineuparrHandlers.handlePublishedExport)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)
