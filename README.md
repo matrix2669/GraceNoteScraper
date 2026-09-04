@@ -9,7 +9,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
-- On-demand alias and category discovery across every provider in the configured ZIP, plus resumable ranked-market coverage
+- On-demand alias and category discovery across every provider in the configured ZIP
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
 - Guide data cached on disk — fast restarts without re-scraping
@@ -189,7 +189,7 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `GET /api/lineuparr/alias-index` | Read configured-ZIP scan progress and attributed alias evidence |
-| `POST /api/lineuparr/alias-index/run` | Scan all providers in the configured ZIP, continue ranked markets, selectively refresh, or rebuild the on-demand index |
+| `POST /api/lineuparr/alias-index/run` | Scan or refresh all providers in the configured ZIP; ranked scan actions are rejected |
 | `POST /api/lineuparr/alias-index/stop` | Stop a running batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
 | `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
