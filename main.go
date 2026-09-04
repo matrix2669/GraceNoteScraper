@@ -29,7 +29,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
@@ -1178,28 +1178,22 @@ func main() {
 			queueScrape(scrapeTrigger)
 		},
 	}
-	var marketService *marketindex.Service
-	marketCatalog, marketCatalogErr := marketindex.LoadSeeds(util.GetEnv("MARKET_ZIPS_PATH", ""))
-	if marketCatalogErr != nil {
-		log.Printf("Market index is unavailable: %v", marketCatalogErr)
+	var marketService *lineupindex.Service
+	service, serviceErr := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+		SnapshotDir:     util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
+		Providers:       setupHandlers.providers,
+		Grids:           lineupindex.WebGridFetcher{},
+		Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
+		CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
+		ProviderDelay:   500 * time.Millisecond,
+		GridDelay:       5 * time.Second,
+	})
+	if serviceErr != nil {
+		log.Printf("Local lineup index is unavailable: %v", serviceErr)
 	} else {
-		service, serviceErr := marketindex.NewService(marketindex.ServiceConfig{
-			Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
-			SnapshotDir:     util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
-			Catalog:         marketCatalog,
-			Providers:       setupHandlers.providers,
-			Grids:           marketindex.WebGridFetcher{},
-			Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
-			CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
-			ProviderDelay:   500 * time.Millisecond,
-			GridDelay:       5 * time.Second,
-		})
-		if serviceErr != nil {
-			log.Printf("Market index is unavailable: %v", serviceErr)
-		} else {
-			marketService = service
-			log.Printf("Market index ready with %d ranked ZIP seeds", len(marketCatalog.Markets))
-		}
+		marketService = service
+		log.Printf("Local lineup index ready")
 	}
 	nominatimURL := strings.TrimSpace(util.GetEnv("NOMINATIM_URL", geocode.DefaultNominatimURL))
 	var addressSearcher providerAddressSearcher

@@ -1,4 +1,4 @@
-package marketindex
+package lineupindex
 
 import (
 	"encoding/json"
@@ -60,8 +60,13 @@ func loadIndex(path string, catalog SeedCatalog, now time.Time) (Index, error) {
 			postal.LastError = "Interrupted before completion"
 		}
 	}
-	index.SeedDigest = catalog.Digest
-	index.SeedAsOf = catalog.AsOf
+	// Preserve legacy catalog metadata when loading without a ranked catalog.
+	if catalog.Digest != "" {
+		index.SeedDigest = catalog.Digest
+	}
+	if catalog.AsOf != "" {
+		index.SeedAsOf = catalog.AsOf
+	}
 	return index, nil
 }
 

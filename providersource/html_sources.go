@@ -13,7 +13,7 @@ import (
 	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 const (
@@ -170,7 +170,7 @@ func parseGlorystar(data []byte) []catalogEntry {
 	return dedupeEntries(entries)
 }
 
-func (s *Service) fetchXfinity(ctx context.Context, request marketindex.ProviderEvidenceRequest) providerResult {
+func (s *Service) fetchXfinity(ctx context.Context, request lineupindex.ProviderEvidenceRequest) providerResult {
 	source := catalogSource{
 		ID: "xfinity-official-lineup", Label: "Xfinity official lineup", URL: xfinityGuideURL,
 		Method: "exact Xfinity channel number from the public address-qualified lineup service",
@@ -278,7 +278,7 @@ func parseXfinityValue(payload any) ([]catalogEntry, error) {
 	return dedupeEntries(entries), nil
 }
 
-func (s *Service) fetchOptimum(ctx context.Context, request marketindex.ProviderEvidenceRequest) providerResult {
+func (s *Service) fetchOptimum(ctx context.Context, request lineupindex.ProviderEvidenceRequest) providerResult {
 	providerText := strings.Join([]string{request.Provider.Name, request.Provider.Location}, " ")
 	if optimumEasternMarket(request.PostalCode, providerText) {
 		return s.fetchOptimumEast(ctx, providerText)
@@ -313,7 +313,7 @@ func (s *Service) fetchOptimumEast(ctx context.Context, providerText string) pro
 	return requireEntries(source)
 }
 
-func (s *Service) fetchOptimumWest(ctx context.Context, address marketindex.ProviderAddress) providerResult {
+func (s *Service) fetchOptimumWest(ctx context.Context, address lineupindex.ProviderAddress) providerResult {
 	source := catalogSource{
 		ID: "optimum-official-lineup", Label: "Optimum official lineup", URL: optimumWestURL,
 		Method: "exact Optimum channel number from the public address-qualified lineup service",

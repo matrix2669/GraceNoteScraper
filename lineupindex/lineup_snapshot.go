@@ -1,4 +1,4 @@
-package marketindex
+package lineupindex
 
 import (
 	"crypto/sha256"

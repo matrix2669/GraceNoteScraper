@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -37,7 +37,7 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 		}, nil
 	})}
 	service := newService(client)
-	result, err := service.FetchProviderEvidence(context.Background(), marketindex.ProviderEvidenceRequest{
+	result, err := service.FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
 		Provider: web.Provider{Name: "DISH Satellite", LineupID: "DISH"}, LineupKey: "DISH", PostalCode: "11743",
 		Grid: &web.GridResponse{Channels: []web.JSONChannel{
 			{ChannelID: "NEWS", ChannelNo: "205", CallSign: "FXNWS"},
@@ -50,7 +50,7 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 	categories := make(map[string]string)
 	aliases := make(map[string][]string)
 	for _, fact := range result.Facts {
-		if fact.Kind == marketindex.FactCategory {
+		if fact.Kind == lineupindex.FactCategory {
 			categories[fact.StationID] = fact.Value
 		} else {
 			aliases[fact.StationID] = append(aliases[fact.StationID], fact.Value)
@@ -72,7 +72,7 @@ func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
 		return nil, errors.New("offline test")
 	})}
 	service := newServiceWithOptions(client, Options{UseEmbeddedCatalogs: true})
-	request := marketindex.ProviderEvidenceRequest{
+	request := lineupindex.ProviderEvidenceRequest{
 		Provider:   web.Provider{Name: "Optimum of Woodbury - Digital Rebuild"},
 		PostalCode: "11743",
 		Grid:       &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ESPN", ChannelNo: "210", CallSign: "ESPN"}}},
@@ -86,7 +86,7 @@ func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
 	}
 	found := false
 	for _, fact := range result.Facts {
-		if fact.StationID == "ESPN" && fact.Kind == marketindex.FactCategory && fact.Value == "Sports" {
+		if fact.StationID == "ESPN" && fact.Kind == lineupindex.FactCategory && fact.Value == "Sports" {
 			found = true
 		}
 	}
@@ -104,7 +104,7 @@ func TestOptimumSnapshotRequiresMatchingPostalCode(t *testing.T) {
 }
 
 func TestEmbeddedProviderCatalogsAreOffByDefault(t *testing.T) {
-	request := marketindex.ProviderEvidenceRequest{
+	request := lineupindex.ProviderEvidenceRequest{
 		Provider: web.Provider{Name: "Optimum of Woodbury - Digital Rebuild"}, PostalCode: "11743",
 		Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ESPN", ChannelNo: "210", CallSign: "ESPN"}}},
 	}
@@ -121,7 +121,7 @@ func TestEmbeddedProviderCatalogsAreOffByDefault(t *testing.T) {
 }
 
 func TestEmbeddedCatalogOmitsObsoleteRegisteredPlaceholders(t *testing.T) {
-	result, err := newServiceWithOptions(nil, Options{UseEmbeddedCatalogs: true}).FetchProviderEvidence(context.Background(), marketindex.ProviderEvidenceRequest{
+	result, err := newServiceWithOptions(nil, Options{UseEmbeddedCatalogs: true}).FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
 		Provider: web.Provider{Name: "Xfinity"}, PostalCode: "11743",
 		Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ONE", ChannelNo: "1"}}},
 	})
@@ -205,8 +205,8 @@ func TestXfinityErrorsNeverExposeServiceAddress(t *testing.T) {
 	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return nil, errors.New("transport included " + address)
 	})}
-	result, err := newService(client).FetchProviderEvidence(context.Background(), marketindex.ProviderEvidenceRequest{
-		Provider: web.Provider{Name: "Xfinity"}, PostalCode: "11743", ServiceAddress: marketindex.ProviderAddress{FormattedAddress: address},
+	result, err := newService(client).FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		Provider: web.Provider{Name: "Xfinity"}, PostalCode: "11743", ServiceAddress: lineupindex.ProviderAddress{FormattedAddress: address},
 		Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ONE", ChannelNo: "1"}}},
 	})
 	if err == nil || strings.Contains(err.Error(), address) || len(result.Sources) != 1 || strings.Contains(result.Sources[0].URL, address) || strings.Contains(result.Sources[0].Message, address) {
@@ -222,9 +222,9 @@ func TestXfinityResponseReadErrorsNeverExposeServiceAddress(t *testing.T) {
 			Body: failingBody{message: "read failed for " + address},
 		}, nil
 	})}
-	result, err := newService(client).FetchProviderEvidence(context.Background(), marketindex.ProviderEvidenceRequest{
+	result, err := newService(client).FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
 		Provider: web.Provider{Name: "Xfinity"}, PostalCode: "11743",
-		ServiceAddress: marketindex.ProviderAddress{FormattedAddress: address},
+		ServiceAddress: lineupindex.ProviderAddress{FormattedAddress: address},
 		Grid:           &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ONE", ChannelNo: "1"}}},
 	})
 	if err == nil || strings.Contains(err.Error(), address) || strings.Contains(result.Sources[0].Message, address) {
@@ -280,9 +280,9 @@ func TestOptimumAddressQualifiedServiceFlow(t *testing.T) {
 		}
 		return nil, nil
 	})}
-	result, err := newService(client).FetchProviderEvidence(context.Background(), marketindex.ProviderEvidenceRequest{
+	result, err := newService(client).FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
 		Provider: web.Provider{Name: "Optimum Amarillo"}, PostalCode: "75001",
-		ServiceAddress: marketindex.ProviderAddress{FormattedAddress: "1 Main Street, Dallas, TX 75001", StreetAddress: "1 Main Street", City: "Dallas", State: "TX", PostalCode: "75001", CountryCode: "US"},
+		ServiceAddress: lineupindex.ProviderAddress{FormattedAddress: "1 Main Street, Dallas, TX 75001", StreetAddress: "1 Main Street", City: "Dallas", State: "TX", PostalCode: "75001", CountryCode: "US"},
 		Grid:           &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ESPN-ID", ChannelNo: "210", CallSign: "ESPN"}}},
 	})
 	if err != nil || calls != 2 || len(result.Sources) != 1 || result.Sources[0].Matched != 1 {
@@ -295,7 +295,7 @@ func jsonResponse(request *http.Request, body string) *http.Response {
 }
 
 func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing.T) {
-	result := matchCatalog(marketindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+	result := matchCatalog(lineupindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "ONE", ChannelNo: "850"}, {ChannelID: "TWO", ChannelNo: "851"},
 	}}}, catalogSource{
 		ID: "music", Label: "Official music range", Entries: []catalogEntry{
@@ -306,9 +306,9 @@ func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing
 	aliases := 0
 	categories := 0
 	for _, fact := range result.Facts {
-		if fact.Kind == marketindex.FactAlias {
+		if fact.Kind == lineupindex.FactAlias {
 			aliases++
-		} else if fact.Kind == marketindex.FactCategory {
+		} else if fact.Kind == lineupindex.FactCategory {
 			categories++
 		}
 	}

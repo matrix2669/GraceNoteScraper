@@ -14,7 +14,7 @@ import (
 	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -99,10 +99,10 @@ func newServiceWithOptions(client *http.Client, options Options) *Service {
 	return &Service{httpClient: client, catalog: sources}
 }
 
-func (s *Service) FetchProviderEvidence(ctx context.Context, request marketindex.ProviderEvidenceRequest) (marketindex.ProviderEvidenceResult, error) {
+func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex.ProviderEvidenceRequest) (lineupindex.ProviderEvidenceResult, error) {
 	providerName := strings.ToLower(strings.TrimSpace(request.Provider.Name))
 	if providerName == "" || request.Grid == nil {
-		return marketindex.ProviderEvidenceResult{}, nil
+		return lineupindex.ProviderEvidenceResult{}, nil
 	}
 	var live providerResult
 	hasLiveSource := true
@@ -138,7 +138,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request marketindex
 		hasLiveSource = false
 	}
 
-	result := marketindex.ProviderEvidenceResult{}
+	result := lineupindex.ProviderEvidenceResult{}
 	if hasLiveSource {
 		matched := matchCatalog(request, live.source)
 		result.Facts = append(result.Facts, matched.Facts...)
@@ -229,13 +229,13 @@ func cleanDISHName(value string) string {
 	}
 }
 
-func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSource) marketindex.ProviderEvidenceResult {
+func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSource) lineupindex.ProviderEvidenceResult {
 	if len(source.Entries) == 0 {
 		status := source.Status
 		if status == "" {
 			status = "registered"
 		}
-		return marketindex.ProviderEvidenceResult{Sources: []marketindex.EvidenceSourceRecord{{
+		return lineupindex.ProviderEvidenceResult{Sources: []lineupindex.EvidenceSourceRecord{{
 			ID: source.ID, Label: source.Label, URL: source.URL, Status: status, Message: source.Message,
 		}}}
 	}
@@ -252,7 +252,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 		}
 	}
 
-	result := marketindex.ProviderEvidenceResult{}
+	result := lineupindex.ProviderEvidenceResult{}
 	matchedStations := make(map[string]bool)
 	type matchedEntry struct {
 		channel web.JSONChannel
@@ -299,8 +299,8 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 				continue
 			}
 			seenAliases[key] = true
-			result.Facts = append(result.Facts, marketindex.ProviderFact{
-				StationID: channel.ChannelID, Kind: marketindex.FactAlias, Value: strings.TrimSpace(alias),
+			result.Facts = append(result.Facts, lineupindex.ProviderFact{
+				StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod,
 			})
 		}
@@ -315,8 +315,8 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 			if entry.CategoryMethod != "" {
 				categoryMethod = entry.CategoryMethod + "; " + categoryMethod
 			}
-			result.Facts = append(result.Facts, marketindex.ProviderFact{
-				StationID: channel.ChannelID, Kind: marketindex.FactCategory, Value: category.Category,
+			result.Facts = append(result.Facts, lineupindex.ProviderFact{
+				StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
 				RawValue: strings.TrimSpace(entry.Category), MatchMethod: category.Method, MatchConfidence: category.Confidence,
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 				Method: factMethod + "; provider category " + strconv.Quote(strings.TrimSpace(entry.Category)) + " mapped by " + categoryMethod,
@@ -326,7 +326,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 	aliases := 0
 	categories := 0
 	for _, fact := range result.Facts {
-		if fact.Kind == marketindex.FactCategory {
+		if fact.Kind == lineupindex.FactCategory {
 			categories++
 		} else {
 			aliases++
@@ -348,7 +348,7 @@ func matchCatalog(request marketindex.ProviderEvidenceRequest, source catalogSou
 			message = "No exact provider channel-number or unique identity joins were found"
 		}
 	}
-	result.Sources = []marketindex.EvidenceSourceRecord{{
+	result.Sources = []lineupindex.EvidenceSourceRecord{{
 		ID: source.ID, Label: source.Label, URL: source.URL, Status: status,
 		Matched: len(matchedStations), Aliases: aliases, Categories: categories, Message: message,
 	}}

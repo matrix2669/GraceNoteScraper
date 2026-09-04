@@ -13,7 +13,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
-	"github.com/daniel-widrick/GraceNoteScraper/marketindex"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 type fakeProviderAddressSearcher struct {
@@ -207,20 +207,20 @@ func TestProviderAddressSearchUsesActiveLineupLocation(t *testing.T) {
 }
 
 func TestValidateEphemeralProviderAddress(t *testing.T) {
-	address, err := validateEphemeralProviderAddress(marketindex.ProviderAddress{
+	address, err := validateEphemeralProviderAddress(lineupindex.ProviderAddress{
 		FormattedAddress: "  123 Main Street, Huntington, NY 11743  ", StreetAddress: "123 Main Street",
 		City: "Huntington", State: "NY", PostalCode: "11743", CountryCode: "us",
 	}, "11743")
 	if err != nil || address.FormattedAddress != "123 Main Street, Huntington, NY 11743" || address.CountryCode != "US" {
 		t.Fatalf("validated address = %+v, error = %v", address, err)
 	}
-	if _, err := validateEphemeralProviderAddress(marketindex.ProviderAddress{FormattedAddress: "123 Main Street, Boston, MA 02108", PostalCode: "02108"}, "11743"); err == nil {
+	if _, err := validateEphemeralProviderAddress(lineupindex.ProviderAddress{FormattedAddress: "123 Main Street, Boston, MA 02108", PostalCode: "02108"}, "11743"); err == nil {
 		t.Fatal("accepted an address outside the active lineup postal code")
 	}
 }
 
 func TestValidateEphemeralProviderAddressAcceptsUSZIPPlusFour(t *testing.T) {
-	address, err := validateEphemeralProviderAddress(marketindex.ProviderAddress{
+	address, err := validateEphemeralProviderAddress(lineupindex.ProviderAddress{
 		FormattedAddress: "1 Main Street, Huntington, NY 11743-1234",
 		StreetAddress:    "1 Main Street", City: "Huntington", State: "NY",
 		PostalCode: "11743-1234", CountryCode: "us",
