@@ -387,6 +387,7 @@
     let saving = false;
     let marketPoll = null;
     let marketWasRunning = false;
+    let aliasQueue = {};
     let selectedProviderAddress = null;
     let providerAddressConfig = null;
     const providerAddressCache = new Map();
@@ -493,6 +494,7 @@
       const summary = data.summary;
       const catalog = data.catalog;
       const job = data.job;
+      aliasQueue = data.queue || {};
       const completed = summary.completedMarkets || 0;
       const total = catalog.marketCount || 0;
       const overallPercent = total ? Math.round(completed * 100 / total) : 0;
@@ -503,11 +505,13 @@
       els.stationsMetric.textContent = (summary.stations || 0).toLocaleString();
       els.aliasesMetric.textContent = (summary.meaningfulAliases || 0).toLocaleString();
       els.currentAliasesMetric.textContent = summary.currentLineupStations ? (summary.currentLineupAliases || 0).toLocaleString() : '—';
-      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : `${overallPercent}% overall`;
-      els.scanProgressBar.style.width = `${batchPercent}%`;
+      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : aliasQueue.queued ? 'Waiting for guide' : `${overallPercent}% overall`;
+      els.scanProgressBar.style.width = `${aliasQueue.queued ? 0 : batchPercent}%`;
 
       if (job.running) {
         els.scanStatus.textContent = `Scanning #${job.currentRank || '—'} ${job.currentMarket || 'next market'}`;
+      } else if (aliasQueue.queued) {
+        els.scanStatus.textContent = `Alias scan queued until the guide is ready`;
       } else if (completed === total && total > 0) {
         els.scanStatus.textContent = 'All curated markets have been processed';
       } else if (summary.errorMarkets) {
@@ -516,17 +520,17 @@
         els.scanStatus.textContent = completed ? 'Ready for the next 25-market checkpoint' : 'Ready to scan the first 25 markets';
       }
 
-      els.continueScan.disabled = job.running || (completed === total && !summary.errorMarkets);
-      els.continueScan.textContent = completed ? 'Scan next 25 markets' : 'Scan first 25 markets';
+      const noContinuation = completed === total && !summary.errorMarkets;
+      els.continueScan.disabled = job.running || (!aliasQueue.queued && noContinuation);
+      els.continueScan.textContent = aliasQueue.queued ? 'Queued — click to cancel' : aliasQueue.guideBusy ? (completed ? 'Queue next 25 markets' : 'Queue first 25 markets') : (completed ? 'Scan next 25 markets' : 'Scan first 25 markets');
       els.stopScan.hidden = !job.running;
-      els.rebuildIndex.disabled = job.running;
-      if (job.lastError && !job.running) {
-        setMarketMessage(job.lastError, 'error');
-      } else if (!job.running && completed > 0 && !summary.meaningfulAliases) {
-        setMarketMessage(`Gracenote returned one canonical callsign per station across ${completed} completed market${completed === 1 ? '' : 's'}, so this index has no cross-lineup aliases yet. More markets may add station coverage; provider guides, exact catalogs, and confirmed M3U names are the useful alternate-name sources.`);
-      } else if (!job.running && !marketWasRunning) {
-        setMarketMessage('');
-      }
+      els.rebuildIndex.disabled = job.running || aliasQueue.queued;
+      if (aliasQueue.lastError && !job.running) setMarketMessage(aliasQueue.lastError, 'error');
+      else if (job.lastError && !job.running) setMarketMessage(job.lastError, 'error');
+      else if (aliasQueue.queued) setMarketMessage(`${aliasQueue.action || 'Alias'} scan queued. Click the queued button to cancel.`, 'success');
+      else if (aliasQueue.guideBusy) setMarketMessage(`${aliasQueue.guideStatus || 'The guide is busy'}. A scan request will be queued.`, '');
+      else if (!job.running && completed > 0 && !summary.meaningfulAliases) setMarketMessage(`Gracenote returned one canonical callsign per station across ${completed} completed market${completed === 1 ? '' : 's'}, so this index has no cross-lineup aliases yet. More markets may add station coverage; provider guides, exact catalogs, and confirmed M3U names are the useful alternate-name sources.`);
+      else if (!job.running && !marketWasRunning) setMarketMessage('');
 
       els.batchRows.replaceChildren();
       const batches = (data.batches || []).slice().reverse().slice(0, 8);
@@ -550,15 +554,16 @@
         const name = document.createElement('span'); name.className = 'market-name'; name.textContent = market.name;
         const zip = document.createElement('span'); zip.className = 'market-zip'; zip.textContent = market.postalCode;
         const status = document.createElement('span'); status.className = `status-pill ${market.status}`; status.textContent = marketStatusLabel(market.status);
-        const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'secondary market-refresh'; refresh.textContent = 'Refresh'; refresh.disabled = job.running;
+        const refresh = document.createElement('button'); refresh.type = 'button'; refresh.className = 'secondary market-refresh'; refresh.textContent = aliasQueue.guideBusy ? 'Queue refresh' : 'Refresh'; refresh.disabled = job.running || aliasQueue.queued;
         refresh.addEventListener('click', () => startAliasScan('refresh', [market.rank]));
         row.append(rank, name, zip, status, refresh); els.marketList.append(row);
       }
       els.marketListSummary.textContent = `View curated market ZIP list (${total})`;
       els.marketProvenance.textContent = `${catalog.selectionMethod} Ranking snapshot: ${catalog.asOf}.`;
 
-      if (job.running && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
-      if (!job.running && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
+      const needsPolling = job.running || aliasQueue.queued || aliasQueue.guideBusy;
+      if (needsPolling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
+      if (!needsPolling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) {
         if (summary.meaningfulAliases) {
           setMarketMessage('Scan complete. The Lineuparr draft is being refreshed with newly attributable aliases.', 'success');
@@ -582,13 +587,23 @@
       els.rebuildIndex.disabled = true;
       setMarketMessage(action === 'refresh' ? 'Refreshing the selected market…' : 'Starting the alias scan…');
       try {
-        await api('/api/lineuparr/alias-index/run', {
+        const result = await api('/api/lineuparr/alias-index/run', {
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({action, batchSize: action === 'refresh' ? 1 : 25, ranks})
         });
-        setMarketMessage('Scan started. Progress is saved after every lineup.', 'success');
+        setMarketMessage(result?.queued ? 'Scan queued until the guide is ready. Click the queued button to cancel.' : 'Scan started. Progress is saved after every lineup.', 'success');
       } catch (error) {
         setMarketMessage(error.message || 'Unable to start the alias scan.', 'error');
+      }
+      await loadAliasIndex();
+    }
+
+    async function cancelQueuedAliasScan() {
+      try {
+        const result = await api('/api/lineuparr/alias-index/run', {method: 'DELETE'});
+        setMarketMessage(result?.cancelled ? 'Queued alias scan cancelled.' : 'No alias scan was queued.');
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to cancel the queued scan.', 'error');
       }
       await loadAliasIndex();
     }
@@ -789,7 +804,7 @@
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
-    els.continueScan.addEventListener('click', () => startAliasScan('continue'));
+    els.continueScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('continue'));
     els.stopScan.addEventListener('click', async () => {
       try {
         await api('/api/lineuparr/alias-index/stop', {method:'POST'});

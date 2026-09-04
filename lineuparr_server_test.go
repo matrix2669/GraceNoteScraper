@@ -82,6 +82,9 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
+	if !strings.Contains(recorder.Body.String(), "Queued — click to cancel") {
+		t.Fatal("queued alias action is missing from the Lineuparr page")
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()

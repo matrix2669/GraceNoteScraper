@@ -31,10 +31,16 @@ type lineuparrServer struct {
 	builder         *lineuparrbuilder.Service
 	marketIndex     *marketindex.Service
 	addressSearcher providerAddressSearcher
+	aliasQueue      *aliasJobQueue
 }
 
 type providerAddressSearcher interface {
 	Search(context.Context, string, string, string) ([]geocode.AddressResult, error)
+}
+
+type aliasIndexResponse struct {
+	marketindex.Snapshot
+	Queue aliasQueueView `json:"queue"`
 }
 
 type providerAddressConfigResponse struct {
@@ -396,12 +402,26 @@ func (s *lineuparrServer) handleAliasIndex(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Alias discovery is unavailable; check the application log", http.StatusServiceUnavailable)
 		return
 	}
-	writeLineuparrJSON(w, http.StatusOK, s.marketIndex.Snapshot())
+	response := aliasIndexResponse{Snapshot: s.marketIndex.Snapshot()}
+	if s.aliasQueue != nil {
+		s.aliasQueue.TryStart()
+		response.Snapshot = s.marketIndex.Snapshot()
+		response.Queue = s.aliasQueue.View()
+	}
+	writeLineuparrJSON(w, http.StatusOK, response)
 }
 
 func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		cancelled := false
+		if s.aliasQueue != nil {
+			cancelled = s.aliasQueue.Cancel()
+		}
+		writeLineuparrJSON(w, http.StatusOK, map[string]bool{"cancelled": cancelled})
+		return
+	}
 	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", "POST")
+		w.Header().Set("Allow", "POST, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -415,6 +435,23 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	var request marketindex.RunRequest
 	if !decodeLineuparrRequest(w, r, &request) {
 		return
+	}
+	if s.aliasQueue != nil {
+		queueView := s.aliasQueue.View()
+		if queueView.Queued {
+			http.Error(w, errAliasJobAlreadyQueued.Error(), http.StatusConflict)
+			return
+		}
+		if queueView.GuideBusy {
+			queued, err := s.aliasQueue.Queue(request)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			writeLineuparrJSON(w, http.StatusAccepted, map[string]any{"queued": true, "queue": queued})
+			return
+		}
+		s.aliasQueue.ClearError()
 	}
 	job, err := s.marketIndex.Start(request)
 	if err != nil {
