@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,8 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"time"
-
-	"github.com/daniel-widrick/GraceNoteScraper/util"
 )
 
 const (
@@ -97,19 +96,38 @@ type Client struct {
 func (c *Client) Source() GuideSource { return c.pref.Source() }
 
 func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
+	return c.GetDataByTimeContext(context.Background(), t)
+}
+
+func (c *Client) GetDataByTimeContext(ctx context.Context, t int64) (*GridResponse, error) {
 	var lastErr error
 	for attempt := 1; attempt <= gridMaxAttempts; attempt++ {
-		grid, err := c.getDataByTimeOnce(t)
+		grid, err := c.getDataByTimeOnce(ctx, t)
 		if err == nil {
-			if attempt > 1 { log.Printf("Gracenote grid time=%d succeeded on attempt %d/%d", t, attempt, gridMaxAttempts) }
-			if err := saveGridCache(t, c.Source(), grid); err != nil { log.Printf("Gracenote grid cache: failed to save time=%d: %v", t, err) }
+			if attempt > 1 {
+				log.Printf("Gracenote grid time=%d succeeded on attempt %d/%d", t, attempt, gridMaxAttempts)
+			}
+			if err := saveGridCache(t, c.Source(), grid); err != nil {
+				log.Printf("Gracenote grid cache: failed to save time=%d: %v", t, err)
+			}
 			return grid, nil
 		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		lastErr = err
-		if attempt == gridMaxAttempts { break }
+		if attempt == gridMaxAttempts {
+			break
+		}
 		delay := gridRetryDelays[attempt-1]
 		log.Printf("Gracenote grid time=%d attempt %d/%d failed: %v; retrying in %s", t, attempt, gridMaxAttempts, err, delay)
-		time.Sleep(delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
 	}
 	fallback, age, err := loadGridCache(t, c.Source())
 	if err == nil {
@@ -119,7 +137,7 @@ func (c *Client) GetDataByTime(t int64) (*GridResponse, error) {
 	return nil, fmt.Errorf("Gracenote grid time=%d failed after %d attempts (%v); cached fallback unavailable: %w", t, gridMaxAttempts, lastErr, err)
 }
 
-func (c *Client) getDataByTimeOnce(t int64) (*GridResponse, error) {
+func (c *Client) getDataByTimeOnce(ctx context.Context, t int64) (*GridResponse, error) {
 	log.Printf("headendId=%s lineupId=%s zipCode=%s", c.pref.Headend, c.pref.LineupId, c.pref.ZipCode)
 	params := url.Values{
 		"aid": {"orbebb"}, "lineupId": {c.pref.LineupId}, "timespan": {"6"}, "headendId": {c.pref.Headend}, "country": {c.pref.Country},
@@ -128,31 +146,48 @@ func (c *Client) getDataByTimeOnce(t int64) (*GridResponse, error) {
 	}
 	gridURL := "https://tvlistings.gracenote.com/api/grid?" + params.Encode()
 	log.Printf("Fetching: %s", gridURL)
-	req, err := http.NewRequest("GET", gridURL, nil)
-	if err != nil { return nil, fmt.Errorf("GetDataByTime failed to build request: %w", err) }
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, gridURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("GetDataByTime failed to build request: %w", err)
+	}
 	req.Header.Set("Referer", "https://tvlistings.gracenote.com/grid-affiliates.html?aid=orbebb")
 	req.Header.Set("X-Requested-Width", "XMLHttpRequest")
 	resp, err := c.Do(req)
-	if err != nil { return nil, fmt.Errorf("GetDataByTime request failed: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("GetDataByTime request failed: %w", err)
+	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
 		return nil, fmt.Errorf("guide API returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	b, err := io.ReadAll(resp.Body)
-	if err != nil { return nil, fmt.Errorf("unable to read guide body: %w", err) }
+	if err != nil {
+		return nil, fmt.Errorf("unable to read guide body: %w", err)
+	}
 	var grid GridResponse
-	if err := json.Unmarshal(b, &grid); err != nil { return nil, fmt.Errorf("unable to parse guide JSON: %w", err) }
+	if err := json.Unmarshal(b, &grid); err != nil {
+		return nil, fmt.Errorf("unable to parse guide JSON: %w", err)
+	}
 	return &grid, nil
 }
 
-func NewClient() *Client {
+func NewClient(pref Preferences) *Client {
 	jar, err := cookiejar.New(nil)
-	if err != nil { log.Fatalf("Unable to create cookie storage for http client: %v", err); return nil }
-	client := &Client{Client: &http.Client{Jar: jar, Timeout: 15 * time.Second, Transport: &headerTransport{rt: http.DefaultTransport}}, pref: currentPreferences()}
-	if err := pruneGridCache(client.Source(), time.Now().UTC().Add(-48*time.Hour)); err != nil { log.Printf("Gracenote grid cache: prune failed: %v", err) }
+	if err != nil {
+		log.Fatalf("Unable to create cookie storage for http client: %v", err)
+		return nil
+	}
+	client := &Client{Client: &http.Client{Jar: jar, Timeout: 15 * time.Second, Transport: &headerTransport{rt: http.DefaultTransport}}, pref: pref}
+	if err := pruneGridCache(client.Source(), time.Now().UTC().Add(-48*time.Hour)); err != nil {
+		log.Printf("Gracenote grid cache: prune failed: %v", err)
+	}
 	return client
 }
 
 type headerTransport struct{ rt http.RoundTripper }
-func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) { req.Header.Set("User-Agent", userAgent); return t.rt.RoundTrip(req) }
+
+func (t *headerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("User-Agent", userAgent)
+	return t.rt.RoundTrip(req)
+}
