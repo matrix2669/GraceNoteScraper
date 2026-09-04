@@ -25,15 +25,19 @@ type GridResponse struct {
 }
 
 type JSONChannel struct {
-	ChannelID     string      `json:"channelId"`
-	ChannelNo     string      `json:"channelNo"`
-	CallSign      string      `json:"callSign"`
-	AffiliateName string      `json:"affiliateName"`
-	Thumbnail     string      `json:"thumbnail"`
-	Events        []JSONEvent `json:"events"`
+	ID                string      `json:"id"`
+	ChannelID         string      `json:"channelId"`
+	ChannelNo         string      `json:"channelNo"`
+	CallSign          string      `json:"callSign"`
+	AffiliateName     string      `json:"affiliateName"`
+	AffiliateCallSign string      `json:"affiliateCallSign"`
+	Thumbnail         string      `json:"thumbnail"`
+	Events            []JSONEvent `json:"events"`
 }
 
 type JSONEvent struct {
+	CallSign  string      `json:"callSign"`
+	ChannelNo string      `json:"channelNo"`
 	StartTime string      `json:"startTime"`
 	EndTime   string      `json:"endTime"`
 	Duration  string      `json:"duration"`
