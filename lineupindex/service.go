@@ -97,6 +97,11 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func (s *Service) Start(request RunRequest) (JobView, error) {
+	if request.ValidateSource != nil {
+		if err := request.ValidateSource(); err != nil {
+			return JobView{}, err
+		}
+	}
 	if strings.ToLower(strings.TrimSpace(request.Action)) != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
 		return JobView{}, errors.New("only configured-postal scans are supported; ranked-market scanning is not enabled")
 	}
