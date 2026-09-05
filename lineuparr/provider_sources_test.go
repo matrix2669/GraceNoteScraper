@@ -8,10 +8,13 @@ import (
 func TestProviderSourceInventoryIncludesRequestedProviders(t *testing.T) {
 	sources := ProviderGuideSources()
 	wanted := map[string]bool{
-		"verizon-fios": false, "optimum": false, "directv": false, "dish": false, "afn": false,
-		"glorystar": false, "att-uverse": false, "xfinity": false, "spectrum": false, "broadstar": false,
+		"verizon-fios": false, "optimum": false, "directv": false, "dish": false,
+		"att-uverse": false, "xfinity": false, "spectrum": false, "broadstar": false,
 	}
 	for _, source := range sources {
+		if source.ID == "afn" || source.ID == "glorystar" {
+			t.Fatalf("excluded enrichment source remains: %s", source.ID)
+		}
 		if _, ok := wanted[source.ID]; ok {
 			wanted[source.ID] = source.URL != "" && source.Access != ""
 		}

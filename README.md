@@ -148,7 +148,7 @@ The Alias discovery section on `/lineuparr` builds a local station-name index on
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP and joins supported live official provider sources to their own provider grids. Exact station IDs are reused directly. Different station IDs become alias/category bridges only after independent pair-level identity evidence and matching weekday schedules satisfy the rules below.
 - Every successfully downloaded lineup produces its own schema-versioned JSON file under `LINEUP_SNAPSHOT_DIR`. It contains provider positions, Gracenote station IDs, identity aliases, normalized category evidence, source URLs, match methods, and fuzzy confidence, but never programme events, credentials, service addresses, or stream URLs.
-- Runtime adapters now cover Verizon FiOS, Optimum, DIRECTV, DISH, AFN, Glorystar, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set.
+- Runtime adapters cover Verizon FiOS, Optimum, DIRECTV, DISH, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set. AFN and Glorystar are excluded from enrichment scans and source listings, but remain selectable as the main guide provider. Existing index files are not deleted; their direct provider facts and provider-only names are ignored.
 When initial-guide background TMDB enrichment is enabled, local lineup scans may start as soon as the usable base guide reaches the background-enrichment stage. This includes enabled provider/source downloads and alias/category processing; they do not wait for TMDB. Already queued scans start automatically on the next queue check (within approximately one second). Guide downloading, logo processing, ordinary scheduled enrichment and final guide saving remain gated. Only one local scan runs at a time, and source rate limits and cancellation are unchanged.
 
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
@@ -167,10 +167,10 @@ Provider coverage is intentionally explicit about source limitations:
 | Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Eastern PDFs contribute their explicit section categories by exact channel number, including column continuations and compact ranges; western service areas require a user-selected address for an exact local lineup |
 | DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
 | DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
-| AFN | Official guide PDF format | AFN's CDN may reject automated downloads; that source reports an isolated error when unavailable |
-| Glorystar | Public channel table | The provider is faith-focused, so its published channel rows map to `Faith` |
 | AT&T U-verse | Official public PDF | AT&T's current download URL serves a document marked effective February 2023 and is reported as limited |
-| Xfinity | Public address-qualified channel API | Requires a user-selected address for the active Xfinity lineup |
+| Xfinity | Public address-qualified channel API | Uses `genreName`, feed-local names/callsign and explicit PPV flags. Unknown genres stay unresolved; linked SD/HD names are not mixed. Xfinity station IDs are not Gracenote IDs. Requires a saved service address. |
+
+Source matched counts represent selected-lineup channels with attributable alias/category evidence, including corroboration of an already-known alias. They are not counts of newly added alias strings; ZIP-wide joins remain separately described. After upgrading the parser, run the ZIP scan again to obtain new categories. Xfinity itself labels many records `Unknown`, so this source cannot categorize every channel.
 | Spectrum | Public lineup page | No stable no-login residential payload is currently exposed; account/login automation is intentionally disabled |
 | BroadStar | Official public PDF | Categories are used only where the provider document has explicit Sports, Premium, Music, or service sections |
 
