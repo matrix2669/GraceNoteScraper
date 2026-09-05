@@ -41,6 +41,8 @@ The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV l
 
 **Caching layers:**
 
+Initial server guides are published before TMDB in `runGuideCycle`; regular refreshes and guide-only mode retain full-cycle publication. `TVGuide.TMDBPending` and `TMDBPendingSince` survive guide-cache persistence and channel filtering. Fresh pending guides resume from cached programmes; expired pending guides use normal refresh. Only the serialized scraper writes guides. TMDB mutates a private copy (including nested programme slices), then the source-guarded persister swaps it. Setup `guideReady` is independent of `running`, so consumers may read the guide while external scan coordination remains busy. Source changes/shutdown stop new worker lookups; in-flight calls may finish but cannot publish obsolete data. Image proxy rewriting must remain idempotent for resumed guides.
+
 | Cache | File | TTL |
 |---|---|---|
 | Guide (in-memory + disk) | `guide_cache.json` | 24h freshness; stale source-matching fallback during refresh |

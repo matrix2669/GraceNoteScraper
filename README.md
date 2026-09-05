@@ -27,6 +27,14 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 Alternatively, use `--guide-only` mode with a cron job and point your DVR software at the local `xmlguide.xmltv` file.
 
+### Faster first guide with optional TMDB enrichment
+
+On initial setup, or when no usable guide exists, server mode publishes the Gracenote guide after downloading its listings and resolving channel logos. You can use the guide and, when installed, the Lineuparr builder immediately. Optional TMDB artwork and programme metadata are added in the background; setup displays **Guide available now** alongside enrichment progress. The completed enriched guide replaces the base guide without changing channel membership or reviewed Lineuparr exports.
+
+The base guide stays usable if enrichment is interrupted. A source-matching pending guide less than 24 hours old resumes enrichment after restart using its saved programmes and TMDB cache, without fetching the grids again. Keep the data directory persistent. Failures retain the base guide and use the normal 15-minute retry. A changed lineup cannot receive results from the old lineup.
+
+This publish-first behavior applies only to the initial/missing guide. Regular scheduled refreshes with a usable guide and `--guide-only` still finish enrichment before publishing. Without `TMDB_TOKEN`, there is no TMDB background work. The configured worker limit and shared request rate are unchanged. When provider scanning is installed, its existing guide-busy queue remains in effect until enrichment finishes; it does not prevent editing the Lineuparr draft.
+
 ## Quick Start (Docker Compose)
 
 1. Clone the repo:

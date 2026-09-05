@@ -6,6 +6,7 @@ import (
 )
 
 type scrapeStatusSnapshot struct {
+	GuideReady  bool      `json:"guideReady"`
 	Running     bool      `json:"running"`
 	Stage       string    `json:"stage"`
 	Message     string    `json:"message"`
@@ -28,7 +29,7 @@ func newScrapeStatus(guideReady bool, channels, programs int) *scrapeStatus {
 	now := time.Now().UTC()
 	if guideReady {
 		status.snapshot = scrapeStatusSnapshot{
-			Stage: "ready", Message: "Guide ready", Channels: channels, Programs: programs,
+			GuideReady: true, Stage: "ready", Message: "Guide ready", Channels: channels, Programs: programs,
 			UpdatedAt: now, CompletedAt: now,
 		}
 	} else {
@@ -59,7 +60,7 @@ func (s *scrapeStatus) update(stage, message string, completed, total, channels,
 		startedAt = now
 	}
 	s.snapshot = scrapeStatusSnapshot{
-		Running: true, Stage: stage, Message: message, Completed: completed, Total: total,
+		GuideReady: s.snapshot.GuideReady, Running: true, Stage: stage, Message: message, Completed: completed, Total: total,
 		Channels: channels, Programs: programs, StartedAt: startedAt, UpdatedAt: now,
 	}
 	s.mu.Unlock()
@@ -70,7 +71,7 @@ func (s *scrapeStatus) ready(channels, programs int) {
 	s.mu.Lock()
 	startedAt := s.snapshot.StartedAt
 	s.snapshot = scrapeStatusSnapshot{
-		Stage: "ready", Message: "Guide ready", Channels: channels, Programs: programs,
+		GuideReady: true, Stage: "ready", Message: "Guide ready", Channels: channels, Programs: programs,
 		StartedAt: startedAt, UpdatedAt: now, CompletedAt: now,
 	}
 	s.mu.Unlock()
@@ -81,7 +82,7 @@ func (s *scrapeStatus) fail(message string) {
 	s.mu.Lock()
 	startedAt := s.snapshot.StartedAt
 	s.snapshot = scrapeStatusSnapshot{
-		Stage: "error", Message: message, StartedAt: startedAt, UpdatedAt: now, CompletedAt: now,
+		GuideReady: s.snapshot.GuideReady, Stage: "error", Message: message, StartedAt: startedAt, UpdatedAt: now, CompletedAt: now,
 	}
 	s.mu.Unlock()
 }
@@ -90,4 +91,13 @@ func (s *scrapeStatus) snapshotValue() scrapeStatusSnapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.snapshot
+}
+
+// Availability and background-job completion are deliberately independent.
+func (s *scrapeStatus) available(channels, programs int) {
+	s.mu.Lock()
+	s.snapshot.GuideReady = true
+	s.snapshot.Channels = channels
+	s.snapshot.Programs = programs
+	s.mu.Unlock()
 }
