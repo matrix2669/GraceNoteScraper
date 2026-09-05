@@ -466,7 +466,6 @@
         if (!config.required) return;
         providerAddressConfig = config;
         els.providerAddress.hidden = false;
-        els.sourcePanel.open = true;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
         els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
         if (!config.enabled) {
@@ -823,6 +822,12 @@
 
     function initCollapsibleSections() {
       for (const section of document.querySelectorAll('.collapsible-panel[data-section-key]')) {
+        // Sources start closed on each visit, even with an old saved-open value
+        // or an address-gated provider. Native toggling still works this visit.
+        if (section.dataset.sectionKey === 'sources') {
+          section.open = false;
+          continue;
+        }
         const storageKey = `lineuparr-section-${section.dataset.sectionKey}`;
         try {
           const saved = localStorage.getItem(storageKey);

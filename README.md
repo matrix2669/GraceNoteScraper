@@ -32,6 +32,8 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 ## Quick Start (Docker Compose)
 
+On the Lineuparr page, Enrichment sources starts collapsed on every visit. Expand it to review source evidence or supply a required provider address. Other sections retain their saved expansion preferences.
+
 1. Clone the repo:
    ```sh
    git clone https://github.com/daniel-widrick/GraceNoteScraper.git
