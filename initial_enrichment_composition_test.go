@@ -12,7 +12,7 @@ import (
 
 // These assertions exercise the combination of the focused TMDB owner with
 // the full-provider Lineuparr builder and local-ZIP job coordinator.
-func TestPendingTMDBCompositionKeepsBuilderAvailableAndScansQueued(t *testing.T) {
+func TestPendingTMDBCompositionKeepsBuilderAvailableAndReleasesScans(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	config, _, _ := server.store.Get()
 	base := initialGuideFixture()
@@ -29,6 +29,7 @@ func TestPendingTMDBCompositionKeepsBuilderAvailableAndScansQueued(t *testing.T)
 		t.Fatal(err)
 	}
 	_, err := runGuideCycle(base, true, time.Now(), nil, func(enriched *guide.TVGuide) error {
+		status.update("tmdb_background", "Guide available", 0, 100, len(base.Channels), len(base.Programs))
 		recorder := httptest.NewRecorder()
 		draft, _, _, ok := server.buildDraft(recorder, httptest.NewRequest("GET", "/api/lineuparr/draft", nil))
 		if !ok || len(draft.Channels) != 2 {
@@ -38,8 +39,8 @@ func TestPendingTMDBCompositionKeepsBuilderAvailableAndScansQueued(t *testing.T)
 			t.Fatal("background copy lost provider positions")
 		}
 		queue.TryStart()
-		if starter.requestCount() != 0 || !queue.View().Queued {
-			t.Fatal("provider scan started before enrichment finished")
+		if starter.requestCount() != 1 || queue.View().Queued || !status.snapshotValue().Running {
+			t.Fatal("provider scan did not start while TMDB was running")
 		}
 		return nil
 	}, func(g *guide.TVGuide) (bool, error) {

@@ -89,7 +89,7 @@ func (q *aliasJobQueue) viewLocked() aliasQueueView {
 	view := aliasQueueView{LastError: q.lastError}
 	if q.guideStatus != nil {
 		status := q.guideStatus.snapshotValue()
-		view.GuideBusy = status.Running || status.Stage != "ready"
+		view.GuideBusy = guideBlocksAliasScan(status)
 		view.GuideStage = status.Stage
 		view.GuideStatus = status.Message
 	}
@@ -113,7 +113,7 @@ func (q *aliasJobQueue) TryStart() {
 	}
 	if q.guideStatus != nil {
 		status := q.guideStatus.snapshotValue()
-		if status.Running || status.Stage != "ready" {
+		if guideBlocksAliasScan(status) {
 			return
 		}
 	}
@@ -144,6 +144,16 @@ func (q *aliasJobQueue) Run(ctx context.Context) {
 			q.TryStart()
 		}
 	}
+}
+
+// tmdb_background is emitted only after a usable base guide is published.
+// Do not relax the ordinary tmdb stage: scheduled refreshes still own the
+// guide job until publication. Keep this predicate shared by UI and execution.
+func guideBlocksAliasScan(status scrapeStatusSnapshot) bool {
+	if status.Stage == "tmdb_background" && status.Running && status.Channels > 0 && status.Programs > 0 {
+		return false
+	}
+	return status.Running || status.Stage != "ready"
 }
 
 func normalizeQueuedAliasRequest(request lineupindex.RunRequest) (lineupindex.RunRequest, error) {
