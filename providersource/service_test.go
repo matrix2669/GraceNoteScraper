@@ -216,7 +216,7 @@ func TestEventFeedDoesNotAttachToPermanentChannelByNumber(t *testing.T) {
 	}}}
 	result := matchCatalog(request, catalogSource{
 		ID: "directv", Label: "DIRECTV", Entries: []catalogEntry{
-			{Numbers: []string{"305"}, Name: "ION Television East HD", Category: "Entertainment"},
+			{Numbers: []string{"305"}, Name: "ION Television East HD", CallSigns: []string{"IONDHD"}, Category: "Entertainment"},
 			{Numbers: []string{"305"}, Name: "WNBA on ION 1", Category: "PPV & Events", EventFeed: true},
 			{Numbers: []string{"305"}, Name: "WNBA on ION 2", Category: "PPV & Events", EventFeed: true},
 		},
@@ -497,7 +497,7 @@ func jsonResponse(request *http.Request, body string) *http.Response {
 
 func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing.T) {
 	result := matchCatalog(lineupindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
-		{ChannelID: "ONE", ChannelNo: "850"}, {ChannelID: "TWO", ChannelNo: "851"},
+		{ChannelID: "ONE", ChannelNo: "850", AffiliateName: "Stingray Music"}, {ChannelID: "TWO", ChannelNo: "851", AffiliateName: "Stingray Music"},
 	}}}, catalogSource{
 		ID: "music", Label: "Official music range", Entries: []catalogEntry{
 			{Numbers: []string{"850"}, Name: "Stingray Music", Category: "Music"},
@@ -524,8 +524,8 @@ func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.
 		{ChannelID: "WCBS", ChannelNo: "702", CallSign: "WCBSDT", AffiliateName: "CBS TELEVISION NETWORK"},
 	}}}, catalogSource{
 		ID: "optimum", Label: "Optimum official lineup", Entries: []catalogEntry{
-			{Numbers: []string{"2"}, Name: "CBS", Category: "Networks"},
-			{Numbers: []string{"702"}, Name: "CBS", Category: "Networks"},
+			{Numbers: []string{"2"}, Name: "CBS", CallSigns: []string{"WCBS"}, Category: "Networks"},
+			{Numbers: []string{"702"}, Name: "CBS", CallSigns: []string{"WCBS"}, Category: "Networks"},
 		},
 	})
 	aliases := 0
@@ -539,7 +539,7 @@ func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.
 			categoryValue = fact.Value
 		}
 	}
-	if aliases != 1 || categories != 1 || categoryValue != channelcategory.LocalPublic || result.Sources[0].Matched != 1 {
+	if aliases != 2 || categories != 1 || categoryValue != channelcategory.LocalPublic || result.Sources[0].Matched != 1 {
 		t.Fatalf("facts = %+v, source = %+v", result.Facts, result.Sources)
 	}
 }

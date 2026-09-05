@@ -106,6 +106,19 @@ func (s *Service) Start(request RunRequest) (JobView, error) {
 	return s.startPostal(request)
 }
 
+// ProviderLineups resolves the same variants used by a postal scan, without
+// starting a job or retaining address information.
+func (s *Service) ProviderLineups(ctx context.Context, country, postalCode, language string) ([]web.Provider, error) {
+	response, err := s.providers.FindProviders(ctx, country, postalCode, language)
+	if err != nil {
+		return nil, err
+	}
+	if response == nil {
+		return nil, errors.New("provider lookup returned no response")
+	}
+	return uniquePostalProviders(response.Providers), nil
+}
+
 func (s *Service) startPostal(request RunRequest) (JobView, error) {
 	country := strings.ToUpper(strings.TrimSpace(request.Country))
 	postalCode := strings.ToUpper(strings.TrimSpace(request.PostalCode))
@@ -250,7 +263,11 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		if s.evidence != nil {
 			var evidenceErr error
 			serviceAddress := ProviderAddress{}
-			if sameProviderFamily(provider.Name, request.AddressProvider) {
+			addressAllowed := sameProviderFamily(provider.Name, request.AddressProvider)
+			for _, approved := range request.AddressProviders {
+				addressAllowed = addressAllowed || sameProviderFamily(provider.Name, approved)
+			}
+			if addressAllowed {
 				serviceAddress = request.ProviderAddress
 			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
@@ -708,6 +725,7 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 	aliases := 0
 	categories := 0
 	for _, fact := range facts {
+		fact.Method = appendMethod(fact.Method, "identity-policy-v2")
 		stationID := strings.TrimSpace(fact.StationID)
 		value := strings.TrimSpace(fact.Value)
 		kind := strings.TrimSpace(fact.Kind)
@@ -738,7 +756,14 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			if current.Kind != kind || current.Normalized != normalized || current.SourceID != fact.SourceID {
 				continue
 			}
+			if !usableFact(*current) {
+				current.LineupKeys = nil
+			}
 			current.LineupKeys = appendUniqueString(current.LineupKeys, lineupKey)
+			current.Method = fact.Method
+			current.RawValue = fact.RawValue
+			current.MatchMethod = fact.MatchMethod
+			current.MatchConfidence = fact.MatchConfidence
 			sort.Strings(current.LineupKeys)
 			found = true
 			break

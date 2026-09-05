@@ -71,8 +71,8 @@ func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvi
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{
-			{StationID: "S1", Kind: FactAlias, Value: "ESPN Full Name", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
-			{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
+			{StationID: "S1", Kind: FactAlias, Value: "ESPN Full Name", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "unique exact provider callsign or name"},
+			{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "unique exact provider callsign or name"},
 		},
 		Sources: []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: "complete", Matched: 1, Aliases: 1, Categories: 1}},
 	}, nil
@@ -507,8 +507,8 @@ func TestCategoriesForStationsPrefersSelectedOfficialSource(t *testing.T) {
 	}
 	service.mu.Lock()
 	service.index.Stations["S1"] = &Station{StationID: "S1", Facts: []StationFact{
-		{Kind: FactCategory, Value: "Entertainment", SourceID: "optimum-official-lineup", SourceLabel: "Optimum official lineup", Method: "exact provider channel number"},
-		{Kind: FactCategory, Value: "Music", SourceID: "verizon-fios-official-lineup", SourceLabel: "Verizon FiOS official lineup", Method: "exact provider channel number"},
+		{Kind: FactCategory, Value: "Entertainment", SourceID: "optimum-official-lineup", SourceLabel: "Optimum official lineup", Method: "unique exact provider callsign or name"},
+		{Kind: FactCategory, Value: "Music", SourceID: "verizon-fios-official-lineup", SourceLabel: "Verizon FiOS official lineup", Method: "unique exact provider callsign or name"},
 	}}
 	service.mu.Unlock()
 
