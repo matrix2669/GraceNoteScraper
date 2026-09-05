@@ -144,14 +144,14 @@ type ProviderEvidenceRequest struct {
 	LineupKey  string
 	Country    string
 	PostalCode string
-	// ServiceAddress is an ephemeral, active-provider-only input. It must not
+	// ServiceAddress is an in-memory copy for an approved address-required provider. It must not
 	// be persisted in the index, snapshots, logs, source URLs, or API views.
 	ServiceAddress ProviderAddress `json:"-"`
 	Grid           *web.GridResponse
 }
 
-// ProviderAddress contains a user-selected geocoder result for one in-memory
-// scan. The containing request fields are excluded from every serialized view.
+// ProviderAddress contains the six selected address fields. Only the private
+// appconfig address store persists them; scan/job views never serialize them.
 type ProviderAddress struct {
 	FormattedAddress string `json:"formattedAddress,omitempty"`
 	StreetAddress    string `json:"streetAddress,omitempty"`
@@ -264,6 +264,8 @@ type RunRequest struct {
 	ProviderAddress  ProviderAddress `json:"-"`
 	AddressProvider  string          `json:"-"`
 	AddressProviders []string        `json:"-"`
+	// Revalidate source/address state when queued work actually starts.
+	ValidateSource func() error `json:"-"`
 }
 
 type JobView struct {

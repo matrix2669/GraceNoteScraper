@@ -624,6 +624,20 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 		}
 		request.AddressProviders = names
 		request.ProviderAddress = providerAddress
+		request.ValidateSource = func() error {
+			current, configured, _ := s.store.Get()
+			if !configured || current.Fingerprint() != config.Fingerprint() {
+				return errors.New("Provider changed; request a new provider scan")
+			}
+			if body.ProviderAddress.FormattedAddress == "" && len(names) > 0 {
+				raw, err := s.store.Address(config.Fingerprint())
+				var saved lineupindex.ProviderAddress
+				if err != nil || json.Unmarshal(raw, &saved) != nil || saved != providerAddress {
+					return errors.New("Saved address changed or was removed; request a new provider scan")
+				}
+			}
+			return nil
+		}
 		current, _, _ := s.store.Get()
 		if current.Fingerprint() != config.Fingerprint() {
 			http.Error(w, "Provider changed; reload the page", http.StatusConflict)
