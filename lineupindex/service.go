@@ -209,6 +209,12 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	if runErr == nil && len(providers) == 0 {
 		runErr = errors.New("Gracenote returned no lineups for this postal code")
 	}
+	blocks, epgTimezone, epgBlockErr := weekdayEPGBlocks(s.now(), providers, result)
+	primaryGridTime := utcMidnight(s.now()).Unix()
+	if epgBlockErr == nil {
+		primaryGridTime = blocks[0].Start.Unix()
+	}
+	postalScans := make([]*postalLineupScan, 0, len(providers))
 
 	seed := MarketSeed{Name: "Configured postal code " + postalCode, Country: country, PostalCode: postalCode}
 	seenLineupIDs := make(map[string]bool)
@@ -237,7 +243,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			break
 		}
 		lastGridRequest = s.now()
-		grid, err := s.grids.FetchGrid(ctx, lineupPreferences(lineup), utcMidnight(s.now()).Unix())
+		grid, err := s.grids.FetchGrid(ctx, lineupPreferences(lineup), primaryGridTime)
 		s.updatePostalJob(key, func(record *PostalScanRecord) { record.GridRequests++ })
 		if err != nil || grid == nil {
 			if err == nil {
@@ -309,12 +315,46 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			break
 		}
 		s.updatePostalJob(key, func(record *PostalScanRecord) { record.LineupsScanned++ })
+		gridID := "identity"
+		if epgBlockErr == nil {
+			gridID = blocks[0].ID
+		}
+		postalScans = append(postalScans, &postalLineupScan{
+			Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{gridID: grid},
+			Facts: append([]ProviderFact(nil), evidence.Facts...), Sources: append([]EvidenceSourceRecord(nil), evidence.Sources...),
+		})
 		s.mu.Lock()
 		s.job.CompletedCount++
 		s.mu.Unlock()
 	}
 	if runErr == nil && len(gridErrors) > 0 {
 		runErr = errors.New(strings.Join(gridErrors, "; "))
+	}
+	if runErr == nil {
+		if epgBlockErr != nil {
+			s.updatePostalJob(key, func(record *PostalScanRecord) {
+				record.Sources = mergeEvidenceSources(record.Sources, []EvidenceSourceRecord{{
+					ID: weekdayEPGSourceID(country, postalCode), Label: "Gracenote weekday EPG confirmation",
+					Status: StatusError, Message: epgBlockErr.Error(),
+				}})
+			})
+		} else {
+			epgResult, epgErr := s.runPostalEPG(ctx, key, country, postalCode, epgTimezone, postalScans, blocks, &lastGridRequest)
+			if errors.Is(epgErr, context.Canceled) {
+				runErr = epgErr
+			} else {
+				s.updatePostalJob(key, func(record *PostalScanRecord) {
+					record.EPGMatches = epgResult.ConfirmedPairs
+					record.EPGQuestionable = epgResult.QuestionablePairs
+					record.EPGRejected = epgResult.RejectedPairs
+					record.EPGAliases = epgResult.Aliases
+					record.EPGCategories = epgResult.Categories
+					record.Aliases += epgResult.Aliases
+					record.Categories += epgResult.Categories
+					record.Sources = mergeEvidenceSources(record.Sources, []EvidenceSourceRecord{epgResult.Source})
+				})
+			}
+		}
 	}
 
 	completedAt := s.now().UTC().Format(time.RFC3339)
@@ -355,11 +395,16 @@ func sameProviderFamily(left, right string) bool {
 func providerFamilyKey(value string) string {
 	value = strings.ToLower(value)
 	for canonical, aliases := range map[string][]string{
-		"xfinity":  {"xfinity", "comcast"},
-		"optimum":  {"optimum", "cablevision"},
-		"spectrum": {"spectrum", "charter", "time warner"},
-		"fios":     {"verizon", "fios"},
-		"uverse":   {"u-verse", "uverse"},
+		"xfinity":   {"xfinity", "comcast"},
+		"optimum":   {"optimum", "cablevision"},
+		"spectrum":  {"spectrum", "charter", "time warner"},
+		"fios":      {"verizon", "fios"},
+		"uverse":    {"u-verse", "uverse"},
+		"directv":   {"directv"},
+		"dish":      {"dish"},
+		"afn":       {"afn"},
+		"glorystar": {"glorystar"},
+		"broadstar": {"broadstar"},
 	} {
 		for _, alias := range aliases {
 			if strings.Contains(value, alias) {
@@ -531,6 +576,7 @@ func (s *Service) prepareLineupWithKey(seed MarketSeed, provider web.Provider, f
 		lineup.ProviderType = strings.ToUpper(strings.TrimSpace(provider.Type))
 		lineup.Device = strings.TrimSpace(provider.Device)
 		lineup.Location = strings.TrimSpace(provider.Location)
+		lineup.Timezone = strings.TrimSpace(provider.Timezone)
 		lineup.Country = seed.Country
 		lineup.PostalCode = seed.PostalCode
 		lineup.Language = "en-us"
