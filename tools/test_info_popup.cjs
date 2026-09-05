@@ -1,0 +1,16 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const html = fs.readFileSync('lineuparr.html','utf8');
+new vm.Script(html.split('<script>')[1].split('</script>')[0]);
+const start = html.indexOf("els.sourceEvidenceDialog.addEventListener('click', event => {");
+assert.ok(start >= 0);
+const handler = html.slice(start,html.indexOf('    });',start)+7);
+let fn, closed = 0;
+const dialog = {addEventListener(type, cb){fn=cb}, getBoundingClientRect(){return {left:10,right:110,top:10,bottom:110}},close(){closed++}};
+vm.runInNewContext(handler,{els:{sourceEvidenceDialog:dialog},closeProgramDialog(){closed++}});
+fn({target:dialog,clientX:50,clientY:50}); assert.equal(closed,0);
+fn({target:{},clientX:0,clientY:0}); assert.equal(closed,0);
+fn({target:dialog,clientX:0,clientY:50}); assert.equal(closed,1);
+assert.ok(!html.includes("alternativeDialog.addEventListener('click', event"));
+console.log('Informational popup dismissal checks passed');
