@@ -903,6 +903,10 @@
     els.batchClear.addEventListener('click', clearBatchSelection);
     els.batchApply.addEventListener('click', applyBatchCategory);
     els.programClose.addEventListener('click', closeProgramDialog);
+    els.programDialog.addEventListener('click', event => {
+      const box = els.programDialog.getBoundingClientRect();
+      if (event.target === els.programDialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) closeProgramDialog();
+    });
     els.removeDuplicates.addEventListener('click', openDuplicateReview);
     els.duplicateReviewForm.addEventListener('submit', removeDuplicates);
     els.duplicateReviewCancel.addEventListener('click', () => els.duplicateReview.close());

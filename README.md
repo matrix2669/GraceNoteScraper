@@ -4,6 +4,8 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 ## Features
 
+Channel programme popups close when clicking outside their box. Popups requiring choices, such as export and duplicate review, retain explicit controls. SD suggestions accept multiple HD positions only when those positions share one nonempty Gracenote station ID; the review link prefers an included position, then the lowest channel number. HD positions themselves are not removed by this rule.
+
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
 - Enriches programs with TMDB poster images, ratings, descriptions, and release dates
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project

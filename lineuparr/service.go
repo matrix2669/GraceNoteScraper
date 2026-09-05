@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -610,6 +611,7 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				keepIndexes = append(keepIndexes, index)
 			}
 		}
+		keepIndexes = sameStationKeepPosition(channels, keepIndexes)
 		if len(keepIndexes) != 1 || bestRank <= 1 {
 			continue
 		}
@@ -652,6 +654,7 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				keepIndexes = append(keepIndexes, index)
 			}
 		}
+		keepIndexes = sameStationKeepPosition(channels, keepIndexes)
 		if len(keepIndexes) != 1 || bestRank <= 1 {
 			continue
 		}
@@ -845,6 +848,35 @@ func sharesAttributableSource(left, right DraftChannel) bool {
 		}
 	}
 	return false
+}
+
+// Multiple positions of the same HD station are not competing identities.
+// Prefer an included position, then the lowest numeric channel for review.
+func sameStationKeepPosition(channels []DraftChannel, indexes []int) []int {
+	if len(indexes) < 2 {
+		return indexes
+	}
+	station := channels[indexes[0]].StationID
+	if station == "" {
+		return indexes
+	}
+	best := indexes[0]
+	for _, index := range indexes {
+		if channels[index].StationID != station {
+			return indexes
+		}
+		candidate, current := channels[index], channels[best]
+		cn, ce := strconv.ParseFloat(candidate.Number, 64)
+		bn, be := strconv.ParseFloat(current.Number, 64)
+		lower := candidate.Number < current.Number
+		if ce == nil && be == nil {
+			lower = cn < bn
+		}
+		if (candidate.Included && !current.Included) || (candidate.Included == current.Included && (lower || (candidate.Number == current.Number && candidate.ID < current.ID))) {
+			best = index
+		}
+	}
+	return []int{best}
 }
 
 func qualitySuffixBase(value string) (string, bool) {
