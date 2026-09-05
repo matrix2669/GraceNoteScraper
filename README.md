@@ -37,7 +37,7 @@ On initial setup, or when no usable guide exists, server mode publishes the Grac
 
 The base guide stays usable if enrichment is interrupted. A source-matching pending guide less than 24 hours old resumes enrichment after restart using its saved programmes and TMDB cache, without fetching the grids again. Keep the data directory persistent. Failures retain the base guide and use the normal 15-minute retry. A changed lineup cannot receive results from the old lineup.
 
-This publish-first behavior applies only to the initial/missing guide. Regular scheduled refreshes with a usable guide and `--guide-only` still finish enrichment before publishing. Without `TMDB_TOKEN`, there is no TMDB background work. The configured worker limit and shared request rate are unchanged. When provider scanning is installed, its existing guide-busy queue remains in effect until enrichment finishes; it does not prevent editing the Lineuparr draft.
+This publish-first behavior applies only to the initial/missing guide. Regular scheduled refreshes with a usable guide and `--guide-only` still finish enrichment before publishing. Without `TMDB_TOKEN`, there is no TMDB background work. The configured worker limit and shared request rate are unchanged. With the background-aware provider-scan coordinator, local scans and enabled enrichment-source downloads can run during background TMDB after the base guide is published. Ordinary guide download/enrichment and final saving remain gated; the separate coordinator retains one scan at a time and existing source rate limits.
 
 ## Quick Start (Docker Compose)
 
