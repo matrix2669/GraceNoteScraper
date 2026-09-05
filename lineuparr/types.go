@@ -84,6 +84,7 @@ type DraftChannel struct {
 }
 
 type DuplicateSuggestion struct {
+	Exact        bool   `json:"exact,omitempty"`
 	RemoveID     string `json:"removeId"`
 	RemoveNumber string `json:"removeNumber"`
 	RemoveName   string `json:"removeName"`
@@ -91,6 +92,11 @@ type DuplicateSuggestion struct {
 	KeepNumber   string `json:"keepNumber"`
 	KeepName     string `json:"keepName"`
 	Reason       string `json:"reason"`
+}
+
+type DuplicateGroup struct {
+	ChannelIDs []string `json:"channelIds"`
+	KeepID     string   `json:"keepId"`
 }
 
 type SourceStatus struct {
@@ -128,6 +134,7 @@ type Draft struct {
 	CountryCode          string                `json:"countryCode"`
 	Channels             []DraftChannel        `json:"channels"`
 	DuplicateSuggestions []DuplicateSuggestion `json:"duplicateSuggestions"`
+	DuplicateGroups      []DuplicateGroup      `json:"duplicateGroups"`
 	Sources              []SourceStatus        `json:"sources"`
 	Categories           []string              `json:"categories"`
 	Total                int                   `json:"total"`

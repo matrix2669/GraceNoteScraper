@@ -8,6 +8,10 @@ Once an address is saved, its section shows only the provider, saved address and
 
 After Confirm or Deny, a review group with a minimum displayed match score below 95% opens other qualifying targets, when available. This applies to similar as well as fuzzy matches. Confirming an alternative keeps the popup open for additional SD/HD or duplicate lineup targets; it never implicitly denies other targets. Close explicitly when finished; outside clicks do not dismiss this action popup.
 
+Duplicate review presents whole connected groups of verified SD/HD pairs and exact repeated positions. Checked means Keep. Lower-quality removals are suggested, but all equivalent HD or exact duplicate positions start checked for a manual choice; a lower channel number does not prove better quality. At least one included position per group must remain. Exact repeats require the same nonempty Gracenote station ID and callsign; names alone never create these groups.
+
+Channel programme popups close when clicking outside their box. Popups requiring choices, such as export and duplicate review, retain explicit controls. SD suggestions accept multiple HD positions only when those positions share one nonempty Gracenote station ID; the review link prefers an included position, then the lowest channel number. HD positions themselves are not removed by this rule.
+
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
 - Enriches programs with TMDB poster images, ratings, descriptions, and release dates
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
@@ -182,6 +186,8 @@ Source matched counts represent selected-lineup channels with attributable alias
 ## Lineuparr JSON Builder
 
 Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
+
+When an Internal base URL is saved in Setup, **Copy Docker-network URL** is also available. It publishes the same snapshot using the configured internal hostname and listening port; it does not create a different lineup or change image URLs. Use this link only from containers sharing the scraper's Docker network. Downloads still use the browser-accessible address. If optional internal-link settings are unavailable, normal downloads and browser URLs remain usable.
 
 The URL serves the **last explicitly exported version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while exporting the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; export again to create the descriptive URL.
 
