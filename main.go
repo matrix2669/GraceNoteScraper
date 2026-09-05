@@ -1470,8 +1470,21 @@ func main() {
 	}
 	var marketService *lineupindex.Service
 	service, serviceErr := lineupindex.NewService(lineupindex.ServiceConfig{
-		Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
-		SnapshotDir:     util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
+		Path:        util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+		SnapshotDir: util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
+		ProviderAccess: func(provider web.Provider, postal string) string {
+			if lineupindex.ExcludedEnrichmentProvider(provider.Name) {
+				return "excluded"
+			}
+			source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(provider.Name, provider.Location, postal)
+			if !ok {
+				return "unsupported"
+			}
+			if source.LocationMode == "address" {
+				return "address-required"
+			}
+			return "public"
+		},
 		Providers:       setupHandlers.providers,
 		Grids:           lineupindex.WebGridFetcher{},
 		Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
@@ -1494,6 +1507,15 @@ func main() {
 	lineuparrHandlers := &lineuparrServer{
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
+		beforeMarketScan: func() error {
+			if aliasQueue != nil {
+				view := aliasQueue.View()
+				if view.GuideBusy || view.Queued {
+					return fmt.Errorf("wait for guide preparation and any queued local scan before scanning another market")
+				}
+			}
+			return nil
+		},
 		addressTester: providersource.NewService(),
 		exportDir:     util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
@@ -1534,6 +1556,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
 	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
+	mux.HandleFunc("/api/lineuparr/markets", lineuparrHandlers.handleMarkets)
 	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
 	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)

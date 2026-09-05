@@ -3,6 +3,7 @@ package lineupindex
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -38,6 +39,7 @@ type ServiceConfig struct {
 	ProviderDelay   time.Duration
 	GridDelay       time.Duration
 	Now             func() time.Time
+	ProviderAccess  func(web.Provider, string) string
 }
 
 type Service struct {
@@ -53,6 +55,7 @@ type Service struct {
 	gridDelay       time.Duration
 	now             func() time.Time
 	index           Index
+	providerAccess  func(web.Provider, string) string
 	job             JobView
 	cancel          context.CancelFunc
 }
@@ -82,6 +85,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 		snapshotDir = filepath.Join(filepath.Dir(config.Path), "lineup_snapshots")
 	}
 	return &Service{
+		providerAccess:  config.ProviderAccess,
 		path:            config.Path,
 		snapshotDir:     snapshotDir,
 		catalog:         config.Catalog,
@@ -149,8 +153,12 @@ func (s *Service) startPostal(request RunRequest) (JobView, error) {
 		StartedAt:     startedAt,
 		CurrentMarket: postalCode,
 	}
+	if request.marketRank > 0 {
+		s.job.Action = "market"
+		s.job.CurrentRank = request.marketRank
+	}
 	record := &PostalScanRecord{
-		Key: postalScanKey(country, postalCode), Country: country, PostalCode: postalCode,
+		Key: scanRequestKey(request), Country: country, PostalCode: postalCode, MarketRank: request.marketRank,
 		Status: StatusRunning, StartedAt: startedAt,
 	}
 	s.index.PostalScans[record.Key] = record
@@ -183,7 +191,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	country := request.Country
 	postalCode := request.PostalCode
 	language := request.Language
-	key := postalScanKey(country, postalCode)
+	key := scanRequestKey(request)
 	current := normalizeCurrentStations(s.readCurrentStations())
 	owners := s.callSignOwners()
 	var lastGridRequest time.Time
@@ -199,7 +207,10 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	providers := []web.Provider{}
 	if runErr == nil {
 		providers = uniquePostalProviders(result.Providers)
+		families:=map[string]bool{};for _,provider:=range providers {families[providerFamilyKey(provider.Name)]=true}
 		s.updatePostalJob(key, func(record *PostalScanRecord) {
+			record.DiscoveredCount=len(result.Providers)
+			record.ProviderFamilies=len(families)
 			record.ProviderCount = len(providers)
 		})
 		s.mu.Lock()
@@ -226,6 +237,10 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		s.mu.Lock()
 		s.job.CurrentProvider = strings.TrimSpace(provider.Name)
 		s.mu.Unlock()
+		access := "public"
+		if request.marketRank > 0 && s.providerAccess != nil {
+			access = s.providerAccess(provider, postalCode)
+		}
 
 		lineupKey := lineupStorageKey(seed, provider)
 		lineupIDKey := strings.ToUpper(strings.TrimSpace(provider.LineupID))
@@ -233,6 +248,9 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			lineupKey = lineupVariantStorageKey(seed, provider)
 		}
 		seenLineupIDs[lineupIDKey] = true
+		if request.marketRank > 0 {
+			lineupKey = key + "|" + lineupVariantStorageKey(seed, provider)
+		}
 		lineup, _, _, err := s.prepareLineupWithKey(seed, provider, true, lineupKey)
 		if err != nil {
 			runErr = err
@@ -257,6 +275,11 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				})
 			})
 			gridErrors = append(gridErrors, provider.Name+": "+err.Error())
+			if request.marketRank > 0 {
+				s.updatePostalJob(key, func(record *PostalScanRecord) {
+					record.ProviderAudit = append(record.ProviderAudit, MarketProviderAudit{Provider: provider.Name, Family: providerFamilyKey(provider.Name), LineupKey: lineup.Key, Access: access, GridStatus: StatusError, RepeatedFamily: request.priorFamilies[providerFamilyKey(provider.Name)]})
+				})
+			}
 			continue
 		}
 
@@ -265,7 +288,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			break
 		}
 		evidence := ProviderEvidenceResult{}
-		if s.evidence != nil {
+		if s.evidence != nil && access == "public" {
 			var evidenceErr error
 			serviceAddress := ProviderAddress{}
 			addressAllowed := sameProviderFamily(provider.Name, request.AddressProvider)
@@ -276,7 +299,8 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				serviceAddress = request.ProviderAddress
 			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
-				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				AllowChannelNumbers: request.marketRank == 0 && request.NumberEvidenceLineupID != "" && provider.LineupID == request.NumberEvidenceLineupID && provider.Device == request.NumberEvidenceDevice,
+				Provider:            provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
 			})
 			if evidenceErr != nil {
@@ -306,6 +330,22 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
 			})
 		}
+		if request.marketRank > 0 {
+			audit := MarketProviderAudit{Provider: provider.Name, Family: providerFamilyKey(provider.Name), LineupKey: lineup.Key, Access: access, GridStatus: StatusComplete, RepeatedFamily: request.priorFamilies[providerFamilyKey(provider.Name)]}
+			if access == "public" {
+				audit.Access = "empty"
+				if len(evidence.Facts) > 0 {
+					audit.Access = "enriched"
+				}
+				for _, source := range evidence.Sources {
+					if source.Status == StatusError {
+						audit.Access = "error"
+					}
+				}
+			}
+			audit.Yield = marketFactYield(evidence.Facts, request.priorFacts, current)
+			s.updatePostalJob(key, func(record *PostalScanRecord) { record.ProviderAudit = append(record.ProviderAudit, audit) })
+		}
 		if err := s.writeLineupSnapshot(*lineup, grid, evidence); err != nil {
 			runErr = err
 			break
@@ -330,8 +370,36 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	if runErr == nil && len(gridErrors) > 0 {
 		runErr = errors.New(strings.Join(gridErrors, "; "))
 	}
+	if runErr == nil && request.marketRank > 0 && request.comparison != nil && epgBlockErr == nil {
+		anchor := *request.comparison
+		provider := web.Provider{Name: anchor.ProviderName, LineupID: anchor.LineupID, HeadendID: anchor.HeadendID, Device: anchor.Device, Location: anchor.Location}
+		anchorSeed := MarketSeed{Country: anchor.Country, PostalCode: anchor.PostalCode}
+		lineup, _, _, err := s.prepareLineupWithKey(anchorSeed, provider, true, key+"|comparison")
+		if err == nil {
+			err = waitBetween(ctx, lastGridRequest, s.gridDelay, s.now)
+		}
+		if err == nil {
+			lastGridRequest = s.now()
+			grid, gridErr := s.grids.FetchGrid(ctx, lineupPreferences(lineup), primaryGridTime)
+			s.updatePostalJob(key, func(record *PostalScanRecord) { record.GridRequests++ })
+			if gridErr != nil {
+				err = gridErr
+			} else if grid == nil {
+				err = errors.New("comparison grid returned no data")
+			} else {
+				_, err = s.ingestGrid(0, lineup.Key, grid, current, owners)
+				postalScans = append(postalScans, &postalLineupScan{Comparison: true, Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{blocks[0].ID: grid}})
+			}
+		}
+		if err != nil {
+			runErr = fmt.Errorf("selected-lineup EPG comparison: %w", err)
+		}
+	}
 	if runErr == nil {
 		if epgBlockErr != nil {
+			if request.marketRank > 0 {
+				runErr = epgBlockErr
+			}
 			s.updatePostalJob(key, func(record *PostalScanRecord) {
 				record.Sources = mergeEvidenceSources(record.Sources, []EvidenceSourceRecord{{
 					ID: weekdayEPGSourceID(country, postalCode), Label: "Gracenote weekday EPG confirmation",
@@ -340,6 +408,9 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			})
 		} else {
 			epgResult, epgErr := s.runPostalEPG(ctx, key, country, postalCode, epgTimezone, postalScans, blocks, &lastGridRequest)
+			if request.marketRank > 0 && epgErr != nil {
+				runErr = epgErr
+			}
 			if errors.Is(epgErr, context.Canceled) {
 				runErr = epgErr
 			} else {
@@ -357,6 +428,9 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		}
 	}
 
+	if request.marketRank > 0 {
+		s.auditMarketYield(key, request, postalScans, blocks, current)
+	}
 	completedAt := s.now().UTC().Format(time.RFC3339)
 	s.mu.Lock()
 	record := s.index.PostalScans[key]

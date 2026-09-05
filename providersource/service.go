@@ -275,7 +275,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	byNumber := make(map[string][]web.JSONChannel)
 	byIdentity := make(map[string][]web.JSONChannel)
 	for _, channel := range request.Grid.Channels {
-		if number := normalizeNumber(channel.ChannelNo); number != "" {
+		if number := normalizeNumber(channel.ChannelNo); request.AllowChannelNumbers && number != "" {
 			byNumber[number] = append(byNumber[number], channel)
 		}
 		for _, value := range channelIdentityValues(channel) {
@@ -331,6 +331,9 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			factMethod += "; " + match.method
 		}
 		factMethod += "; identity-policy-v2"
+		if request.AllowChannelNumbers {
+			factMethod += "; number-policy-local-v1"
+		}
 		aliases := append([]string{entry.Name}, entry.Aliases...)
 		aliases = append(aliases, entry.CallSigns...)
 		seenAliases := make(map[string]bool)

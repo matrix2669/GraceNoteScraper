@@ -464,6 +464,16 @@
       </div>
     </details>
 
+    <details class="panel" id="major-market-panel" style="padding:20px;margin-bottom:20px">
+      <summary>Major-market enrichment (experimental)</summary>
+      <p>Scan one ranked market at a time using provider sources and weekday EPG comparison. Your selected guide stays unchanged. Address-required sources are skipped; your saved address is never reused.</p>
+      <p id="major-market-next">Loading market status…</p>
+      <button type="button" id="major-market-start" disabled>Scan next market</button>
+      <button type="button" id="major-market-stop" style="display:none">Stop market scan</button>
+      <p id="major-market-status" role="status"></p>
+      <div id="major-market-reports"></div>
+      <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new candidate facts, not guaranteed applied categories. The selected lineup remains available as an EPG comparison reference.</p>
+    </details>
     <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
       <summary class="panel-summary alias-header">
         <span class="panel-summary-copy">
@@ -2021,6 +2031,46 @@
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();
     loadDraft();
+    const marketStart = document.getElementById('major-market-start');
+    const marketStatus = document.getElementById('major-market-status');
+    let majorMarketPoll;
+    async function loadMajorMarkets() {
+      clearTimeout(majorMarketPoll);
+      try {
+        const view = await api('/api/lineuparr/markets');
+        marketStart.disabled = !!view.job.running || !view.next;
+        document.getElementById('major-market-stop').style.display = view.job.running && view.job.action === 'market' ? '' : 'none';
+        document.getElementById('major-market-next').textContent = view.next ? `Next: #${view.next.rank} ${view.next.name}, ZIP ${view.next.postalCode} — ranked list ${view.catalog.asOf}` : 'All ranked markets completed.';
+        marketStatus.textContent = view.job.running ? `${view.job.action === 'market' ? 'Market scan' : 'Local scan'}: ${view.job.currentProvider || 'preparing'}, ${view.job.completedCount} / ${view.job.totalCount}` : (view.job.lastError || 'Ready. One click starts one market only.');
+        const reports = document.getElementById('major-market-reports'); reports.replaceChildren();
+        for (const scan of view.scans) {
+          const section = document.createElement('details');
+          const summary = document.createElement('summary');
+          const rows = scan.providerAudit || [];
+          const count = status => rows.filter(row => row.access === status).length;
+          summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${count('error')} source failures, ${count('empty')} no source matches`;
+          section.append(summary);
+          const yieldText = value => `${value.aliases} aliases, ${value.categories} categories, ${value.currentStations} current station IDs`;
+          const totals = document.createElement('p');totals.textContent = `All providers: ${yieldText(scan.allProviderYield)}. New families only: ${yieldText(scan.newFamilyYield)}.`;section.append(totals);
+          for (const row of rows) {
+            const p = document.createElement('p');p.style.overflowWrap='anywhere';
+            p.textContent = `${row.provider}: ${row.access} · grid ${row.gridStatus}${row.repeatedFamily ? ' · previously scanned family' : ' · new family'} · ${yieldText(row.yield)}`;section.append(p);
+          }
+          reports.append(section);
+        }
+        if (view.job.running) majorMarketPoll = setTimeout(loadMajorMarkets, 5000);
+      } catch (error) {marketStatus.textContent = error.message;}
+    }
+    marketStart.addEventListener('click', async () => {
+      marketStart.disabled = true;
+      try {await api('/api/lineuparr/markets', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});await loadAliasIndex();await loadMajorMarkets();}
+      catch (error) {marketStatus.textContent=error.message;marketStart.disabled=false;}
+    });
+    loadMajorMarkets();
+    document.getElementById('major-market-stop').addEventListener('click', async () => {
+      try {await api('/api/lineuparr/alias-index/stop',{method:'POST'});marketStatus.textContent='Stop requested; completed evidence remains saved.';await loadMajorMarkets();}
+      catch(error){marketStatus.textContent=error.message;}
+    });
   </script>
 </body>
 </html>

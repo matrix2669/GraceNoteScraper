@@ -208,6 +208,9 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 // Preserve their evidence on disk, but quarantine it from current drafts. Old
 // EPG-carried categories also need a fresh scan through the corrected adapters.
 func usableFact(fact StationFact) bool {
+	if strings.Contains(fact.Method, "exact provider channel number plus") && !strings.Contains(fact.Method, "number-policy-local-v1") {
+		return false
+	}
 	if excludedEnrichmentSource(fact.SourceID) {
 		return false
 	}
