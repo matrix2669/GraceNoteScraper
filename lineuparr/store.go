@@ -56,6 +56,10 @@ func (s *StateStore) Snapshot(fingerprint string) map[string]ChannelOverride {
 			included := *override.Included
 			override.Included = &included
 		}
+		if override.CategoryReview != nil {
+			copy := *override.CategoryReview
+			override.CategoryReview = &copy
+		}
 		result[id] = override
 	}
 	return result
@@ -75,6 +79,14 @@ func (s *StateStore) Update(fingerprint, channelID string, update ChannelUpdate)
 	}
 	if update.Category != nil {
 		override.Category = *update.Category
+		if override.CategoryReview != nil {
+			copy := *override.CategoryReview
+			copy.Chosen = *update.Category
+			override.CategoryReview = &copy
+		} else if update.Review != nil {
+			copy := *update.Review
+			override.CategoryReview = &copy
+		}
 	}
 	s.state.Channels[channelID] = override
 	return s.saveLocked()

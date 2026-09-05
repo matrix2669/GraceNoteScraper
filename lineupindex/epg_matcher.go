@@ -859,6 +859,8 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 		}
 		key := target.StationID + "\x00" + FactCategory + "\x00" + normalized
 		categoryMethod := method + "; category carried from " + strings.TrimSpace(category.SourceLabel)
+		// Identity confirmation must retain, not upgrade, category provenance.
+		categoryMethod += "; " + category.Method
 		if strings.Contains(category.Method, "identity-policy-v2") {
 			categoryMethod += "; identity-policy-v2"
 		}

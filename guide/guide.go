@@ -31,31 +31,35 @@ type DisplayName struct {
 }
 
 type Program struct {
-	Start           string
-	Stop            string
-	Channel         string
-	Lang            string
-	Title           string
-	SubTitle        string
-	Description     string
-	LengthUnits     string
-	Length          string
-	IconSrc         string
-	Images          []Image
-	URL             string
-	Language        string
-	OrigLanguage    string
-	Country         string
-	EpisodeNumbers  []EpisodeNumber
-	Categories      []Category
-	New             bool
-	Premiere        bool
-	PreviouslyShown bool
-	Subtitles       []Subtitle
-	Rating          string
-	RatingSystem    string
-	StarRating      string
-	Date            string
+	// Keep optional TMDB evidence separate from Gracenote categories.
+	TMDBGenreIDs       []int  `json:"TMDBGenreIDs,omitempty"`
+	TMDBMediaType      string `json:"TMDBMediaType,omitempty"`
+	TMDBGenresCaptured bool   `json:"TMDBGenresCaptured,omitempty"`
+	Start              string
+	Stop               string
+	Channel            string
+	Lang               string
+	Title              string
+	SubTitle           string
+	Description        string
+	LengthUnits        string
+	Length             string
+	IconSrc            string
+	Images             []Image
+	URL                string
+	Language           string
+	OrigLanguage       string
+	Country            string
+	EpisodeNumbers     []EpisodeNumber
+	Categories         []Category
+	New                bool
+	Premiere           bool
+	PreviouslyShown    bool
+	Subtitles          []Subtitle
+	Rating             string
+	RatingSystem       string
+	StarRating         string
+	Date               string
 }
 
 type Image struct {

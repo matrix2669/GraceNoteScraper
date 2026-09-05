@@ -93,6 +93,7 @@ type searchResponse struct {
 }
 
 type searchResult struct {
+	GenreIDs         []int   `json:"genre_ids"`
 	ID               int     `json:"id"`
 	PosterPath       *string `json:"poster_path"`
 	VoteAverage      float64 `json:"vote_average"`
@@ -137,10 +138,16 @@ func (c *Client) search(path, title string, isMovie bool) CacheEntry {
 
 	r := sr.Results[0]
 	entry := CacheEntry{
-		Rating:       r.VoteAverage,
-		Overview:     r.Overview,
-		TMDBID:       r.ID,
-		OrigLanguage: r.OriginalLanguage,
+		GenreIDs:       append([]int(nil), r.GenreIDs...),
+		GenresCaptured: true,
+		MediaType:      "tv",
+		Rating:         r.VoteAverage,
+		Overview:       r.Overview,
+		TMDBID:         r.ID,
+		OrigLanguage:   r.OriginalLanguage,
+	}
+	if isMovie {
+		entry.MediaType = "movie"
 	}
 
 	if r.PosterPath != nil {

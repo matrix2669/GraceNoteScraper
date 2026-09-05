@@ -1,5 +1,29 @@
 # GraceNote XMLTV Scraper
 
+### Experimental category evidence and review
+
+Category evidence uses ordinal priorities: manual choices (1), clear official
+evidence (2), supported weekday schedule inference (3), and weak provider or
+optional TMDB genre inference (4). Priority is not an accuracy percentage.
+Provisional categories are marked for review and may be confirmed or changed;
+the original proposal is retained separately from the manual choice.
+
+The schedule experiment uses fourteen calendar days in the selected lineup's
+known timezone, Monday-Friday only. It requires at least eight usable weekdays,
+80% usable weekday coverage and twenty programmes. Movies require more than
+50% movie airtime and mean programme length greater than sixty minutes. News,
+Sports and Family use conservative provisional 80% content shares; news and
+sports require a 15-point separation. Missing tags do not imply Entertainment,
+Faith or Music. These provisional thresholds need continued reviewed-sample
+validation, not claims of calibrated accuracy.
+
+TMDB remains optional. Add `TMDB_TOKEN` to the container environment and restart
+to enable enrichment. New lookups retain genre IDs separately from Gracenote
+categories. Existing cache entries without genres remain valid metadata but
+cannot supply genre evidence until refreshed. The Lineuparr TMDB panel can scan
+the retained programme data without additional TMDB requests. Such results are
+priority 4 and need review; title-search matches are not exact station evidence.
+
 Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Plex, Emby, TVHeadend, and other DVR/IPTV software.
 
 ## Features

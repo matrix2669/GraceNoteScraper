@@ -777,8 +777,10 @@
     }
 
     function renderCategoryOptions() {
+	  renderCategoryReviewReport();
       const previous = els.categoryFilter.value;
       els.categoryFilter.replaceChildren(new Option('All categories', ''));
+	  els.categoryFilter.add(new Option(`Needs category review (${draft.channels.filter(c => c.included && c.needsCategoryReview).length} included)`, '__review'));
       els.categoryOptions.replaceChildren();
       for (const category of categories()) {
         els.categoryFilter.add(new Option(category, category));
@@ -791,12 +793,32 @@
       return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
+    function renderCategoryReviewReport() {
+      let panel = document.getElementById('category-review-report');
+      if (!panel) { panel = document.createElement('details'); panel.id = 'category-review-report'; panel.className = 'panel'; document.querySelector('main').append(panel); }
+      const summary = document.createElement('summary'); summary.textContent = 'Category review results (reviewed items only)';
+      const body = document.createElement('div'); const groups = new Map();
+      for (const channel of draft.channels) {
+        const review = channel.categoryReview; if (!review) continue;
+        const key = JSON.stringify([review.source,review.priority,review.proposed]);
+        const group = groups.get(key) || {source:review.source,priority:review.priority,category:review.proposed,correct:0,changed:0};
+        if (review.chosen === review.proposed) group.correct++; else group.changed++;
+        groups.set(key,group);
+      }
+      for (const group of groups.values()) {
+        const line = document.createElement('p'); const total = group.correct + group.changed;
+        line.textContent = `${sourceLabel(group.source)} · priority ${group.priority} · ${group.category}: ${group.correct}/${total} confirmed unchanged (${Math.round(100*group.correct/total)}%); ${group.changed} corrected.`; body.append(line);
+      }
+      if (!groups.size) body.textContent = 'No provisional categories have been reviewed. Unreviewed assignments are not counted as correct.';
+      panel.replaceChildren(summary,body);
+    }
+
     function renderChannels() {
       const query = els.search.value.trim().toLowerCase();
       const category = els.categoryFilter.value;
       const visibility = els.includedFilter.value;
       const visible = draft.channels.filter(channel => {
-        if (category && channel.category !== category) return false;
+        if (category === '__review' ? !channel.needsCategoryReview : category && channel.category !== category) return false;
         if (visibility === 'included' && !channel.included) return false;
         if (visibility === 'excluded' && channel.included) return false;
         if (!query) return true;
@@ -827,6 +849,7 @@
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';
       if (channel.category === 'Uncategorized') badges.append(badge('Needs category', 'unresolved'));
+	  if (channel.needsCategoryReview) badges.append(badge(`Needs category review · priority ${channel.categoryPriority}`, 'unresolved'));
       if (channel.duplicateOf) badges.append(badge('Suggested SD duplicate', 'duplicate'));
       for (const source of channel.matchedSources || []) if (source !== 'gracenote') badges.append(badge(sourceLabel(source)));
       copy.append(name, meta, badges);
@@ -842,6 +865,10 @@
         if (event.key === 'Enter') categoryInput.blur();
       });
       actions.append(categoryInput);
+	  if (channel.needsCategoryReview) {
+		const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm category';
+		confirm.addEventListener('click', () => saveChannel(channel, {category:channel.category}, confirm)); actions.append(confirm);
+	  }
       main.append(toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
@@ -866,7 +893,7 @@
       control.disabled = true; renderSummary();
       try {
         await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
-        if ('category' in patch) { channel.categorySource = 'user'; renderCategoryOptions(); }
+        if ('category' in patch) { channel.categorySource = 'user'; channel.categoryPriority = 1; channel.needsCategoryReview = false; renderCategoryOptions(); }
         showMessage('Saved.'); setTimeout(() => { if (els.message.textContent === 'Saved.') showMessage(''); }, 1300);
       } catch (error) {
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
@@ -939,6 +966,31 @@
         await loadAliasIndex();
       } catch (error) { setMarketMessage(error.message, 'error'); }
     });
+    const tmdbPanel = document.createElement('section'); tmdbPanel.className = 'panel';
+    const tmdbTitle = document.createElement('h2'); tmdbTitle.textContent = 'TMDB category evidence';
+    const tmdbMessage = document.createElement('p'); tmdbMessage.setAttribute('role','status');
+    const tmdbScan = document.createElement('button'); tmdbScan.type = 'button'; tmdbScan.textContent = 'Scan TMDB enrichment data'; tmdbScan.disabled = true;
+    tmdbPanel.append(tmdbTitle, tmdbMessage, tmdbScan); document.querySelector('main').prepend(tmdbPanel);
+    let tmdbCategoryTimer;
+    async function loadTMDBCategoryState() {
+      clearTimeout(tmdbCategoryTimer);
+      try {
+        const state = await api('/api/lineuparr/tmdb-categories');
+        tmdbMessage.textContent = state.message;
+        tmdbScan.disabled = !['ready','current'].includes(state.state);
+        tmdbScan.hidden = state.state === 'not-configured' || state.state === 'no-provider';
+        if (['enriching','waiting-for-genres'].includes(state.state)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+      } catch(error) { tmdbMessage.textContent = error.message; tmdbScan.disabled = true; }
+    }
+    tmdbScan.addEventListener('click', async () => {
+      tmdbScan.disabled = true;
+      try {
+        const result = await api('/api/lineuparr/tmdb-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        tmdbMessage.textContent = result.message; await loadDraft();
+      } catch(error) { tmdbMessage.textContent = error.message; }
+      finally { tmdbScan.disabled = false; }
+    });
+    loadTMDBCategoryState();
     initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();

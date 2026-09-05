@@ -12,7 +12,7 @@ import (
 
 func TestXfinityLiveFieldContract(t *testing.T) {
 	entries, err := parseXfinity([]byte(`{"channels":[
-	 {"channelNumber":205,"channelName":"Example News","callSign":"EXNEWS","channelShortName":"Example News TV","stationName":"Example News Network","stationId":"4784595261472352117","genreName":"News & Info","hdCallSign":"OTHERHD","hdStationId":"98765","hdChannelNumber":1205},
+	 {"channelNumber":205,"channelName":"Example News","callSign":"EXNEWS","channelShortName":"Example News TV","stationName":"Example News Network","stationId":"4784595261472352117","genreId":"9","genreName":"Music","hdCallSign":"OTHERHD","hdStationId":"98765","hdChannelNumber":1205},
 	 {"channelNumber":206,"channelName":"Example Unknown","genreName":"Unknown"},
 	 {"channelNumber":207,"channelName":"Example PPV","genreName":"Unknown","ppv":true}
 	]}`))

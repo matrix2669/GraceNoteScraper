@@ -39,10 +39,11 @@ type AttributedAlias struct {
 }
 
 type AttributedCategory struct {
-	Value  string
-	Source string
-	Label  string
-	Method string
+	Priority int
+	Value    string
+	Source   string
+	Label    string
+	Method   string
 }
 
 type AliasEvidence struct {
@@ -58,27 +59,30 @@ type IdentifierEvidence struct {
 }
 
 type DraftChannel struct {
-	ID              string               `json:"id"`
-	StationID       string               `json:"stationId,omitempty"`
-	PlacementID     string               `json:"placementId,omitempty"`
-	Number          string               `json:"number"`
-	Name            string               `json:"name"`
-	OriginalName    string               `json:"originalName"`
-	CallSign        string               `json:"callSign,omitempty"`
-	Affiliate       string               `json:"affiliate,omitempty"`
-	Category        string               `json:"category"`
-	Included        bool                 `json:"included"`
-	Aliases         []string             `json:"aliases,omitempty"`
-	AliasEvidence   []AliasEvidence      `json:"aliasEvidence,omitempty"`
-	EPGIDs          []string             `json:"epgIds,omitempty"`
-	EPGIDEvidence   []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
-	NameSource      string               `json:"nameSource"`
-	NameMethod      string               `json:"nameMethod"`
-	CategorySource  string               `json:"categorySource"`
-	CategoryMethod  string               `json:"categoryMethod,omitempty"`
-	MatchedSources  []string             `json:"matchedSources,omitempty"`
-	DuplicateOf     string               `json:"duplicateOf,omitempty"`
-	DuplicateReason string               `json:"duplicateReason,omitempty"`
+	CategoryPriority    int                  `json:"categoryPriority"`
+	NeedsCategoryReview bool                 `json:"needsCategoryReview"`
+	CategoryReview      *CategoryReview      `json:"categoryReview,omitempty"`
+	ID                  string               `json:"id"`
+	StationID           string               `json:"stationId,omitempty"`
+	PlacementID         string               `json:"placementId,omitempty"`
+	Number              string               `json:"number"`
+	Name                string               `json:"name"`
+	OriginalName        string               `json:"originalName"`
+	CallSign            string               `json:"callSign,omitempty"`
+	Affiliate           string               `json:"affiliate,omitempty"`
+	Category            string               `json:"category"`
+	Included            bool                 `json:"included"`
+	Aliases             []string             `json:"aliases,omitempty"`
+	AliasEvidence       []AliasEvidence      `json:"aliasEvidence,omitempty"`
+	EPGIDs              []string             `json:"epgIds,omitempty"`
+	EPGIDEvidence       []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
+	NameSource          string               `json:"nameSource"`
+	NameMethod          string               `json:"nameMethod"`
+	CategorySource      string               `json:"categorySource"`
+	CategoryMethod      string               `json:"categoryMethod,omitempty"`
+	MatchedSources      []string             `json:"matchedSources,omitempty"`
+	DuplicateOf         string               `json:"duplicateOf,omitempty"`
+	DuplicateReason     string               `json:"duplicateReason,omitempty"`
 }
 
 type DuplicateSuggestion struct {
@@ -136,16 +140,19 @@ type Draft struct {
 }
 
 type ChannelUpdate struct {
-	Included *bool   `json:"included,omitempty"`
-	Category *string `json:"category,omitempty"`
+	Review   *CategoryReview `json:"-"`
+	Included *bool           `json:"included,omitempty"`
+	Category *string         `json:"category,omitempty"`
 }
 
 type ChannelOverride struct {
-	Included *bool  `json:"included,omitempty"`
-	Category string `json:"category,omitempty"`
+	CategoryReview *CategoryReview `json:"categoryReview,omitempty"`
+	Included       *bool           `json:"included,omitempty"`
+	Category       string          `json:"category,omitempty"`
 }
 
 type State struct {
+	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
 	Version           int                        `json:"version"`
 	SourceFingerprint string                     `json:"sourceFingerprint"`
 	Channels          map[string]ChannelOverride `json:"channels,omitempty"`

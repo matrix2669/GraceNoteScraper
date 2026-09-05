@@ -1201,7 +1201,8 @@ func main() {
 		addressSearcher = geocode.NewNominatimClient(nil, nominatimURL)
 	}
 	lineuparrHandlers := &lineuparrServer{
-		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, addressSearcher: addressSearcher,
+		tmdbConfigured: tmdbClient != nil,
+		store:          configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, addressSearcher: addressSearcher,
 		addressTester: providersource.NewService(),
 	}
 
@@ -1225,6 +1226,7 @@ func main() {
 	mux.HandleFunc("/lineuparr/address-help.png", lineuparrHandlers.handleAddressHelpImage)
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
+	mux.HandleFunc("/api/lineuparr/tmdb-categories", lineuparrHandlers.handleTMDBCategories)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
@@ -1357,6 +1359,11 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program) {
 		}
 		if entry.OrigLanguage != "" {
 			programs[i].OrigLanguage = entry.OrigLanguage
+		}
+		if entry.GenresCaptured {
+			programs[i].TMDBGenreIDs = append([]int(nil), entry.GenreIDs...)
+			programs[i].TMDBMediaType = entry.MediaType
+			programs[i].TMDBGenresCaptured = true
 		}
 		if entry.TMDBID != 0 {
 			tmdbEpNum := fmt.Sprintf("%d", entry.TMDBID)

@@ -221,7 +221,7 @@ func TestIPTVOrgCategoryMappingCoversPublishedCategories(t *testing.T) {
 	tests := map[string]string{
 		"animation": "Kids & Family", "auto": "Entertainment", "business": "News & Weather",
 		"culture": "Entertainment", "family": "Kids & Family", "interactive": "Other",
-		"series": "Entertainment", "shop": "Entertainment", "xxx": "Other",
+		"series": "Entertainment", "shop": "Other", "xxx": "Other",
 	}
 	for input, want := range tests {
 		if got := mapIPTVOrgCategory(input); got != want {
