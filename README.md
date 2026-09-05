@@ -102,6 +102,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `GN_LANGUAGE` | Language code | `en-us` |
 | `GN_DEVICE` | Device identifier | `-` |
 | `TMDB_TOKEN` | TMDB read access token (optional) | — |
+| `TMDB_WORKERS` | Concurrent TMDB title workers; all requests retain the shared rate limiter (1-16) | `4` |
 | `BASE_URL` | Server base URL — rewrites XMLTV image URLs to use the built-in proxy cache (e.g. `http://192.168.1.50:8080`) | — |
 | `PORT` | HTTP server port | `8080` |
 | `JELLYFIN_URL` | Jellyfin server URL (optional — enables live TV integration) | — |
