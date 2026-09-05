@@ -3,6 +3,7 @@
 config.json
 *.address.json
 .provider-address-*.tmp
+*.links.json
 *.xmltv
 tmdb_cache.json
 tvlogo_cache.json
