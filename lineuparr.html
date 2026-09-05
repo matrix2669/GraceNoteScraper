@@ -333,11 +333,16 @@
     <div class="export-actions">
       <button type="button" class="export-button" id="export-download">Download JSON</button>
       <button type="button" id="export-copy">Copy URL</button>
+      <button type="button" id="export-copy-internal" hidden>Copy Docker-network URL</button>
       <button type="button" id="export-close">Cancel</button>
     </div>
     <div class="export-result" id="export-result" hidden>
       <label for="export-url">Published lineup URL</label>
       <input id="export-url" type="text" readonly spellcheck="false">
+      <div id="export-internal-result" hidden>
+        <label for="export-internal-url">Docker-network lineup URL (click to copy)</label>
+        <input id="export-internal-url" type="text" readonly spellcheck="false">
+      </div>
     </div>
     <p class="export-status" id="export-status" role="status" aria-live="polite"></p>
   </dialog>
@@ -370,6 +375,7 @@
       exportDownload: document.getElementById('export-download'), exportCopy: document.getElementById('export-copy'),
       exportClose: document.getElementById('export-close'), exportResult: document.getElementById('export-result'),
       exportURL: document.getElementById('export-url'), exportStatus: document.getElementById('export-status'),
+      exportInternalCopy: document.getElementById('export-copy-internal'), exportInternalResult: document.getElementById('export-internal-result'), exportInternalURL: document.getElementById('export-internal-url'),
       message: document.getElementById('message'), stats: document.getElementById('stats'),
       providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
       sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
@@ -394,6 +400,8 @@
     let pendingChannelSaves = 0;
     let publishing = false;
     let publishedExport = null;
+    let internalExportBase = '';
+    let exportSettingsRequest = 0;
     let compact = localStorage.getItem('lineuparr-view') === 'compact';
     let batchMode = false;
     const selectedChannels = new Set();
@@ -830,7 +838,7 @@
       finally { saving = false; renderSummary(); renderChannels(); }
     }
 
-    function openExport() {
+    async function openExport() {
       if (!draft || saving || pendingChannelSaves) return;
       publishedExport = null;
       els.exportResult.hidden = true;
@@ -839,23 +847,39 @@
       els.exportStatus.className = 'export-status';
       els.exportClose.textContent = 'Cancel';
       els.exportDialog.showModal();
+      internalExportBase = '';
+      els.exportInternalCopy.hidden = els.exportInternalResult.hidden = true;
+      els.exportInternalURL.value = '';
+      const request = ++exportSettingsRequest;
+      try {
+        const settings = await api('/api/setup/share-links');
+        if (request !== exportSettingsRequest) return;
+        internalExportBase = settings.internalBaseURL || '';
+        els.exportInternalCopy.hidden = !internalExportBase;
+        if (publishedExport && internalExportBase) {
+          els.exportInternalURL.value = new URL(publishedExport.path, internalExportBase).href;
+          els.exportInternalResult.hidden = false;
+        }
+      } catch (_) { /* Optional settings do not block normal exports. */ }
     }
 
-    async function copyExportURL() {
+    async function copyExportURL(input = els.exportURL) {
       if (navigator.clipboard && window.isSecureContext) {
-        try { await navigator.clipboard.writeText(els.exportURL.value); return true; }
+        try { await navigator.clipboard.writeText(input.value); return true; }
         catch (_) { /* Try the local HTTP fallback, then leave the URL selected. */ }
       }
-      els.exportURL.focus();
-      els.exportURL.select();
+      input.focus();
+      input.select();
       try { return document.execCommand('copy'); }
       catch (_) { return false; }
     }
 
     async function exportLineup(action) {
       if (publishing || !draft || saving || pendingChannelSaves) return;
+      if (action === 'copy-internal' && !internalExportBase) return;
       publishing = true;
       els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = true;
+      els.exportInternalCopy.disabled = true;
       els.exportStatus.className = 'export-status';
       els.exportStatus.textContent = 'Preparing your export…';
       try {
@@ -865,11 +889,13 @@
             body: JSON.stringify({sourceFingerprint: draft.sourceFingerprint})
           });
           els.exportURL.value = new URL(publishedExport.path, window.location.href).href;
+          els.exportInternalURL.value = internalExportBase ? new URL(publishedExport.path, internalExportBase).href : '';
+          els.exportInternalResult.hidden = !internalExportBase;
           els.exportResult.hidden = false;
           els.exportClose.textContent = 'Close';
         }
-        if (action === 'copy') {
-          const copied = await copyExportURL();
+        if (action === 'copy' || action === 'copy-internal') {
+          const copied = await copyExportURL(action === 'copy-internal' ? els.exportInternalURL : els.exportURL);
           els.exportStatus.textContent = copied ? 'URL copied. Export again to publish later changes.' : 'Export saved. Copy the selected URL manually, or click Copy URL again.';
           els.exportStatus.classList.toggle('error', !copied);
         } else {
@@ -888,6 +914,7 @@
       } finally {
         publishing = false;
         els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = false;
+        els.exportInternalCopy.disabled = false;
       }
     }
 
@@ -897,6 +924,12 @@
     els.exportClose.addEventListener('click', () => els.exportDialog.close());
     els.exportDialog.addEventListener('cancel', event => { if (publishing) event.preventDefault(); });
     els.exportURL.addEventListener('click', () => els.exportURL.select());
+    els.exportInternalCopy.addEventListener('click', () => exportLineup('copy-internal'));
+    els.exportInternalURL.addEventListener('click', async () => {
+      if (!els.exportInternalURL.value) return;
+      const copied = await copyExportURL(els.exportInternalURL);
+      els.exportStatus.textContent = copied ? 'Docker-network URL copied.' : 'Select and copy the Docker-network URL manually.';
+    });
 
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
