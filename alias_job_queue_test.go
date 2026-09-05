@@ -82,3 +82,59 @@ func TestAliasJobQueueRetainsQueuedWorkWhileAnotherScanRuns(t *testing.T) {
 		t.Fatalf("failed queue state = %+v", view)
 	}
 }
+
+func TestAliasQueueAllowsPublishedBackgroundTMDBOnly(t *testing.T) {
+	for _, stage := range []string{"idle", "queued", "starting", "gracenote", "logos", "tmdb", "saving", "error", "tmdb_background", "ready"} {
+		t.Run(stage, func(t *testing.T) {
+			status := newScrapeStatus(false, 0, 0)
+			status.update(stage, "test", 1, 10, 335, 1000)
+			if stage == "ready" {
+				status.ready(335, 1000)
+			}
+			starter := &fakeAliasJobStarter{}
+			queue := newAliasJobQueue(status, starter)
+			view, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"})
+			allowed := stage == "tmdb_background" || stage == "ready"
+			if err != nil || view.GuideBusy == allowed {
+				t.Fatalf("view=%+v err=%v", view, err)
+			}
+			queue.TryStart()
+			if (starter.requestCount() == 1) != allowed || queue.View().Queued == allowed {
+				t.Fatalf("starts=%d view=%+v", starter.requestCount(), queue.View())
+			}
+		})
+	}
+	for _, counts := range [][2]int{{0, 0}, {1, 0}, {0, 1}} {
+		if !guideBlocksAliasScan(scrapeStatusSnapshot{Running: true, Stage: "tmdb_background", Channels: counts[0], Programs: counts[1]}) {
+			t.Fatalf("incomplete base guide allowed: %v", counts)
+		}
+	}
+}
+
+func TestAliasQueueReleasesAtBackgroundTransitionWithoutWaitingForTMDB(t *testing.T) {
+	status := newScrapeStatus(false, 0, 0)
+	status.start("Downloading")
+	starter := &fakeAliasJobStarter{}
+	queue := newAliasJobQueue(status, starter)
+	if _, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"}); err != nil {
+		t.Fatal(err)
+	}
+	queue.TryStart()
+	if starter.requestCount() != 0 {
+		t.Fatal("started before base publication")
+	}
+	status.update("tmdb_background", "Guide available", 0, 100, 335, 1000)
+	queue.TryStart()
+	queue.TryStart()
+	if starter.requestCount() != 1 || queue.View().Queued || !status.snapshotValue().Running {
+		t.Fatal("scan must start once while TMDB is still running")
+	}
+	starter.err = lineupindex.ErrAlreadyRunning
+	if _, err := queue.Queue(lineupindex.RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"}); err != nil {
+		t.Fatal(err)
+	}
+	queue.TryStart()
+	if !queue.View().Queued || !queue.Cancel() {
+		t.Fatal("duplicate scan must remain queued and cancellable")
+	}
+}

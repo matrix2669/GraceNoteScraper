@@ -126,6 +126,8 @@ The ranked major-market scanner is not included in this branch. Its source remai
 
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
+When initial-guide background TMDB enrichment is enabled, local lineup scans may start as soon as the usable base guide reaches the background-enrichment stage. This includes enabled provider/source downloads and alias/category processing; they do not wait for TMDB. Already queued scans start automatically on the next queue check (within approximately one second). Guide downloading, logo processing, ordinary scheduled enrichment and final guide saving remain gated. Only one local scan runs at a time, and source rate limits and cancellation are unchanged.
+
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
 - Meaningful aliases are punctuation/case-normalized callsigns observed on the same Gracenote station ID. Affiliate/network names and callsigns used by multiple station IDs are reported separately.
 
