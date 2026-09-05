@@ -140,7 +140,9 @@
     .duplicate-review-header h2 { margin: 0; font-size: 19px; }
     .duplicate-review-header p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
     .duplicate-review-list { display: grid; gap: 8px; overflow-y: auto; padding: 14px 20px; }
-    .duplicate-review-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,17,14,.48); }
+    .duplicate-review-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,17,14,.48); }
+    .duplicate-review-list fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+    .duplicate-review-list legend { overflow-wrap: anywhere; max-width: 100%; padding: 0 8px; }
     .duplicate-review-row input { width: 17px; height: 17px; accent-color: var(--accent); }
     .duplicate-review-copy { min-width: 0; }
     .duplicate-review-name { font-size: 12px; font-weight: 730; overflow-wrap: anywhere; }
@@ -351,8 +353,8 @@
   <dialog class="duplicate-review" id="duplicate-review">
     <form class="duplicate-review-form" id="duplicate-review-form">
       <header class="duplicate-review-header">
-        <h2>Review suggested SD duplicates</h2>
-        <p>Each checked channel will be excluded from the Lineuparr export while the retained channel stays included. Uncheck any pair you do not want to apply.</p>
+        <h2>Review duplicate channel groups</h2>
+        <p>Checked positions will be kept. SD removal is suggested; exact repeated positions stay checked until you choose which to remove. Keep at least one position in every group.</p>
       </header>
       <div class="duplicate-review-list" id="duplicate-review-list"></div>
       <div class="duplicate-review-actions">
@@ -446,9 +448,9 @@
       els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
       els.categorized.textContent = categorized.toLocaleString();
       els.unresolved.textContent = (includedChannels.length - categorized).toLocaleString();
-      const count = remainingDuplicateSuggestions().length;
-      els.removeDuplicates.textContent = count ? `Review ${count} suggested SD duplicate${count === 1 ? '' : 's'}` : 'No SD duplicates suggested';
-      els.removeDuplicates.title = count ? 'Review the SD positions identified by exact shared-source evidence before excluding them.' : 'No SD/HD pair was identified by exact shared-source evidence in this lineup.';
+      const count = activeDuplicateGroups().length;
+      els.removeDuplicates.textContent = count ? `Review ${count} duplicate group${count === 1 ? '' : 's'}` : 'No duplicates suggested';
+      els.removeDuplicates.title = 'Review SD/HD groups and exact repeated positions. No channels change until you apply your choices.';
       els.removeDuplicates.disabled = saving || count === 0;
       els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
       els.exportOpen.disabled = saving || pendingChannelSaves > 0;
@@ -457,6 +459,11 @@
     function remainingDuplicateSuggestions() {
       const included = new Set(draft.channels.filter(channel => channel.included).map(channel => channel.id));
       return (draft.duplicateSuggestions || []).filter(suggestion => included.has(suggestion.removeId));
+    }
+
+    function activeDuplicateGroups() {
+      const byID = new Map(draft.channels.filter(channel => channel.included).map(channel => [channel.id, channel]));
+      return (draft.duplicateGroups || []).map(group => ({...group, channels: group.channelIds.map(id => byID.get(id)).filter(Boolean)})).filter(group => group.channels.length > 1);
     }
 
     function renderSources() {
@@ -626,7 +633,7 @@
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';
       if (channel.category === 'Uncategorized') badges.append(badge('Needs category', 'unresolved'));
-      if (channel.duplicateOf) badges.append(badge('Suggested SD duplicate', 'duplicate'));
+      if (channel.duplicateOf) badges.append(badge('Duplicate review available', 'duplicate'));
       for (const source of channel.matchedSources || []) if (source !== 'gracenote') badges.append(badge(sourceLabel(source)));
       copy.append(name, meta, badges);
       const actions = document.createElement('div'); actions.className = 'channel-actions';
@@ -767,29 +774,31 @@
     }
 
     function updateDuplicateReviewCount() {
-      const count = els.duplicateReviewList.querySelectorAll('input:checked').length;
-      els.duplicateReviewConfirm.textContent = count ? `Remove selected (${count})` : 'Select at least one match';
-      els.duplicateReviewConfirm.disabled = count === 0;
+      const count = els.duplicateReviewList.querySelectorAll('input:not(:checked)').length;
+      const invalid = [...els.duplicateReviewList.querySelectorAll('fieldset')].some(group => !group.querySelector('input:checked'));
+      els.duplicateReviewConfirm.textContent = invalid ? 'Keep at least one per group' : count ? `Remove unchecked (${count})` : 'Uncheck positions to remove';
+      els.duplicateReviewConfirm.disabled = count === 0 || invalid;
     }
 
     function openDuplicateReview() {
-      const suggestions = remainingDuplicateSuggestions();
-      if (!suggestions.length) return;
+      const groups = activeDuplicateGroups();
+      if (!groups.length) return;
       els.duplicateReviewList.replaceChildren();
-      for (const suggestion of suggestions) {
-        const row = document.createElement('label'); row.className = 'duplicate-review-row';
-        const input = document.createElement('input'); input.type = 'checkbox'; input.value = suggestion.removeId; input.checked = true;
-        input.addEventListener('change', updateDuplicateReviewCount);
-        const remove = document.createElement('div'); remove.className = 'duplicate-review-copy';
-        const removeName = document.createElement('div'); removeName.className = 'duplicate-review-name'; removeName.textContent = `${suggestion.removeNumber || '—'} · ${suggestion.removeName}`;
-        const removeMeta = document.createElement('div'); removeMeta.className = 'duplicate-review-meta'; removeMeta.textContent = 'Exclude this lower-quality position';
-        remove.append(removeName, removeMeta);
-        const arrow = document.createElement('div'); arrow.className = 'duplicate-review-arrow'; arrow.textContent = '→';
-        const keep = document.createElement('div'); keep.className = 'duplicate-review-copy';
-        const keepName = document.createElement('div'); keepName.className = 'duplicate-review-name'; keepName.textContent = `${suggestion.keepNumber || '—'} · ${suggestion.keepName}`;
-        const keepMeta = document.createElement('div'); keepMeta.className = 'duplicate-review-meta'; keepMeta.textContent = suggestion.reason || 'Keep this stronger position';
-        keep.append(keepName, keepMeta);
-        row.append(input, remove, arrow, keep); els.duplicateReviewList.append(row);
+      const sdRemovals = new Set((draft.duplicateSuggestions || []).filter(item => !item.exact).map(item => item.removeId));
+      for (const group of groups) {
+        const box = document.createElement('fieldset');
+        const title = document.createElement('legend'); title.textContent = `${group.channels[0].name} · ${group.channels.length} positions`;
+        box.append(title);
+        for (const channel of group.channels) {
+          const row = document.createElement('label'); row.className = 'duplicate-review-row';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = !sdRemovals.has(channel.id);
+          input.addEventListener('change', updateDuplicateReviewCount);
+          const copy = document.createElement('div'); copy.className = 'duplicate-review-copy';
+          const name = document.createElement('div'); name.className = 'duplicate-review-name'; name.textContent = `Keep ${channel.number || '—'} · ${channel.name}`;
+          const meta = document.createElement('div'); meta.className = 'duplicate-review-meta'; meta.textContent = `Callsign ${channel.callSign} · Gracenote ${channel.stationId || 'unknown'} · ${sdRemovals.has(channel.id) ? 'Lower-quality removal suggested' : 'Choose manually if this position is repeated'}`;
+          copy.append(name, meta); row.append(input, copy); box.append(row);
+        }
+        els.duplicateReviewList.append(box);
       }
       updateDuplicateReviewCount();
       els.duplicateReview.showModal();
@@ -797,17 +806,18 @@
 
     async function removeDuplicates(event) {
       event.preventDefault();
-      const ids = [...els.duplicateReviewList.querySelectorAll('input:checked')].map(input => input.value);
+      const ids = [...els.duplicateReviewList.querySelectorAll('input:not(:checked)')].map(input => input.value);
       if (!ids.length) return;
-      els.duplicateReview.close();
-      saving = true; renderSummary(); showMessage('Applying the duplicate-SD suggestions…');
+      if ([...els.duplicateReviewList.querySelectorAll('fieldset')].some(group => !group.querySelector('input:checked'))) return;
+      saving = true; els.duplicateReviewConfirm.disabled = true; renderSummary(); showMessage('Applying duplicate choices…');
       try {
         await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:ids})});
         const selected = new Set(ids);
         for (const channel of draft.channels) if (selected.has(channel.id)) channel.included = false;
-        showMessage(`${selected.size} suggested SD channel${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
+        els.duplicateReview.close();
+        showMessage(`${selected.size} duplicate position${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
       } catch (error) { showMessage(error.message, true); }
-      finally { saving = false; renderSummary(); renderChannels(); }
+      finally { saving = false; updateDuplicateReviewCount(); renderSummary(); renderChannels(); }
     }
 
     async function restoreAll() {

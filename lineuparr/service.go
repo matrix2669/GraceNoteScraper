@@ -158,6 +158,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		CountryCode:          countryAlpha2(lineup.Country),
 		Channels:             resultChannels,
 		DuplicateSuggestions: duplicates,
+		DuplicateGroups:      duplicateReviewGroups(resultChannels, duplicates),
 		Sources:              statuses,
 		Total:                len(resultChannels),
 	}
@@ -208,15 +209,19 @@ func (s *Service) UpdateChannelsCategory(fingerprint string, channelIDs []string
 func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) error {
 	ids := make([]string, 0, len(draft.DuplicateSuggestions))
 	for _, suggestion := range draft.DuplicateSuggestions {
+		if suggestion.Exact {
+			continue
+		}
 		ids = append(ids, suggestion.RemoveID)
 	}
-	return s.store.SetIncluded(fingerprint, ids, false)
+	return s.RemoveSuggestedDuplicateIDs(fingerprint, draft, ids)
 }
 
 func (s *Service) RemoveSuggestedDuplicateIDs(fingerprint string, draft *Draft, requested []string) error {
 	allowed := make(map[string]bool, len(draft.DuplicateSuggestions))
 	for _, suggestion := range draft.DuplicateSuggestions {
 		allowed[suggestion.RemoveID] = true
+		allowed[suggestion.KeepID] = true
 	}
 	ids := make([]string, 0, len(requested))
 	seen := make(map[string]bool, len(requested))
@@ -233,6 +238,24 @@ func (s *Service) RemoveSuggestedDuplicateIDs(fingerprint string, draft *Draft, 
 	}
 	if len(ids) == 0 {
 		return nil
+	}
+	for _, group := range duplicateReviewGroups(draft.Channels, draft.DuplicateSuggestions) {
+		remaining := false
+		touched := false
+		for _, id := range group.ChannelIDs {
+			if seen[id] {
+				touched = true
+				continue
+			}
+			for _, channel := range draft.Channels {
+				if channel.ID == id && channel.Included {
+					remaining = true
+				}
+			}
+		}
+		if touched && !remaining {
+			return errors.New("keep at least one included position in each duplicate group")
+		}
 	}
 	return s.store.SetIncluded(fingerprint, ids, false)
 }
@@ -767,6 +790,31 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 		}
 	}
 
+	// Repeated positions require both the exact station and callsign. Shared
+	// generic guide IDs alone must not combine differently named services.
+	exactGroups := make(map[string][]int)
+	for i, channel := range channels {
+		if channel.StationID != "" && identityKey(channel.CallSign) != "" {
+			key := channel.StationID + "\x00" + identityKey(channel.CallSign)
+			exactGroups[key] = append(exactGroups[key], i)
+		}
+	}
+	for _, indexes := range exactGroups {
+		if len(indexes) < 2 {
+			continue
+		}
+		keep := channels[sameStationKeepPosition(channels, indexes)[0]]
+		for _, i := range indexes {
+			remove := channels[i]
+			if remove.ID == keep.ID {
+				continue
+			}
+			if _, exists := suggestionByRemoveID[remove.ID]; exists {
+				continue
+			}
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{Exact: true, RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name, KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: "Exact same Gracenote station and callsign at multiple lineup positions"}
+		}
+	}
 	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
 	for _, suggestion := range suggestionByRemoveID {
 		suggestions = append(suggestions, suggestion)

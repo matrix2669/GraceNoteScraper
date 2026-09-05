@@ -4,6 +4,8 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 ## Features
 
+Duplicate review presents whole connected groups of verified SD/HD pairs and exact repeated positions. Checked means Keep. Lower-quality removals are suggested, but all equivalent HD or exact duplicate positions start checked for a manual choice; a lower channel number does not prove better quality. At least one included position per group must remain. Exact repeats require the same nonempty Gracenote station ID and callsign; names alone never create these groups.
+
 Channel programme popups close when clicking outside their box. Popups requiring choices, such as export and duplicate review, retain explicit controls. SD suggestions accept multiple HD positions only when those positions share one nonempty Gracenote station ID; the review link prefers an included position, then the lowest channel number. HD positions themselves are not removed by this rule.
 
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
