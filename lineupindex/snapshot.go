@@ -145,6 +145,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			continue
 		}
 		allCategories := make(map[string][]StationFact)
+		bestPriority := 5
 		preferredCategories := make(map[string][]StationFact)
 		identities := make([]string, 0, len(station.Names))
 		for _, name := range station.Names {
@@ -172,6 +173,18 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 				continue
 			}
 			fact.Value = match.Category
+			priority := 2
+			if fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "priority-4") {
+				priority = 4
+			}
+			if priority < bestPriority {
+				bestPriority = priority
+				allCategories = make(map[string][]StationFact)
+				preferredCategories = make(map[string][]StationFact)
+			}
+			if priority > bestPriority {
+				continue
+			}
 			fact.Normalized = normalizeName(match.Category)
 			if match.Method != channelcategory.MethodCanonical {
 				fact.Method = appendMethod(fact.Method, "master taxonomy: "+match.Method)
@@ -189,7 +202,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			continue
 		}
 		for _, facts := range byCategory {
-			candidate := CategoryCandidate{StationID: stationID, Value: facts[0].Value}
+			candidate := CategoryCandidate{StationID: stationID, Value: facts[0].Value, Priority: bestPriority}
 			for _, fact := range facts {
 				candidate.SourceIDs = appendUniqueString(candidate.SourceIDs, fact.SourceID)
 				candidate.SourceLabels = appendUniqueString(candidate.SourceLabels, fact.SourceLabel)
@@ -209,6 +222,11 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 // EPG-carried categories also need a fresh scan through the corrected adapters.
 func usableFact(fact StationFact) bool {
 	if strings.Contains(fact.Method, "exact provider channel number plus") && !strings.Contains(fact.Method, "number-policy-local-v1") {
+		return false
+	}
+	// Old Xfinity labels and their EPG-carried copies must not outlive the
+	// source-policy correction. Names/aliases remain independent evidence.
+	if fact.Kind == FactCategory && (fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "Xfinity")) && !strings.Contains(fact.Method, "category-quality-v1") {
 		return false
 	}
 	if excludedEnrichmentSource(fact.SourceID) {

@@ -231,6 +231,7 @@ type AliasCandidate struct {
 }
 
 type CategoryCandidate struct {
+	Priority     int      `json:"priority"`
 	StationID    string   `json:"stationId"`
 	Value        string   `json:"value"`
 	SourceIDs    []string `json:"sourceIds"`

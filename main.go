@@ -1505,6 +1505,11 @@ func main() {
 	}
 	aliasQueue := newAliasJobQueue(guideStatus, marketService)
 	lineuparrHandlers := &lineuparrServer{
+		tmdbConfigured: tmdbClient != nil,
+		tmdbEnriching: func() bool {
+			status := guideStatus.snapshotValue()
+			return status.Running
+		},
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
 		beforeMarketScan: func() error {
@@ -1549,6 +1554,7 @@ func main() {
 	mux.HandleFunc("/lineuparr/address-help.png", lineuparrHandlers.handleAddressHelpImage)
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
+	mux.HandleFunc("/api/lineuparr/tmdb-categories", lineuparrHandlers.handleTMDBCategories)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/categories", lineuparrHandlers.handleCategories)
 	mux.HandleFunc("/api/lineuparr/channel-programs", lineuparrHandlers.handleChannelPrograms)
@@ -1712,6 +1718,11 @@ func enrichProgramThumbnailsWhile(client *tmdb.Client, programs []guide.Program,
 		}
 		if entry.OrigLanguage != "" {
 			programs[i].OrigLanguage = entry.OrigLanguage
+		}
+		if entry.GenresCaptured {
+			programs[i].TMDBGenreIDs = append([]int(nil), entry.GenreIDs...)
+			programs[i].TMDBMediaType = entry.MediaType
+			programs[i].TMDBGenresCaptured = true
 		}
 		if entry.TMDBID != 0 {
 			tmdbEpNum := fmt.Sprintf("%d", entry.TMDBID)

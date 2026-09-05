@@ -73,8 +73,8 @@ var definitions = []definition{
 		"general entertainment", "general", "generalistas", "classic", "series", "comedy", "crime",
 		"discovery", "documentary", "documentaries", "documentales", "science", "culture", "education",
 		"reality", "reality lifestyle", "reality and lifestyle", "reality game shows", "reality and game shows",
-		"food", "travel", "food travel", "food and travel", "cooking", "shopping", "shop",
-		"lifestyle", "women", "home and leisure", "pop culture", "people and culture", "marketplace",
+		"food", "travel", "food travel", "food and travel", "cooking",
+		"lifestyle", "women", "home and leisure", "pop culture", "people and culture",
 		"information and education", "divertissement", "entretenimiento", "decouverte", "relax",
 	}},
 	{name: KidsFamily, aliases: []string{
@@ -97,6 +97,7 @@ var definitions = []definition{
 		"ppv and subscription events", "ppv and subscription sports",
 	}},
 	{name: Other, aliases: []string{
+		"shopping", "shop", "marketplace",
 		"adult", "adult channels", "other services", "other and services", "services", "service",
 		"provider services", "help and services", "interactive", "interactive services", "on demand", "vod", "dvr",
 		"caller id", "information services", "secondary information", "secondary and information",
@@ -259,6 +260,20 @@ func resolveOne(value string, identities ...string) (Match, bool) {
 // category meaning. It deliberately avoids classifying ordinary network names.
 func ResolveIdentity(callSign, affiliate string, identities ...string) (Match, bool) {
 	values := append([]string{callSign, affiliate}, identities...)
+	for _, identity := range values {
+		key := strings.ToUpper(compact(identity))
+		key = strings.TrimSuffix(key, "HD")
+		category := ""
+		switch key {
+		case "ANTENNATV", "GRIT", "GRITTV", "BOUNCE", "BOUNCETV":
+			category = Entertainment
+		case "QVC", "QVC2", "QVC3", "HSN", "HSN2", "JEWELRYTELEVISION", "JTV":
+			category = Other
+		}
+		if category != "" {
+			return Match{Category: category, MatchedAlias: identity, Method: "maintained explicit network category identity", Confidence: 1}, true
+		}
+	}
 	for _, identity := range values {
 		key := strings.ToUpper(compact(identity))
 		if isPEGIdentity(key) || isPublicIdentity(key) {

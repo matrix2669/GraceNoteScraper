@@ -24,25 +24,28 @@ type Credit struct {
 }
 
 type CacheEntry struct {
-	ImageURL      string   `json:"image_url"`
-	BackdropURL   string   `json:"backdrop_url,omitempty"`
-	Rating        float64  `json:"rating,omitempty"`
-	VoteCount     int      `json:"vote_count,omitempty"`
-	Year          string   `json:"year,omitempty"`
-	ReleaseDate   string   `json:"release_date,omitempty"`
-	Overview      string   `json:"overview,omitempty"`
-	TMDBID        int      `json:"tmdb_id,omitempty"`
-	IMDbID        string   `json:"imdb_id,omitempty"`
-	TVDBID        int      `json:"tvdb_id,omitempty"`
-	OrigLanguage  string   `json:"orig_language,omitempty"`
-	Genres        []string `json:"genres,omitempty"`
-	Keywords      []string `json:"keywords,omitempty"`
-	Runtime       int      `json:"runtime,omitempty"`
-	Certification string   `json:"certification,omitempty"`
-	Credits       []Credit `json:"credits,omitempty"`
-	MatchedTitle  string   `json:"matched_title,omitempty"`
-	MatchScore    int      `json:"match_score,omitempty"`
-	FetchedAt     int64    `json:"fetched_at"`
+	GenreIDs       []int    `json:"genre_ids,omitempty"`
+	MediaType      string   `json:"media_type,omitempty"`
+	GenresCaptured bool     `json:"genres_captured,omitempty"`
+	ImageURL       string   `json:"image_url"`
+	BackdropURL    string   `json:"backdrop_url,omitempty"`
+	Rating         float64  `json:"rating,omitempty"`
+	VoteCount      int      `json:"vote_count,omitempty"`
+	Year           string   `json:"year,omitempty"`
+	ReleaseDate    string   `json:"release_date,omitempty"`
+	Overview       string   `json:"overview,omitempty"`
+	TMDBID         int      `json:"tmdb_id,omitempty"`
+	IMDbID         string   `json:"imdb_id,omitempty"`
+	TVDBID         int      `json:"tvdb_id,omitempty"`
+	OrigLanguage   string   `json:"orig_language,omitempty"`
+	Genres         []string `json:"genres,omitempty"`
+	Keywords       []string `json:"keywords,omitempty"`
+	Runtime        int      `json:"runtime,omitempty"`
+	Certification  string   `json:"certification,omitempty"`
+	Credits        []Credit `json:"credits,omitempty"`
+	MatchedTitle   string   `json:"matched_title,omitempty"`
+	MatchScore     int      `json:"match_score,omitempty"`
+	FetchedAt      int64    `json:"fetched_at"`
 }
 
 type Cache struct {
@@ -96,6 +99,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 		c.mu.Unlock()
 		return CacheEntry{}, false
 	}
+	entry.GenreIDs = append([]int(nil), entry.GenreIDs...)
 	c.mu.Unlock()
 
 	// Successful entries and empty negative-cache entries both count as a
@@ -113,6 +117,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 // first. The final title in every scan also forces a flush.
 func (c *Cache) Set(key string, entry CacheEntry) {
 	entry.FetchedAt = time.Now().Unix()
+	entry.GenreIDs = append([]int(nil), entry.GenreIDs...)
 
 	c.mu.Lock()
 	c.entries[key] = entry
