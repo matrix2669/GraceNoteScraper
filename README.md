@@ -41,6 +41,8 @@ This publish-first behavior applies only to the initial/missing guide. Regular s
 
 ## Quick Start (Docker Compose)
 
+On the Lineuparr page, Enrichment sources starts collapsed on every visit. Expand it to review source evidence or supply a required provider address. Other sections retain their saved expansion preferences.
+
 1. Clone the repo:
    ```sh
    git clone --branch dev-test https://github.com/matrix2669/GraceNoteScraper.git
