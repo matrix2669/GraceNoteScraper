@@ -301,21 +301,6 @@
       <div class="panel-body">
         <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
         <div class="sources" id="sources"></div>
-        <section class="provider-address" id="provider-address" hidden>
-          <div>
-            <h3 id="provider-address-title">Official provider location</h3>
-            <p id="provider-address-help"></p>
-          </div>
-          <div>
-            <form class="provider-address-input" id="provider-address-form">
-              <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
-              <button type="submit" id="provider-address-search">Search</button>
-            </form>
-            <div class="provider-address-results" id="provider-address-results"></div>
-            <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
-            <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
-          </div>
-        </section>
       </div>
     </details>
 
@@ -329,6 +314,22 @@
         <span class="panel-chevron" aria-hidden="true">›</span>
       </summary>
       <div class="panel-body">
+        <section class="provider-address" id="provider-address" hidden>
+          <div>
+            <h3 id="provider-address-title">Official provider location</h3>
+            <p id="provider-address-help"></p>
+          </div>
+          <div>
+            <form class="provider-address-input" id="provider-address-form">
+              <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
+              <button type="submit" id="provider-address-search">Search</button>
+              <button type="button" id="provider-address-forget" hidden>Forget address</button>
+            </form>
+            <div class="provider-address-results" id="provider-address-results"></div>
+            <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
+            <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
+          </div>
+        </section>
         <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared with this lineup only through an exact station ID.</p>
         <p class="alias-refresh-time" id="alias-last-refresh">Last provider refresh: never</p>
         <div class="scan-progress">
@@ -415,6 +416,7 @@
       providerAddress: document.getElementById('provider-address'), providerAddressTitle: document.getElementById('provider-address-title'),
       providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
       providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
+      providerAddressForget: document.getElementById('provider-address-forget'),
       providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
       sourceEvidenceDialog: document.getElementById('source-evidence-dialog'), sourceEvidenceTitle: document.getElementById('source-evidence-title'),
       sourceEvidenceSummary: document.getElementById('source-evidence-summary'), sourceEvidenceSearch: document.getElementById('source-evidence-search'),
@@ -439,6 +441,9 @@
     let marketPoll = null;
     let marketWasRunning = false;
     let selectedProviderAddress = null;
+    let scanRequestError = '';
+    let scanStarting = false;
+    let addressSaving = false;
     let providerAddressConfig = null;
     let sourceEvidence = null;
     const providerAddressCache = new Map();
@@ -463,11 +468,14 @@
     async function initProviderAddress() {
       try {
         const config = await api('/api/lineuparr/provider-address/config');
-        if (!config.required) return;
         providerAddressConfig = config;
+        selectedProviderAddress = config.address ? addressFields(config.address) : null;
+        els.providerAddressForget.hidden = !selectedProviderAddress;
+        if (!config.required && !selectedProviderAddress) return;
         els.providerAddress.hidden = false;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
-        els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
+        els.providerAddressHelp.textContent = `Required by: ${config.providerLabel || 'provider sources in this ZIP'}. Search for a street address (city/state/ZIP are optional), then select a result in ${config.postalCode}. Selection saves it privately on the server for these lookups. Changing providers removes it.`;
+        if (config.required && !selectedProviderAddress) document.getElementById('alias-panel').open = true;
         if (!config.enabled) {
           els.providerAddressQuery.disabled = true;
           els.providerAddressSearch.disabled = true;
@@ -476,9 +484,32 @@
         }
         els.providerAddressQuery.placeholder = `Complete street address in ${config.postalCode}`;
         setProviderAddressStatus(config.message || `Search for an address in ${config.postalCode}.`);
+        if (selectedProviderAddress) setProviderAddressStatus(`${selectedProviderAddress.formattedAddress} is saved. Scan providers below to run the lookups.`, 'good');
       } catch (error) {
+        els.providerAddress.hidden = false;
         setProviderAddressStatus(error.message || 'Provider address setup is unavailable.', 'bad');
       }
+    }
+
+    function addressFields(result) {
+      return Object.fromEntries(['formattedAddress','streetAddress','city','state','postalCode','countryCode'].map(key => [key, String(result[key] || '')]));
+    }
+
+    async function saveProviderAddress(result) {
+      if (addressSaving) return;
+      addressSaving = true;
+      try {
+        const address = result ? addressFields(result) : {};
+        await api('/api/lineuparr/provider-address/config', {
+          method: result ? 'POST' : 'DELETE', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({fingerprint: providerAddressConfig.fingerprint, address})
+        });
+        selectedProviderAddress = result ? address : null;
+        els.providerAddressForget.hidden = !result;
+        setProviderAddressStatus(result ? `${address.formattedAddress} is saved. Scan providers below to run the lookups.` : 'Address removed. Select an address before scanning.', result ? 'good' : '');
+        if (!result) { els.providerAddressQuery.value = ''; els.providerAddressResults.replaceChildren(); }
+      } catch (error) { setProviderAddressStatus(error.message || 'Unable to save address.', 'bad'); }
+      finally { addressSaving = false; }
     }
 
     function renderProviderAddressResults(results) {
@@ -493,8 +524,7 @@
         button.className = 'provider-address-result';
         button.textContent = result.formattedAddress;
         button.addEventListener('click', () => {
-          selectedProviderAddress = {...result};
-          setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
+          saveProviderAddress(result);
         });
         els.providerAddressResults.append(button);
       }
@@ -509,7 +539,6 @@
         setProviderAddressStatus('Enter a complete street address before searching.', 'bad');
         return;
       }
-      selectedProviderAddress = null;
       els.providerAddressSearch.disabled = true;
       setProviderAddressStatus('Searching OpenStreetMap addresses…');
       try {
@@ -545,13 +574,14 @@
       els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
       els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
       els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
-      els.postalScan.disabled = !!job.running;
+      els.postalScan.disabled = !!job.running || scanStarting;
       els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
       const refreshed = postalScan?.completedAt || job.completedAt;
       const refreshLabel = document.getElementById('alias-last-refresh');
       if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
-      if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
+      if (scanRequestError) setMarketMessage(scanRequestError, 'error');
+      else if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
       else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
       else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
       else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
@@ -572,6 +602,17 @@
     }
 
     async function startAliasScan(action) {
+      if (addressSaving) { setMarketMessage('Wait for the address to finish saving before scanning.'); return; }
+      if (scanStarting) return;
+      scanRequestError = '';
+      if (!providerAddressConfig) await initProviderAddress();
+      if (!providerAddressConfig || (providerAddressConfig.required && !selectedProviderAddress)) {
+        scanRequestError = 'Select and save a service address above before scanning. If provider requirements could not load, reload the page to retry.';
+        setMarketMessage(scanRequestError, 'error');
+        document.getElementById('alias-panel').open = true;
+        return;
+      }
+      scanStarting = true;
       els.postalScan.disabled = true;
       setMarketMessage('Finding and scanning provider lineups in the configured ZIP…');
       try {
@@ -579,13 +620,15 @@
           method: 'POST', headers: {'Content-Type':'application/json'},
           body: JSON.stringify({
             action,
-            providerAddress: action === 'postal' ? (selectedProviderAddress || {}) : {}
+            sourceFingerprint: providerAddressConfig.fingerprint
           })
         });
         setMarketMessage('Scan started. Progress is saved after every lineup.', 'success');
       } catch (error) {
-        setMarketMessage(error.message || 'Unable to start the alias scan.', 'error');
+        scanRequestError = error.message || 'Unable to start the alias scan.';
+        setMarketMessage(scanRequestError, 'error');
       }
+      scanStarting = false;
       await loadAliasIndex();
     }
 
@@ -846,6 +889,7 @@
     els.removeDuplicates.addEventListener('click', removeDuplicates);
     els.restoreAll.addEventListener('click', restoreAll);
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
+    els.providerAddressForget.addEventListener('click', () => saveProviderAddress(null));
     els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
     els.sourceEvidenceClose.addEventListener('click', () => els.sourceEvidenceDialog.close());
     els.postalScan.addEventListener('click', () => startAliasScan('postal'));

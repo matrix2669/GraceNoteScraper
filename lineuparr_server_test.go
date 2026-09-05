@@ -151,7 +151,7 @@ func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
 	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.AttributionURL == "" {
 		t.Fatalf("address config = %+v", response)
 	}
-	if !strings.Contains(response.Message, "not persisted") {
+	if !strings.Contains(response.Message, "removed when you change providers") {
 		t.Fatalf("address privacy message = %q", response.Message)
 	}
 }

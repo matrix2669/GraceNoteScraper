@@ -35,7 +35,7 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 
 	conflictingNames := make(map[string]bool)
 	for stationID, station := range s.index.Stations {
-		safeCallSigns := 0
+		safeAliases := map[string]bool{}
 		for _, name := range station.Names {
 			switch name.Kind {
 			case NameCallSign, NameEventCallSign:
@@ -43,16 +43,26 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 					conflictingNames[name.Normalized] = true
 					continue
 				}
-				safeCallSigns++
-				if baseline, ok := current[stationID]; ok && !baseline[name.Normalized] {
-					summary.CurrentLineupAliases++
-				}
+				safeAliases[name.Normalized] = true
 			case NameAffiliateName, NameAffiliateCallSign:
 				summary.AffiliateNames++
 			}
 		}
-		if safeCallSigns > 1 {
-			summary.MeaningfulAliases += safeCallSigns - 1
+		for _, fact := range station.Facts {
+			key := normalizeName(fact.Value)
+			if fact.Kind == FactAlias && usableFact(fact) && !ignoredName(key) {
+				safeAliases[key] = true
+			}
+		}
+		if len(safeAliases) > 1 {
+			summary.MeaningfulAliases += len(safeAliases) - 1
+		}
+		if baseline, ok := current[stationID]; ok {
+			for key := range safeAliases {
+				if !baseline[key] {
+					summary.CurrentLineupAliases++
+				}
+			}
 		}
 	}
 	summary.Conflicts = len(conflictingNames)
@@ -82,7 +92,7 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 			})
 		}
 		for _, fact := range station.Facts {
-			if fact.Kind != FactAlias {
+			if fact.Kind != FactAlias || !usableFact(fact) {
 				continue
 			}
 			result[stationID] = append(result[stationID], AliasCandidate{
@@ -133,7 +143,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			identities = append(identities, name.Value)
 		}
 		for _, fact := range station.Facts {
-			if fact.Kind != FactCategory {
+			if fact.Kind != FactCategory || !usableFact(fact) {
 				continue
 			}
 			categoryValue := fact.Value
@@ -182,6 +192,21 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 		}
 	}
 	return result
+}
+
+// Old number-only joins may have been made against a different headend PDF.
+// Preserve their evidence on disk, but quarantine it from current drafts. Old
+// EPG-carried categories also need a fresh scan through the corrected adapters.
+func usableFact(fact StationFact) bool {
+	for _, part := range strings.Split(fact.Method, ";") {
+		if strings.TrimSpace(part) == "exact provider channel number" {
+			return false
+		}
+	}
+	if (strings.Contains(fact.Method, "pair-level identity (") || strings.Contains(fact.Method, "category carried from")) && !strings.Contains(fact.Method, "identity-policy-v2") {
+		return false
+	}
+	return true
 }
 
 // SortedStationIDs is useful to downstream consumers that need deterministic
