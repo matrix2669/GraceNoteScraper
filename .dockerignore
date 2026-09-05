@@ -2,7 +2,9 @@
 *.xmltv
 .env
 *.address.json
+**/*.address.json
 .provider-address-*.tmp
+**/.provider-address-*.tmp
 image_cache/
 tmdb_cache.json
 tvlogo_cache.json
