@@ -1,5 +1,15 @@
 # Third-party notices
 
+## Google Maps instructional screenshot
+
+`assets/google-maps-address-help.png` is the operator-supplied annotated screenshot
+of Google Maps dated 2026-09-05, cropped to remove the recent-search sidebar.
+It illustrates where a person can copy a place's address; it is not a dataset or
+an API integration. Google Maps and the displayed imagery/map-data attributions
+remain owned by their respective providers; the original visible attribution
+is retained. The project's MIT license does not relicense those third-party
+materials. Google Maps is not affiliated with this project.
+
 ## ledongthuc/pdf
 
 Runtime parsing of public provider PDF guides uses

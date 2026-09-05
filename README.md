@@ -11,7 +11,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
 - On-demand alias and category discovery across every provider and Gracenote device variant in the configured ZIP
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
-- No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
+- No-key Google Maps lookup link, illustrated copy/paste instructions, and provider address testing for sources that cannot localize from ZIP alone
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -32,7 +32,7 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 ## Quick Start (Docker Compose)
 
-On the Lineuparr page, Enrichment sources starts collapsed on every visit. Expand it to review source evidence or supply a required provider address. Other sections retain their saved expansion preferences.
+On the Lineuparr page, Enrichment sources starts collapsed on every visit. Expand it to review source evidence. Required provider addresses are entered in Alias discovery above the scan controls. Other sections retain their saved expansion preferences.
 
 1. Clone the repo:
    ```sh
@@ -73,7 +73,7 @@ docker compose up -d --build
 
 - Docker and Docker Compose, **or** Go 1.25+ for building from source
 - (Optional) A [TMDB API read access token](https://www.themoviedb.org/settings/api) for poster images and metadata
-- Internet access to the public Nominatim search service, or an optional hosted/self-managed Nominatim endpoint, for provider address lookup
+- Browser access to Google Maps for manual address lookup; no Google API key or billing account is required
 
 ## Building from Source
 
@@ -108,7 +108,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
 | `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
 | `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
-| `NOMINATIM_URL` | OpenStreetMap/Nominatim search service. Set to a hosted/self-managed endpoint, or `off` to disable provider-address search. | `https://nominatim.openstreetmap.org` |
+| `NOMINATIM_URL` | Legacy API-only Nominatim search endpoint. Not used by the Google Maps copy/paste UI. Set to `off` to disable the legacy endpoint. | `https://nominatim.openstreetmap.org` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -170,11 +170,19 @@ User categories take precedence. For channels that remain unresolved, a conserva
 
 The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
 
-Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run during an on-demand ZIP scan or an explicit Save & test address lookup. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
 The enrichment-source panel consolidates registration, capture, and derived-category reports for the same provider into one row. Direct PDF sources open the captured lineup document; other source names and every available matched count open a searchable evidence view of the exact selected-lineup channels, identities, categories, aliases, IDs, and methods contributed by that source. Alias discovery also shows the local date and time of the last configured-ZIP provider refresh.
 
-Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. Alias discovery checks every provider in the ZIP before a scan. If any source requires an address, select one above the scan controls. Selection saves only structured address fields in a separate owner-only `CONFIG_PATH.address.json` file on the server, so it survives page refreshes and restarts. Changing the configured provider removes that file; Forget address removes it explicitly. The address is sent only to address-required provider families listed in the prompt, including competing lineups in the same ZIP. It stays out of public setup configuration, Lineuparr state, source caches, logs, snapshots, and exports. Treat the scraper UI as private: anyone with UI access can view the saved address. No geocoder result ID is stored or sent to the scan endpoint. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
+Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. Alias discovery checks every provider in the ZIP. If any source requires an address, use the address section above the scan controls:
+
+1. Enter your street and click **Find in Google Maps**. The lineup ZIP is included in a new browser tab; Google receives this query only when you click.
+2. Select the correct result and copy the address beside the map-pin icon in its details—not the search-box text, place name, Plus Code, or Share link. **Show instructions and example** displays an annotated screenshot.
+3. Paste the full street, city, state and ZIP, retaining unit details and the displayed street spelling. Do not universally replace directional words such as Northeast with NE. US state names or abbreviations are accepted and state names are converted to their two-letter form. The pasted ZIP must match the lineup (matching ZIP+4 is accepted).
+4. Click **Save & test**. Each address-required provider family is tested once, without downloading Gracenote grids or changing guide/draft/export data. Only a response containing usable channel records is marked provider-verified; this is not USPS verification or proof that every returned channel matches your lineup. Tests are limited to one per minute per running scraper. Failures remain visible and the address stays editable; scanning with a saved address is still allowed, although failed sources may contribute nothing.
+5. Click **Scan providers in this ZIP** separately to collect enrichment. Saving does not start a scan.
+
+The structured address, last test time and per-provider results are saved in the owner-only `CONFIG_PATH.address.json` file, surviving page refreshes and restarts. Changing the configured provider or choosing **Forget address** removes it. Older saved addresses remain available but show as not tested until Save & test is used. The address is sent only to the listed address-required provider families, including competitors in the same ZIP. It stays out of public setup configuration, Lineuparr state, source caches, logs, snapshots and exports. Treat the scraper UI as private: anyone with UI access can view the saved address or request a lookup. No Google key, hosted intermediary, account login or automatic Google-page scraping is used. The old Nominatim endpoint remains for compatibility but the page no longer calls it. See `THIRD_PARTY_NOTICES.md` for screenshot attribution and optional catalog licenses.
 
 ## HTTP Endpoints
 
@@ -185,8 +193,11 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
-| `GET /api/lineuparr/provider-address/config` | Read Nominatim availability and active-lineup constraints for an address-gated provider source |
-| `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
+| `GET /api/lineuparr/provider-address/config` | Read ZIP-wide address requirements, saved address and previous provider-test results |
+| `POST /api/lineuparr/provider-address/config` | Save & test `{fingerprint,addressText}`; legacy structured `{fingerprint,address}` saves without a verification claim |
+| `DELETE /api/lineuparr/provider-address/config` | Forget the address and test results for `{fingerprint}` |
+| `GET /lineuparr/address-help.png` | Embedded cropped Google Maps instructional screenshot |
+| `POST /api/lineuparr/provider-address/search` | Legacy Nominatim search; not used by the current UI |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `GET /api/lineuparr/alias-index` | Read configured-ZIP scan progress and attributed alias evidence |
 | `POST /api/lineuparr/alias-index/run` | Scan or refresh all providers in the configured ZIP; ranked scan actions are rejected |

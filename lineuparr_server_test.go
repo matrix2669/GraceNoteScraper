@@ -148,7 +148,7 @@ func TestProviderAddressConfigUsesActiveLineupPostalCode(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.AttributionURL == "" {
+	if !response.Required || !response.Enabled || response.ProviderID != "optimum" || response.PostalCode != "75001" || response.CountryCode != "us" || response.AttributionURL != "" {
 		t.Fatalf("address config = %+v", response)
 	}
 	if !strings.Contains(response.Message, "removed when you change providers") {
