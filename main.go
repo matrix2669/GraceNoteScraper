@@ -1201,8 +1201,9 @@ func main() {
 		addressSearcher = geocode.NewNominatimClient(nil, nominatimURL)
 	}
 	lineuparrHandlers := &lineuparrServer{
-		tmdbConfigured: tmdbClient != nil,
-		store:          configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, addressSearcher: addressSearcher,
+		tmdbConfigured:     tmdbClient != nil,
+		tmdbCachedEvidence: tmdbClient.CachedCategoryEvidence,
+		store:              configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService, addressSearcher: addressSearcher,
 		addressTester: providersource.NewService(),
 	}
 

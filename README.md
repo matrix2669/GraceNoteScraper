@@ -185,6 +185,8 @@ Source matched counts represent selected-lineup channels with attributable alias
 
 ## Lineuparr JSON Builder
 
+TMDB category evidence is inside **Enrichment sources**. **Scan TMDB enrichment data** reuses retained programme genre IDs or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. Programme matches without usable genre evidence await normal enrichment. Proposals remain priority 4 and require review.
+
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
 
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`. Runtime evidence is primary; configured optional sources may add attributable aliases and EPG identifiers. The builder applies only unique identity matches from:
