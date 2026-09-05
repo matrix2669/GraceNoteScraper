@@ -1,6 +1,7 @@
 *.exe
 .env
 config.json
+*.links.json
 *.xmltv
 tmdb_cache.json
 tvlogo_cache.json

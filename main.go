@@ -1102,6 +1102,8 @@ func main() {
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
 	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
+	shareLinks := &shareLinksServer{path: configPath + ".links.json"}
+	mux.HandleFunc("/api/setup/share-links", shareLinks.handle)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/img", handleImage)

@@ -127,6 +127,12 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 ## The Grid
 
+### Optional Docker-network links
+
+In Setup, save an **Internal base URL**, for example `http://gracenote-dev:8080`, to show an additional copyable XMLTV URL for other containers. Use the scraper's listening port, not the host's published port. The importer and scraper must share a Docker network with that name or alias; being on the same host alone is insufficient. The application does not discover Docker names or test connectivity. Leave the setting blank to hide these links.
+
+The setting is saved separately at `CONFIG_PATH.links.json`. Persist the configuration directory to retain it across container replacements. Changing providers does not clear this installation-level setting. It does not change the normal browser URL, image URLs, guide generation or export contents.
+
 The server includes a built-in retro-styled TV guide web UI at the root URL. If no provider is configured, `/` redirects to `/setup`. Once configured, the guide auto-scrolls through your channel lineup and shows program details, posters, and metadata. Handy for a quick glance at what's on without opening your DVR app.
 
 ![The Grid](https://gist.githubusercontent.com/daniel-widrick/2c52c4d023ffe75d163b4eff58263c77/raw/demo.gif)

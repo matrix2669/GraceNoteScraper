@@ -1,6 +1,8 @@
 *.exe
 *.xmltv
 .env
+**/*.links.json
+**/.share-links-*
 image_cache/
 tmdb_cache.json
 tvlogo_cache.json
