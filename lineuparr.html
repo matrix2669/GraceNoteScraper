@@ -892,8 +892,8 @@
       if ('category' in patch) channel.category = patch.category.trim() || 'Uncategorized';
       control.disabled = true; renderSummary();
       try {
-        await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
-        if ('category' in patch) { channel.categorySource = 'user'; channel.categoryPriority = 1; channel.needsCategoryReview = false; renderCategoryOptions(); }
+        const saved = await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
+        if ('category' in patch) { channel.categoryReview = saved.categoryReview; channel.categorySource = 'user'; channel.categoryPriority = 1; channel.needsCategoryReview = false; renderCategoryOptions(); }
         showMessage('Saved.'); setTimeout(() => { if (els.message.textContent === 'Saved.') showMessage(''); }, 1300);
       } catch (error) {
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
@@ -979,7 +979,7 @@
         tmdbMessage.textContent = state.message;
         tmdbScan.disabled = !['ready','current'].includes(state.state);
         tmdbScan.hidden = state.state === 'not-configured' || state.state === 'no-provider';
-        if (['enriching','waiting-for-genres'].includes(state.state)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+        if (!['not-configured','no-provider'].includes(state.state)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
       } catch(error) { tmdbMessage.textContent = error.message; tmdbScan.disabled = true; }
     }
     tmdbScan.addEventListener('click', async () => {
@@ -988,7 +988,7 @@
         const result = await api('/api/lineuparr/tmdb-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
         tmdbMessage.textContent = result.message; await loadDraft();
       } catch(error) { tmdbMessage.textContent = error.message; }
-      finally { tmdbScan.disabled = false; }
+      finally { await loadTMDBCategoryState(); }
     });
     loadTMDBCategoryState();
     initCollapsibleSections();
