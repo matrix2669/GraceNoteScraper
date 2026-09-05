@@ -4,6 +4,8 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 ## Features
 
+After Confirm or Deny, a review group with a minimum displayed match score below 95% opens other qualifying targets, when available. This applies to similar as well as fuzzy matches. Confirming an alternative keeps the popup open for additional SD/HD or duplicate lineup targets; it never implicitly denies other targets. Close explicitly when finished; outside clicks do not dismiss this action popup.
+
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
 - Enriches programs with TMDB poster images, ratings, descriptions, and release dates
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project

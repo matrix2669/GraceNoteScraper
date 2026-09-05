@@ -705,7 +705,7 @@
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
         if (decision === 'confirmed') await reloadDraft();
-        const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
+        const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
           openMatchAlternatives(candidate);
           showMessage('Match denied. Review the other qualifying possibilities or close this list.');
@@ -728,7 +728,7 @@
 
     function openMatchAlternatives(candidate) {
       els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
-      els.alternativeHelp.textContent = 'These channels also cleared the fuzzy-match threshold in the same scan. Confirm the right target, deny incorrect options, or close this list without deciding.';
+      els.alternativeHelp.textContent = 'These channels also qualified in the same scan. You can confirm multiple targets, including SD, HD or duplicate lineup channels. Deny incorrect options, or close without deciding.';
       renderMatchAlternatives(candidate);
       if (typeof els.alternativeDialog.showModal === 'function') els.alternativeDialog.showModal();
       else els.alternativeDialog.setAttribute('open', '');
@@ -780,8 +780,9 @@
         renderMatchReview();
         if (decision === 'confirmed') {
           await reloadDraft();
-          closeMatchAlternatives();
-          showMessage('Alternate match confirmed and aliases updated.');
+          card.remove();
+          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+          showMessage('Alternate match confirmed. Review any remaining targets or close this window.');
         } else {
           card.remove();
           if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
