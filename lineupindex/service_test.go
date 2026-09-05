@@ -66,8 +66,8 @@ func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvi
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{
-			{StationID: "S1", Kind: FactAlias, Value: "ESPN Full Name", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
-			{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
+			{StationID: "S1", Kind: FactAlias, Value: "ESPN Full Name", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "unique exact provider callsign or name"},
+			{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "unique exact provider callsign or name"},
 		},
 		Sources: []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: "complete", Matched: 1, Aliases: 1, Categories: 1}},
 	}, nil
@@ -79,7 +79,7 @@ func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, req
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{{
-			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "exact provider channel number",
+			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "unique exact provider callsign or name",
 		}},
 		Sources: []EvidenceSourceRecord{{ID: "directv-official", Label: "DIRECTV official lineup", Status: StatusComplete, Matched: 1, Categories: 1}},
 	}, nil

@@ -280,6 +280,15 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			}
 		}
 		for _, fact := range scan.Facts {
+			unsafeNumber := false
+			for _, part := range strings.Split(fact.Method, ";") {
+				if strings.TrimSpace(part) == "exact provider channel number" {
+					unsafeNumber = true
+				}
+			}
+			if unsafeNumber {
+				continue
+			}
 			station := stations[strings.TrimSpace(fact.StationID)]
 			if station == nil {
 				continue
@@ -801,6 +810,7 @@ func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epg
 			continue
 		}
 		method := fmt.Sprintf("pair-level identity (%s); two non-concurrent weekday blocks in %s matched at least 80%% with %d meaningful programmes and %d matched minutes", strings.Join(result.Pair.Evidence, ", "), timezone, result.Occurrences, result.MatchedMinutes)
+		method += "; identity-policy-v2"
 		appendEPGPeerFacts(byKey, left, right, sourceID, method)
 		appendEPGPeerFacts(byKey, right, left, sourceID, method)
 	}
@@ -848,10 +858,14 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 			continue
 		}
 		key := target.StationID + "\x00" + FactCategory + "\x00" + normalized
+		categoryMethod := method + "; category carried from " + strings.TrimSpace(category.SourceLabel)
+		if strings.Contains(category.Method, "identity-policy-v2") {
+			categoryMethod += "; identity-policy-v2"
+		}
 		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
 			StationID: target.StationID, Kind: FactCategory, Value: category.Value, RawValue: category.RawValue,
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation",
-			Method: method + "; category carried from " + strings.TrimSpace(category.SourceLabel),
+			Method: categoryMethod,
 		}, LineupKeys: lineups}
 	}
 }
