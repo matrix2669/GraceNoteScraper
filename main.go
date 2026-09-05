@@ -371,32 +371,12 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	})
 	fixDeadImageURLs(programs)
 
-	// Rewrite image URLs to go through the local proxy
-	if baseURL != "" {
-		proxy := strings.TrimRight(baseURL, "/") + "/img?url="
-		for i := range channels {
-			if channels[i].IconURL != "" {
-				channels[i].IconURL = proxy + neturl.QueryEscape(channels[i].IconURL)
-			}
-		}
-		for i := range programs {
-			if programs[i].IconSrc != "" {
-				programs[i].IconSrc = proxy + neturl.QueryEscape(programs[i].IconSrc)
-			}
-			for j := range programs[i].Images {
-				if programs[i].Images[j].URL != "" {
-					programs[i].Images[j].URL = proxy + neturl.QueryEscape(programs[i].Images[j].URL)
-				}
-			}
-		}
-		log.Printf("Rewrote image URLs with base %s", baseURL)
-	}
-
 	tvGuide := &guide.TVGuide{
 		Channels:       channels,
 		Programs:       programs,
 		LineupChannels: lineupChannels,
 	}
+	rewriteGuideImageURLs(tvGuide, baseURL)
 
 	if channelFilter != nil {
 		before := len(tvGuide.Channels)
@@ -770,6 +750,9 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		log.Printf("Starting %s scrape for %s", reason, config.Gracenote.ProviderName)
 		if status != nil {
 			status.start("Starting guide download")
+			if g := state.Get(); usableGuide(g) {
+				status.available(len(g.Channels), len(g.Programs))
+			}
 		}
 		var channelFilter map[string]bool
 		if filterEnabled {
@@ -784,25 +767,57 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		fingerprint := config.Fingerprint()
 		persister := func(g *guide.TVGuide) (bool, error) {
 			return store.WhileCurrent(fingerprint, func() error {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 				if err := persistGuideFiles(g, fingerprint); err != nil {
 					return err
 				}
 				state.UpdateForSource(g, fingerprint)
+				if status != nil {
+					status.available(len(g.Channels), len(g.Programs))
+				}
 				rotateFiles()
 				return nil
 			})
 		}
 		sourceCurrent := func() bool {
 			current, ok, _ := store.Get()
-			return ok && current.Fingerprint() == fingerprint
+			return ctx.Err() == nil && ok && current.Fingerprint() == fingerprint
 		}
 		var reporter scrapeProgressReporter
 		if status != nil {
 			reporter = func(update scrapeProgressUpdate) {
+				if !sourceCurrent() {
+					return
+				}
 				status.update(update.Stage, update.Message, update.Completed, update.Total, update.Channels, update.Programs)
 			}
 		}
-		builtGuide, err := runScrape(config.Preferences(), tmdbClient, baseURL, channelFilter, fingerprint, sourceCurrent, persister, reporter)
+		builtGuide, err := runGuideCycle(state.Get(), tmdbClient != nil, time.Now(),
+			func(withTMDB bool, save guidePersister) (*guide.TVGuide, error) {
+				client := tmdbClient
+				if !withTMDB {
+					client = nil
+				}
+				return runScrape(config.Preferences(), client, baseURL, channelFilter, fingerprint, sourceCurrent, save, reporter)
+			}, func(g *guide.TVGuide) error {
+				log.Println("Initial guide is available; continuing TMDB enrichment in the background")
+				err := enrichProgramThumbnailsWhile(tmdbClient, g.Programs, sourceCurrent, func(done, total int) {
+					if status != nil && sourceCurrent() {
+						status.update("tmdb_background", fmt.Sprintf("Guide ready — TMDB enrichment in background (%d of %d titles)", done, total), done, total, len(g.Channels), len(g.Programs))
+					}
+				})
+				if err != nil {
+					return err
+				}
+				fixDeadImageURLs(g.Programs)
+				rewriteGuideImageURLs(g, baseURL)
+				if status != nil && sourceCurrent() {
+					status.update("saving", "Guide ready — saving enriched version", 0, 0, len(g.Channels), len(g.Programs))
+				}
+				return nil
+			}, persister, sourceCurrent)
 		nextDelay := 24 * time.Hour
 		if errors.Is(err, errScrapeSourceChanged) {
 			log.Println("Discarded scrape because the active lineup changed")
@@ -812,7 +827,11 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 		} else if err != nil {
 			applog.Errorf("scrape failed: %v", err)
 			if status != nil {
-				status.fail("Guide build failed: " + err.Error())
+				if usableGuide(state.Get()) {
+					status.fail("Guide remains available; background work failed and will retry in 15 minutes: " + err.Error())
+				} else {
+					status.fail("Guide build failed: " + err.Error())
+				}
 			}
 			nextDelay = 15 * time.Minute
 		} else {
@@ -1262,11 +1281,10 @@ func filterGuideChannels(g *guide.TVGuide, allowed map[string]bool) *guide.TVGui
 		}
 	}
 
-	return &guide.TVGuide{
-		Channels:       channels,
-		Programs:       programs,
-		LineupChannels: g.LineupChannels,
-	}
+	filtered := *g
+	filtered.Channels = channels
+	filtered.Programs = programs
+	return &filtered
 }
 
 // ---------- Main ----------
@@ -1414,6 +1432,10 @@ func main() {
 		log.Println("No provider configured; open /setup to choose a lineup")
 	}
 
+	if tmdbClient != nil && resumableTMDB(g, time.Now()) {
+		nextScrapeIn = immediateGuideRefreshWait
+		log.Println("Cached guide is usable; resuming pending TMDB enrichment without downloading grids")
+	}
 	state := &GuideState{}
 	initialFingerprint := ""
 	if configured {
@@ -1580,8 +1602,15 @@ type tmdbLookupResult struct {
 }
 
 func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, progress ...func(completed, total int)) {
+	_ = enrichProgramThumbnailsWhile(client, programs, nil, progress...)
+}
+
+func enrichProgramThumbnailsWhile(client *tmdb.Client, programs []guide.Program, current func() bool, progress ...func(completed, total int)) error {
+	if current != nil && !current() {
+		return errScrapeSourceChanged
+	}
 	if client == nil {
-		return
+		return nil
 	}
 
 	// Phase 1: collect unique {title, isMovie} pairs
@@ -1614,7 +1643,10 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 	// Phase 2: lookup each unique title
 	workerCount := tmdbWorkerCount()
 	log.Printf("TMDB: using %d lookup workers with the shared request limiter", workerCount)
-	results := lookupTMDBTitles(unique, workerCount, client.Lookup, progress...)
+	results := lookupTMDBTitlesWhile(unique, workerCount, client.Lookup, current, progress...)
+	if current != nil && !current() {
+		return errScrapeSourceChanged
+	}
 
 	// Phase 3: apply results back to programs
 	enriched := 0
@@ -1667,6 +1699,7 @@ func enrichProgramThumbnails(client *tmdb.Client, programs []guide.Program, prog
 	}
 
 	log.Printf("TMDB: enriched %d/%d programs", enriched, len(programs))
+	return nil
 }
 
 func tmdbWorkerCount() int {
@@ -1681,6 +1714,10 @@ func tmdbWorkerCount() int {
 }
 
 func lookupTMDBTitles(keys []tmdbTitleKey, workerCount int, lookup func(string, bool) tmdb.CacheEntry, progress ...func(completed, total int)) map[tmdbTitleKey]tmdb.CacheEntry {
+	return lookupTMDBTitlesWhile(keys, workerCount, lookup, nil, progress...)
+}
+
+func lookupTMDBTitlesWhile(keys []tmdbTitleKey, workerCount int, lookup func(string, bool) tmdb.CacheEntry, current func() bool, progress ...func(completed, total int)) map[tmdbTitleKey]tmdb.CacheEntry {
 	if workerCount < 1 {
 		workerCount = 1
 	}
@@ -1699,6 +1736,9 @@ func lookupTMDBTitles(keys []tmdbTitleKey, workerCount int, lookup func(string, 
 		go func() {
 			defer workers.Done()
 			for key := range jobs {
+				if current != nil && !current() {
+					return
+				}
 				completed <- tmdbLookupResult{key: key, entry: lookup(key.title, key.isMovie)}
 			}
 		}()
