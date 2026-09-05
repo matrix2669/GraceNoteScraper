@@ -119,13 +119,17 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 				continue
 			}
 			b, err := time.Parse("20060102150405 -0700", p.Stop)
-			if err != nil {
+			if err != nil || !b.After(a) {
 				continue
 			}
 			if first.IsZero() || a.Before(first) {
 				first = a
 			}
 			rows[p.Channel] = append(rows[p.Channel], channelcategory.ScheduleEvent{Start: a, Stop: b, Title: p.Title, Filters: tmdbGenreFilters(p)})
+		}
+		if first.IsZero() {
+			http.Error(w, "No valid programme intervals available", 409)
+			return
 		}
 		scan := lineuparrbuilder.TMDBCategoryScan{Revision: revision, ScannedAt: time.Now().UTC(), Categories: map[string]lineuparrbuilder.AttributedCategory{}}
 		for id, events := range rows {
