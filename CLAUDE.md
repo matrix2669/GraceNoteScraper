@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
+Provider address workflow: the Lineuparr UI now uses a no-key Google Maps search link, a cropped annotated example, and manual address paste followed by Save & test. This supersedes the Nominatim UI description below; its API remains legacy-only. Preserve street directionals, parse from city/state/ZIP, normalize only US state names, and reject mismatched ZIPs and links. Persist the address and per-provider test counts/status/time only in the existing private address file. Provider-verified means usable channel records returned, not USPS verification or confirmed station matches. Tests must not update indexes/guides/exports. Failed provider checks remain visible but do not prevent saving or scanning. Serialize address writes/tests, bound remote requests, limit tests to once per minute, and reject provider changes before persisting. Prior saved addresses are unverified until tested. No Google key, page scraping, or hosted lookup proxy is required.
+
 ```sh
 # Build
 go build -o gracenotescraper .
