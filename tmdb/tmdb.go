@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const (
@@ -109,25 +110,25 @@ func (c *Client) search(path, title string, isMovie bool) CacheEntry {
 	u := fmt.Sprintf("%s%s?query=%s", baseURL, path, url.QueryEscape(title))
 	resp, err := c.http.Get(u)
 	if err != nil {
-		log.Printf("tmdb: request failed for %q: %v", title, err)
+		applog.Errorf("tmdb request failed for %q: %v", title, err)
 		return CacheEntry{}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("tmdb: API returned %d for %q", resp.StatusCode, title)
+		applog.Warnf("tmdb API returned %d for %q", resp.StatusCode, title)
 		return CacheEntry{}
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("tmdb: failed to read response for %q: %v", title, err)
+		applog.Errorf("tmdb failed to read response for %q: %v", title, err)
 		return CacheEntry{}
 	}
 
 	var sr searchResponse
 	if err := json.Unmarshal(body, &sr); err != nil {
-		log.Printf("tmdb: failed to parse response for %q: %v", title, err)
+		applog.Errorf("tmdb failed to parse response for %q: %v", title, err)
 		return CacheEntry{}
 	}
 

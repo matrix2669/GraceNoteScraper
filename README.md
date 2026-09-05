@@ -9,7 +9,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
 - Runs as a long-lived server with automatic 24-hour refresh, or as a one-shot scrape for cron jobs
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
-- Guide data cached on disk — fast restarts without re-scraping
+- Guide data cached on disk — fast restarts without re-scraping, with stale-guide fallback during background refresh
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
 - Optional channel filter to limit guide output to Jellyfin-available channels
@@ -50,12 +50,14 @@ Alternatively, use `--guide-only` mode with a cron job and point your DVR softwa
 
 5. After the first guide finishes building, click the XMLTV guide URL shown on the setup page to copy it into your DVR software.
 
-Setup, guide data, caches, and images are persisted in a Docker volume. The container restarts automatically and refreshes guide data every 24 hours.
+Setup, guide data, caches, and images are persisted in a Docker volume. The container restarts automatically and refreshes guide data every 24 hours. A restart loads a source-matching cached guide immediately. If it is at least 24 hours old, the scraper keeps serving it while refreshing in the background; changing the configured lineup still invalidates the old lineup's guide.
 
 To view logs:
 ```sh
 docker compose logs -f
 ```
+
+Routine scrape and enrichment progress is written to stdout. Warnings and failures are written to stderr so container log viewers can distinguish severity correctly.
 
 To rebuild after pulling updates:
 ```sh

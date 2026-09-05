@@ -10,6 +10,8 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_9_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/35.0.1916.47 Safari/537.36"
@@ -115,7 +117,7 @@ func (c *Client) GetDataByTimeContext(ctx context.Context, t int64) (*GridRespon
 func NewClient(pref Preferences) *Client {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
-		log.Fatalf("Unable to create cookie storage for http client: %v", err)
+		applog.Fatalf("unable to create cookie storage for HTTP client: %v", err)
 		return nil
 	}
 	return &Client{
