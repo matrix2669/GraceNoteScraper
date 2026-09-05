@@ -42,3 +42,29 @@ func TestTMDBGenreEvidenceIsOptional(t *testing.T) {
 		t.Fatal("animation or talk forced into Kids or Entertainment")
 	}
 }
+
+func TestLegacyGuideGenresReusedWithoutMutatingGuide(t *testing.T) {
+	calls := 0
+	s := &lineuparrServer{tmdbCachedEvidence: func(title string, movie bool, id int) ([]int, []string, bool) {
+		calls++
+		if title != "test & show" || movie || id != 42 {
+			t.Fatalf("unexpected identity %q %v %d", title, movie, id)
+		}
+		return nil, []string{"Comedy"}, true
+	}}
+	g := &guide.TVGuide{Programs: []guide.Program{{Title: "Test &amp; Show", EpisodeNumbers: []guide.EpisodeNumber{{System: "themoviedb.org", EpisodeNumber: "series/42"}}}, {Title: "Unmatched"}}}
+	adapted := s.categoryEvidenceGuide(g)
+	if calls != 1 || !adapted.Programs[0].TMDBGenresCaptured || g.Programs[0].TMDBGenresCaptured {
+		t.Fatal("missing evidence or mutated published guide")
+	}
+	if got := tmdbGenreFilters(adapted.Programs[0]); len(got) != 1 || got[0] != "entertainment" {
+		t.Fatal(got)
+	}
+	if adapted.Programs[1].TMDBGenresCaptured {
+		t.Fatal("title-only programme inferred")
+	}
+	_, count := tmdbGuideRevision(adapted)
+	if count != 1 {
+		t.Fatal(count)
+	}
+}

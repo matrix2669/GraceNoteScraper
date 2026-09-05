@@ -100,6 +100,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 		return CacheEntry{}, false
 	}
 	entry.GenreIDs = append([]int(nil), entry.GenreIDs...)
+	entry.Genres = append([]string(nil), entry.Genres...)
 	c.mu.Unlock()
 
 	// Successful entries and empty negative-cache entries both count as a
@@ -118,6 +119,7 @@ func (c *Cache) Get(key string) (CacheEntry, bool) {
 func (c *Cache) Set(key string, entry CacheEntry) {
 	entry.FetchedAt = time.Now().Unix()
 	entry.GenreIDs = append([]int(nil), entry.GenreIDs...)
+	entry.Genres = append([]string(nil), entry.Genres...)
 
 	c.mu.Lock()
 	c.entries[key] = entry

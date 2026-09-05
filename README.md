@@ -212,6 +212,8 @@ Source matched counts represent selected-lineup channels with attributable alias
 
 ## Lineuparr JSON Builder
 
+TMDB category evidence is inside **Enrichment sources**. **Scan TMDB enrichment data** reuses retained programme genre IDs or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. Programme matches without usable genre evidence await normal enrichment. Proposals remain priority 4 and require review.
+
 Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
 
 When an Internal base URL is saved in Setup, **Copy Docker-network URL** is also available. It publishes the same snapshot using the configured internal hostname and listening port; it does not create a different lineup or change image URLs. Use this link only from containers sharing the scraper's Docker network. Downloads still use the browser-accessible address. If optional internal-link settings are unavailable, normal downloads and browser URLs remain usable.
