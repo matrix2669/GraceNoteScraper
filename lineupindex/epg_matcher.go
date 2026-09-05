@@ -37,11 +37,12 @@ type epgBlock struct {
 }
 
 type postalLineupScan struct {
-	Lineup   *LineupRecord
-	Provider web.Provider
-	Grids    map[string]*web.GridResponse
-	Facts    []ProviderFact
-	Sources  []EvidenceSourceRecord
+	Comparison bool
+	Lineup     *LineupRecord
+	Provider   web.Provider
+	Grids      map[string]*web.GridResponse
+	Facts      []ProviderFact
+	Sources    []EvidenceSourceRecord
 }
 
 type epgIdentityStation struct {
@@ -269,15 +270,6 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			for _, event := range channel.Events {
 				addEPGCallSign(station, event.CallSign)
 			}
-			providerFamily := providerFamilyKey(scan.Provider.Name)
-			channelNumber := strings.TrimSpace(channel.ChannelNo)
-			position := providerFamily + "|" + channelNumber
-			if providerFamily != "" && channelNumber != "" {
-				if station.Positions[position] == nil {
-					station.Positions[position] = make(map[string]bool)
-				}
-				station.Positions[position][scan.Lineup.Key] = true
-			}
 		}
 		for _, fact := range scan.Facts {
 			unsafeNumber := false
@@ -331,30 +323,6 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			}
 		}
 	}
-	positionOwners := make(map[string]map[string]map[string]bool)
-	for stationID, station := range stations {
-		for position, lineupKeys := range station.Positions {
-			if positionOwners[position] == nil {
-				positionOwners[position] = make(map[string]map[string]bool)
-			}
-			positionOwners[position][stationID] = lineupKeys
-		}
-	}
-	for position, owners := range positionOwners {
-		ids := make([]string, 0, len(owners))
-		for stationID := range owners {
-			ids = append(ids, stationID)
-		}
-		sort.Strings(ids)
-		for left := 0; left < len(ids); left++ {
-			for right := left + 1; right < len(ids); right++ {
-				if stringSetsOverlap(owners[ids[left]], owners[ids[right]]) {
-					continue
-				}
-				addEPGCandidateEvidence(pairs, ids[left], ids[right], "provider-position:"+position)
-			}
-		}
-	}
 	result := make([]epgCandidatePair, 0, len(pairs))
 	for _, pair := range pairs {
 		sort.Strings(pair.Evidence)
@@ -374,7 +342,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 
 func hasStrongEPGIdentityEvidence(evidence []string) bool {
 	for _, value := range evidence {
-		if strings.HasPrefix(value, "identity-name:") || strings.HasPrefix(value, "provider-position:") {
+		if strings.HasPrefix(value, "identity-name:") {
 			return true
 		}
 	}
@@ -951,6 +919,9 @@ func weekdayEPGSourceID(country, postalCode string) string {
 
 func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCode, timezone string, scans []*postalLineupScan, blocks []epgBlock, lastGridRequest *time.Time) (epgRunResult, error) {
 	sourceID := weekdayEPGSourceID(country, postalCode)
+	if strings.HasPrefix(postalKey, "market:") {
+		sourceID += "-" + strings.ReplaceAll(postalKey, ":", "-")
+	}
 	result := epgRunResult{Source: EvidenceSourceRecord{
 		ID: sourceID, Label: "Gracenote weekday EPG confirmation", Status: StatusComplete,
 	}}

@@ -93,7 +93,7 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 }
 
 func TestOfficialCategoryCoversSameNumberVariantsWithExactIdentity(t *testing.T) {
-	request := lineupindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+	request := lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "MTV-SD", ChannelNo: "160", CallSign: "MTV", Events: []web.JSONEvent{{CallSign: "MTV"}}},
 		{ChannelID: "MTV-HD", ChannelNo: "160", CallSign: "MTVHD", Events: []web.JSONEvent{{CallSign: "MTV"}}},
 		{ChannelID: "UNRELATED", ChannelNo: "160", CallSign: "OTHER", Events: []web.JSONEvent{{CallSign: "OTHER"}}},
@@ -496,7 +496,7 @@ func jsonResponse(request *http.Request, body string) *http.Response {
 }
 
 func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing.T) {
-	result := matchCatalog(lineupindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "ONE", ChannelNo: "850", AffiliateName: "Stingray Music"}, {ChannelID: "TWO", ChannelNo: "851", AffiliateName: "Stingray Music"},
 	}}}, catalogSource{
 		ID: "music", Label: "Official music range", Entries: []catalogEntry{
@@ -519,7 +519,7 @@ func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing
 }
 
 func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.T) {
-	result := matchCatalog(lineupindex.ProviderEvidenceRequest{Grid: &web.GridResponse{Channels: []web.JSONChannel{
+	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "WCBS", ChannelNo: "2", CallSign: "WCBS", AffiliateName: "CBS TELEVISION NETWORK"},
 		{ChannelID: "WCBS", ChannelNo: "702", CallSign: "WCBSDT", AffiliateName: "CBS TELEVISION NETWORK"},
 	}}}, catalogSource{

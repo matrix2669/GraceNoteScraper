@@ -1180,8 +1180,21 @@ func main() {
 	}
 	var marketService *lineupindex.Service
 	service, serviceErr := lineupindex.NewService(lineupindex.ServiceConfig{
-		Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
-		SnapshotDir:     util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
+		Path:        util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+		SnapshotDir: util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
+		ProviderAccess: func(provider web.Provider, postal string) string {
+			if lineupindex.ExcludedEnrichmentProvider(provider.Name) {
+				return "excluded"
+			}
+			source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(provider.Name, provider.Location, postal)
+			if !ok {
+				return "unsupported"
+			}
+			if source.LocationMode == "address" {
+				return "address-required"
+			}
+			return "public"
+		},
 		Providers:       setupHandlers.providers,
 		Grids:           lineupindex.WebGridFetcher{},
 		Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
@@ -1230,6 +1243,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
 	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
 	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
+	mux.HandleFunc("/api/lineuparr/markets", lineuparrHandlers.handleMarkets)
 	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
 	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))

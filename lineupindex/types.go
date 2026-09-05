@@ -52,24 +52,30 @@ type Index struct {
 // this pass also collects attributable aliases and categories from official
 // provider sources.
 type PostalScanRecord struct {
-	Key             string                 `json:"key"`
-	Country         string                 `json:"country"`
-	PostalCode      string                 `json:"postalCode"`
-	Status          string                 `json:"status"`
-	ProviderCount   int                    `json:"providerCount"`
-	LineupsScanned  int                    `json:"lineupsScanned"`
-	GridRequests    int                    `json:"gridRequests"`
-	Aliases         int                    `json:"aliases"`
-	Categories      int                    `json:"categories"`
-	EPGMatches      int                    `json:"epgMatches"`
-	EPGQuestionable int                    `json:"epgQuestionable"`
-	EPGRejected     int                    `json:"epgRejected"`
-	EPGAliases      int                    `json:"epgAliases"`
-	EPGCategories   int                    `json:"epgCategories"`
-	Sources         []EvidenceSourceRecord `json:"sources,omitempty"`
-	StartedAt       string                 `json:"startedAt,omitempty"`
-	CompletedAt     string                 `json:"completedAt,omitempty"`
-	LastError       string                 `json:"lastError,omitempty"`
+	DiscoveredCount  int                    `json:"discoveredCount"`
+	ProviderFamilies int                    `json:"providerFamilies"`
+	MarketRank       int                    `json:"marketRank,omitempty"`
+	ProviderAudit    []MarketProviderAudit  `json:"providerAudit,omitempty"`
+	AllProviderYield MarketYield            `json:"allProviderYield"`
+	NewFamilyYield   MarketYield            `json:"newFamilyYield"`
+	Key              string                 `json:"key"`
+	Country          string                 `json:"country"`
+	PostalCode       string                 `json:"postalCode"`
+	Status           string                 `json:"status"`
+	ProviderCount    int                    `json:"providerCount"`
+	LineupsScanned   int                    `json:"lineupsScanned"`
+	GridRequests     int                    `json:"gridRequests"`
+	Aliases          int                    `json:"aliases"`
+	Categories       int                    `json:"categories"`
+	EPGMatches       int                    `json:"epgMatches"`
+	EPGQuestionable  int                    `json:"epgQuestionable"`
+	EPGRejected      int                    `json:"epgRejected"`
+	EPGAliases       int                    `json:"epgAliases"`
+	EPGCategories    int                    `json:"epgCategories"`
+	Sources          []EvidenceSourceRecord `json:"sources,omitempty"`
+	StartedAt        string                 `json:"startedAt,omitempty"`
+	CompletedAt      string                 `json:"completedAt,omitempty"`
+	LastError        string                 `json:"lastError,omitempty"`
 }
 
 type MarketRecord struct {
@@ -146,10 +152,11 @@ type ProviderEvidenceFetcher interface {
 }
 
 type ProviderEvidenceRequest struct {
-	Provider   web.Provider
-	LineupKey  string
-	Country    string
-	PostalCode string
+	AllowChannelNumbers bool
+	Provider            web.Provider
+	LineupKey           string
+	Country             string
+	PostalCode          string
 	// ServiceAddress is an in-memory copy for an approved address-required provider. It must not
 	// be persisted in the index, snapshots, logs, source URLs, or API views.
 	ServiceAddress ProviderAddress `json:"-"`
@@ -259,12 +266,18 @@ type BatchReport struct {
 }
 
 type RunRequest struct {
-	Action     string `json:"action"`
-	BatchSize  int    `json:"batchSize,omitempty"`
-	Ranks      []int  `json:"ranks,omitempty"`
-	Country    string `json:"country,omitempty"`
-	PostalCode string `json:"postalCode,omitempty"`
-	Language   string `json:"language,omitempty"`
+	NumberEvidenceLineupID string `json:"-"`
+	NumberEvidenceDevice   string `json:"-"`
+	marketRank             int
+	comparison             *LineupRecord
+	priorFamilies          map[string]bool
+	priorFacts             map[string]bool
+	Action                 string `json:"action"`
+	BatchSize              int    `json:"batchSize,omitempty"`
+	Ranks                  []int  `json:"ranks,omitempty"`
+	Country                string `json:"country,omitempty"`
+	PostalCode             string `json:"postalCode,omitempty"`
+	Language               string `json:"language,omitempty"`
 	// ProviderAddress and AddressProvider are populated at the HTTP boundary
 	// for one postal scan and intentionally excluded from serialization.
 	ProviderAddress  ProviderAddress `json:"-"`

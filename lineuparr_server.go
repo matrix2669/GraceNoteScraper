@@ -29,14 +29,15 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	store           *appconfig.Store
-	state           *GuideState
-	builder         *lineuparrbuilder.Service
-	marketIndex     *lineupindex.Service
-	addressSearcher providerAddressSearcher
-	addressTester   providerAddressTester
-	addressMu       sync.Mutex
-	nextAddressTest time.Time
+	beforeMarketScan func() error
+	store            *appconfig.Store
+	state            *GuideState
+	builder          *lineuparrbuilder.Service
+	marketIndex      *lineupindex.Service
+	addressSearcher  providerAddressSearcher
+	addressTester    providerAddressTester
+	addressMu        sync.Mutex
+	nextAddressTest  time.Time
 }
 
 type providerAddressSearcher interface {
@@ -613,6 +614,8 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 			return
 		}
 		request.PostalCode = config.Gracenote.PostalCode
+		request.NumberEvidenceLineupID = config.Gracenote.LineupID
+		request.NumberEvidenceDevice = config.Gracenote.Device
 		request.Language = config.Gracenote.Language
 		request.AddressProvider = "" // HTTP requests use only the ZIP-wide approved families below.
 		providerAddress, err := validateEphemeralProviderAddress(body.ProviderAddress, config.Gracenote.PostalCode)
