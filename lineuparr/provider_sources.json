@@ -5,8 +5,6 @@
     {"id":"optimum","names":["optimum","cablevision"],"label":"Optimum","url":"https://www.optimum.com/tvlineup","access":"public-address","locationMode":"address","routes":[{"url":"https://www.optimum.net/pages/channel-lineups.html","access":"public-market-list","locationMode":"market-list","postalPrefixRanges":[{"start":"060","end":"069"},{"start":"070","end":"089"},{"start":"100","end":"149"},{"start":"150","end":"196"}],"locations":["Hendersonville","West Jefferson"]}]},
     {"id":"directv","names":["directv"],"label":"DIRECTV","url":"https://www.directv.com/channel-lineup/","access":"public-guide","locationMode":"postal-code-county"},
     {"id":"dish","names":["dish"],"label":"DISH","url":"https://my.dish.com/cms-files/channelcards/2026/0219/Channel_Lineup.pdf","access":"public-pdf"},
-    {"id":"afn","names":["afn","armed forces network"],"label":"AFN","url":"https://myafn.dodmedia.osd.mil/","access":"public-guide"},
-    {"id":"glorystar","names":["glorystar"],"label":"Glorystar","url":"https://www.glorystar.tv/channels/","access":"public-guide"},
     {"id":"att-uverse","names":["u-verse","uverse","at&t"],"label":"AT&T U-verse","url":"https://www.att.com/idpassets/pdfs/channel_lineups/Uverse_Channel_Lineup.pdf","access":"public-pdf"},
     {"id":"xfinity","names":["xfinity","comcast"],"label":"Xfinity","url":"https://www.xfinity.com/support/local-channel-lineup/","access":"public-address","locationMode":"address"},
     {"id":"spectrum","names":["spectrum","charter","time warner cable"],"label":"Spectrum","url":"https://www.spectrum.com/cable-tv/channel-lineup","access":"public-page-no-login","locationMode":"postal-code"},

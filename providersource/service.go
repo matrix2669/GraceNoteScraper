@@ -134,7 +134,7 @@ func OfficialSourceID(providerName string) string {
 
 func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex.ProviderEvidenceRequest) (lineupindex.ProviderEvidenceResult, error) {
 	providerName := strings.ToLower(strings.TrimSpace(request.Provider.Name))
-	if providerName == "" || request.Grid == nil {
+	if providerName == "" || request.Grid == nil || lineupindex.ExcludedEnrichmentProvider(providerName) {
 		return lineupindex.ProviderEvidenceResult{}, nil
 	}
 	var live providerResult

@@ -98,7 +98,7 @@ var definitions = []definition{
 	}},
 	{name: Other, aliases: []string{
 		"adult", "adult channels", "other services", "other and services", "services", "service",
-		"provider services", "interactive", "interactive services", "on demand", "vod", "dvr",
+		"provider services", "help and services", "interactive", "interactive services", "on demand", "vod", "dvr",
 		"caller id", "information services", "secondary information", "secondary and information",
 		"uncategorized other", "miscellaneous", "misc",
 	}},
