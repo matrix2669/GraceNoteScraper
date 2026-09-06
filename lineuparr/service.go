@@ -148,9 +148,16 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		if label == "" {
 			label = source
 		}
+		message := "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence"
+		switch source {
+		case "tmdb-language-schedule":
+			message = "Applied provisionally only when TMDB original_language covers at least 50% of weekday airtime across at least eight days and eight distinct titles, with more than 60% non-English airtime; exact identities and user categories take precedence"
+		case "tmdb-schedule":
+			message = "Applied provisionally from optional TMDB search-result genres when stronger exact or schedule evidence is unavailable; exact identities and user categories take precedence"
+		}
 		statuses = append(statuses, SourceStatus{
 			ID: source, Label: label, Status: "derived", Matched: categoryHintMatches[source],
-			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
+			Message: message,
 		})
 	}
 	channelByID := make(map[string]*channelWork, len(channels))
@@ -826,10 +833,19 @@ func newChannelWork(input InputChannel) *channelWork {
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
-	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, input.EventCallSigns...); ok {
+	categoryIdentities := append([]string(nil), input.EventCallSigns...)
+	for _, alias := range input.ExternalAliases {
+		categoryIdentities = append(categoryIdentities, alias.Value)
+	}
+	if input.PreferredName != nil {
+		categoryIdentities = append(categoryIdentities, input.PreferredName.Value)
+	}
+	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, categoryIdentities...); ok {
 		channel.draft.Category = category.Category
-		channel.draft.CategorySource = "gracenote"
+		channel.draft.CategorySource = categoryIdentitySource(input, category.MatchedAlias)
 		channel.draft.CategoryMethod = category.Method
+		channel.draft.CategoryPriority = category.Priority
+		channel.matchedSourceSet[channel.draft.CategorySource] = true
 	}
 	channel.addAlias(input.CallSign, "gracenote", "channel callsign")
 	channel.addAlias(input.StationID, "gracenote", "station ID")
@@ -857,6 +873,18 @@ func newChannelWork(input InputChannel) *channelWork {
 		channel.addEPGID(input.StationID, "gracenote", "station ID")
 	}
 	return channel
+}
+
+func categoryIdentitySource(input InputChannel, matchedAlias string) string {
+	for _, alias := range input.ExternalAliases {
+		if strings.EqualFold(strings.TrimSpace(alias.Value), strings.TrimSpace(matchedAlias)) {
+			return alias.Source
+		}
+	}
+	if input.PreferredName != nil && strings.EqualFold(strings.TrimSpace(input.PreferredName.Value), strings.TrimSpace(matchedAlias)) {
+		return input.PreferredName.Source
+	}
+	return "gracenote"
 }
 
 func (c *channelWork) addAlias(value, source, method string) {
