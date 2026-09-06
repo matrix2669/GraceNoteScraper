@@ -122,6 +122,16 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 ## Lineuparr JSON Builder
 
+The workflow places Enrichment sources, Alias discovery, Major market enrichment,
+TMDB category evidence, Category review, Channels, Dispatcharr matching, and
+Export JSON in that order when those features are available. Enrichment sources
+remains collapsed by default in the combined application.
+
+Export JSON is a separate section at the bottom. After publishing, it shows the
+saved file's creation time, copyable browser and configured Docker-network URLs,
+and a download link. This summary survives page reloads. Reading it or downloading
+the saved file does not publish edits; use Export JSON again to update the snapshot.
+
 Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
 
 When an Internal base URL is saved in Setup, **Copy Docker-network URL** is also available. It publishes the same snapshot using the configured internal hostname and listening port; it does not create a different lineup or change image URLs. Use this link only from containers sharing the scraper's Docker network. Downloads still use the browser-accessible address. If optional internal-link settings are unavailable, normal downloads and browser URLs remain usable.

@@ -66,6 +66,10 @@ func ExportFilename(draft *Draft) string {
 	return country + "_" + provider + "_lineup.json"
 }
 
+func ExportFilenameForSource(country, provider, postal string) string {
+	return ExportFilename(&Draft{CountryCode: countryAlpha2(country), ProviderName: provider, PostalCode: postal})
+}
+
 func exportNumber(value string) any {
 	value = strings.TrimSpace(value)
 	if integer, err := strconv.ParseInt(value, 10, 64); err == nil {

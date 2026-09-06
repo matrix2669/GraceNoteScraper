@@ -839,6 +839,50 @@
       finally { saving = false; renderSummary(); renderChannels(); }
     }
 
+    function arrangeLineuparrWorkflow() {
+      const main = document.querySelector('main');
+      let panel = document.getElementById('export-panel');
+      if (!panel) {
+        panel = document.createElement('section'); panel.id = 'export-panel'; panel.className = 'panel'; panel.style.padding = '21px';
+        const title = document.createElement('h2'); title.textContent = 'Export JSON';
+        const help = document.createElement('p'); help.textContent = 'Publish the current lineup after reviewing it. Saved links serve the last explicitly exported version.';
+        const summary = document.createElement('div'); summary.id = 'published-export-summary'; summary.setAttribute('aria-live','polite');
+        panel.append(title, help, els.exportOpen, summary); main.append(panel);
+      }
+      for (const selector of ['#source-panel','#alias-panel','#major-market-panel','#tmdb-category-panel','#category-review-panel','.builder-panel','#dispatch-panel','#export-panel']) {
+        const section = document.querySelector(selector); if (section) main.append(section);
+      }
+    }
+
+    let exportSummaryRequest = 0;
+    async function refreshExportSummary() {
+      const box = document.getElementById('published-export-summary'); if (!box) return;
+      const request = ++exportSummaryRequest;
+      try {
+        const saved = await api('/api/lineuparr/export-summary');
+        if (request !== exportSummaryRequest) return;
+        box.replaceChildren();
+        if (!saved.exists) { box.textContent = 'No JSON has been exported for this lineup yet.'; return; }
+        const date = document.createElement('p'); date.textContent = `Created: ${new Date(saved.publishedAt).toLocaleString()} · ${saved.filename}`; date.style.overflowWrap='anywhere'; box.append(date);
+        const addURL = (label, value) => {
+          const row = document.createElement('div'); row.style.margin='12px 0';
+          const text = document.createElement('label'); text.textContent=label;
+          const input = document.createElement('input'); input.readOnly=true; input.value=value; input.style.width='100%'; input.setAttribute('aria-label',label);
+          const button=document.createElement('button');button.type='button';button.textContent='Copy URL';
+          const copy=async()=>{const ok=await copyExportURL(input);button.textContent=ok?'Copied':'Select and copy URL';};
+          input.addEventListener('click',copy);button.addEventListener('click',copy);text.append(input);row.append(text,button);box.append(row);
+        };
+        const publicURL = new URL(saved.path,window.location.href).href; addURL('Lineup URL',publicURL);
+        const download=document.createElement('a');download.href=publicURL+'?download=1';download.download=saved.filename;download.textContent='Download saved JSON';box.append(download);
+        try {
+          const settings=await api('/api/setup/share-links');
+          if (request===exportSummaryRequest && settings.internalBaseURL) addURL('Docker-network lineup URL',new URL(saved.path,settings.internalBaseURL).href);
+        } catch (_) { /* Optional internal links do not hide a saved export. */ }
+      } catch(error) { if(request===exportSummaryRequest) box.textContent=`Could not load the saved export: ${error.message}`; }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => { arrangeLineuparrWorkflow(); refreshExportSummary(); });
+
     async function openExport() {
       if (!draft || saving || pendingChannelSaves) return;
       publishedExport = null;
@@ -894,6 +938,7 @@
           els.exportInternalResult.hidden = !internalExportBase;
           els.exportResult.hidden = false;
           els.exportClose.textContent = 'Close';
+          if (typeof refreshExportSummary === 'function') await refreshExportSummary();
         }
         if (action === 'copy' || action === 'copy-internal') {
           const copied = await copyExportURL(action === 'copy-internal' ? els.exportInternalURL : els.exportURL);
