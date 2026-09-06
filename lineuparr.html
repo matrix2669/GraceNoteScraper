@@ -1174,7 +1174,7 @@
       els.matchDenied.textContent = matchReview.deniedCount.toLocaleString();
       const fetched = matchReview.fetchedAt ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
-      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} matching stream${grouped === 1 ? '' : 's'} are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
+      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       const candidates = matchReview.candidates || [];
@@ -1266,6 +1266,7 @@
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
+        for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== key);
         if (decision === 'confirmed') await reloadDraft();
         const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
@@ -1338,6 +1339,9 @@
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
         matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
         primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        matchReview.candidates = (matchReview.candidates || []).filter(item => item.key !== candidate.key);
+        matchReview.candidateCount = Math.max(0, matchReview.candidateCount - 1);
+        matchReview.candidateStreamCount = Math.max(0, (matchReview.candidateStreamCount || 0) - candidate.streamCount);
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         renderMatchReview();
         if (decision === 'confirmed') {

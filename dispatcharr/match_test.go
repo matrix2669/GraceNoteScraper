@@ -104,7 +104,7 @@ func TestMatchStreamsRetainsIndependentNameScoreForExactEPGID(t *testing.T) {
 	}
 }
 
-func TestDeniedCandidateExposesNextChoiceAndConfirmedHidesStream(t *testing.T) {
+func TestReviewedPairExposesOtherChannelForSameStream(t *testing.T) {
 	channels := []MatchChannel{
 		{ID: "sd", Number: "70", Name: "ESPN"},
 		{ID: "hd", Number: "570", Name: "ESPN"},
@@ -124,8 +124,36 @@ func TestDeniedCandidateExposesNextChoiceAndConfirmedHidesStream(t *testing.T) {
 	confirmed := map[string]Decision{
 		first[0].Key: {Key: first[0].Key, Decision: "confirmed", Source: "source", StreamHash: first[0].StreamHash, ChannelID: "sd"},
 	}
-	if got := MatchStreams("source", channels, streams, confirmed); len(got) != 0 {
-		t.Fatalf("confirmed stream was proposed again: %+v", got)
+	if got := MatchStreams("source", channels, streams, confirmed); len(got) != 1 || got[0].ChannelID != "hd" {
+		t.Fatalf("confirmation blocked another target: %+v", got)
+	}
+}
+
+func TestConfirmedAndDeniedNormalizedPairsDoNotBlockOtherTargets(t *testing.T) {
+	channels := []MatchChannel{{ID: "a", Name: "ESPN"}, {ID: "b", Name: "ESPN"}, {ID: "c", Name: "ESPN"}}
+	streams := []Stream{{ID: 1, M3UAccountID: 1, Name: "US: ESPN HD"}, {ID: 2, M3UAccountID: 2, Name: "GO| ESPN 4K"}}
+	decisions := map[string]Decision{
+		"a": {Decision: "confirmed", ChannelID: "a", StreamHash: streams[0].Fingerprint(), StreamName: streams[0].Name, NormalizedAlias: NormalizeStreamAlias(streams[0])},
+		"b": {Decision: "denied", ChannelID: "b", StreamHash: streams[0].Fingerprint(), StreamName: streams[0].Name, NormalizedAlias: NormalizeStreamAlias(streams[0])},
+	}
+	got := MatchStreamCandidates("source", channels, streams, decisions)
+	if len(got.All) != 2 {
+		t.Fatalf("want both streams on third channel: %+v", got)
+	}
+	for _, c := range got.All {
+		if c.ChannelID != "c" {
+			t.Fatal("reviewed pair reappeared")
+		}
+	}
+	delete(decisions, "a")
+	got = MatchStreamCandidates("source", channels, streams, decisions)
+	if len(got.All) != 4 {
+		t.Fatalf("undo must restore only confirmed target: %+v", got)
+	}
+	for _, c := range got.All {
+		if c.ChannelID == "b" {
+			t.Fatal("undo altered another target's denial")
+		}
 	}
 }
 
