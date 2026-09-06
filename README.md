@@ -182,6 +182,10 @@ In both local-ZIP and major-market scans, each provider's official source may us
 
 Alias discovery displays progress and the last refresh time only for local-ZIP scans. Major-market and scheduled guide work do not overwrite that progress; a separate busy/queue notice explains when another job prevents starting. Major-market enrichment uses the same collapsible panel and progress/action layout, displays only its own progress and errors, and retains the provider audit reports. Its expanded state is remembered. Both workflows retain the shared scan lock and explicit start/stop behavior.
 
+To repeat a market, expand its saved report and click **Rescan ZIP** (for example, **Rescan ZIP 10001**). This reruns only that catalog market's provider and EPG enrichment, replaces its latest report, and does not advance the next-market selection. Existing guide and published exports are unchanged. Source/grid caches retain their normal freshness rules; this is not a cache purge. Rescan controls are disabled while another scan runs, and the same guide-readiness and address restrictions apply. The market endpoint accepts an optional catalog `rank`; omitting it retains Scan next market behavior. Failed or interrupted attempts can also be retried from their report.
+
+After a completed local-ZIP scan, its button reads **Rescan providers in this ZIP**. Before completion it reads **Scan providers in this ZIP**; queued/cancel and guide-busy labels still take precedence.
+
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP and joins supported live official provider sources to their own provider grids. Exact station IDs are reused directly. Different station IDs become alias/category bridges only after independent pair-level identity evidence and matching weekday schedules satisfy the rules below.

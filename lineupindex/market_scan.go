@@ -76,10 +76,27 @@ func (s *Service) StartNextMarket(comparison *LineupRecord) (JobView, error) {
 	if view.Next == nil {
 		return JobView{}, ErrNoWork
 	}
+	return s.StartMarket(view.Next.Rank, comparison)
+}
+
+// StartMarket explicitly runs one catalog market, including a completed market.
+// The ZIP always comes from the curated catalog, never caller-supplied data.
+func (s *Service) StartMarket(rank int, comparison *LineupRecord) (JobView, error) {
+	var selected *MarketSeed
+	for _, seed := range marketCatalog().Markets {
+		if seed.Rank == rank {
+			copy := seed
+			selected = &copy
+			break
+		}
+	}
+	if selected == nil {
+		return JobView{}, errors.New("unknown market rank")
+	}
 	if s.providerAccess == nil {
 		return JobView{}, errors.New("market provider access classifier is required")
 	}
-	request := RunRequest{Action: "postal", Country: view.Next.Country, PostalCode: view.Next.PostalCode, Language: "en-us", marketRank: view.Next.Rank, priorFamilies: map[string]bool{}, priorFacts: map[string]bool{}}
+	request := RunRequest{Action: "postal", Country: selected.Country, PostalCode: selected.PostalCode, Language: "en-us", marketRank: selected.Rank, priorFamilies: map[string]bool{}, priorFacts: map[string]bool{}}
 	if comparison != nil {
 		copy := *comparison
 		request.comparison = &copy
