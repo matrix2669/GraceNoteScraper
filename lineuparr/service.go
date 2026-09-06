@@ -142,9 +142,21 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			}
 			channel.matchedSourceSet["dispatcharr-confirmed"] = true
 			confirmedMatches++
-		case "denied":
-			if group.NameScore >= lineuparrExactMatchMinimum {
-				channel.addExcludedAlias(group.Alias)
+		}
+	}
+	// Negative matching uses full names, unlike positive review-group aliases.
+	// Check each saved constituent's own name score before deduplication; a
+	// stronger sibling or EPG-ID score must not make a weak name eligible.
+	decisionKeys := make([]string, 0, len(matchDecisions))
+	for key := range matchDecisions {
+		decisionKeys = append(decisionKeys, key)
+	}
+	sort.Strings(decisionKeys)
+	for _, key := range decisionKeys {
+		decision := matchDecisions[key]
+		channel := channelByID[decision.ChannelID]
+		if channel != nil && decision.Decision == "denied" && decisionNameScore(decision) >= lineuparrExactMatchMinimum {
+			if channel.addExcludedAlias(decision.StreamName) {
 				channel.matchedSourceSet["dispatcharr-denied"] = true
 				excludedMatches++
 			}
@@ -533,15 +545,17 @@ func (c *channelWork) addAlias(value, source, method string) {
 	}
 }
 
-func (c *channelWork) addExcludedAlias(value string) {
+func (c *channelWork) addExcludedAlias(value string) bool {
 	value = cleanText(value)
-	if value == "" || strings.EqualFold(value, "null") {
-		return
+	if value == "" {
+		return false
 	}
 	key := strings.ToLower(value)
 	if _, exists := c.excludedAliases[key]; !exists {
 		c.excludedAliases[key] = value
+		return true
 	}
+	return false
 }
 
 func (c *channelWork) addEPGID(value, source, method string) {

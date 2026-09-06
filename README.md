@@ -143,12 +143,44 @@ The optional Dispatcharr panel compares the active lineup with every non-stale s
 Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Delimited `US`, `GO`, `Prime`, `Tubi`, and `ROKU` provider prefixes, common HD/UHD markers, punctuation, and spacing are normalized. A leading HDHomeRun-style number is removed only when it exactly equals Dispatcharr's channel-number metadata, so event years and unrelated numeric names remain intact. A score is never accepted automatically:
 
 - **Confirm** adds one representative reviewed stream-name alias only when the independent name score is below 95%. Names at or above 95% are already eligible under Lineuparr's required **Exact** sensitivity and are not duplicated in the JSON. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.
-- **Deny** records that stream/channel pairing as rejected. When the independent name score is 95% or higher, one representative name is also exported in that channel's `excluded_aliases` list so a compatible Lineuparr plugin rejects the reviewed false positive before positive alias or fuzzy matching. Lower-scoring denials are not exported because Exact mode would not accept them. When a fuzzy proposal had other qualifying targets, the already-scored alternatives open immediately for separate confirmation or denial.
+- **Deny** records every current constituent stream/channel pairing in the reviewed group. Each saved full stream name with its own independent name score of at least 95 is exported in that channel's `excluded_aliases`. A higher score on another group member or an EPG-ID-boosted overall score cannot qualify a lower-scoring name. Only equivalent full names are deduplicated, ignoring capitalization and collapsing whitespace; prefixes, punctuation, quality suffixes, and word boundaries remain significant. Lower-scoring denials are not exported because Exact mode would not accept them. When a fuzzy proposal had other qualifying targets, the already-scored alternatives open immediately for separate confirmation or denial.
 - **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
 
 Confirm and deny actions remove their row immediately without locking or re-sorting the remaining review page. The initial page contains 100 groups; **Load more** explicitly requests the next 100. Decisions retain the safe normalized stream identity as well as the active lineup, stream fingerprint, and target channel, so equivalent account variants, authentication changes, and container restarts do not restore reviewed rows. The confirmed counter opens reviewed matches.
 
 The threshold decision uses an independent name score rather than the overall proposal score. An exact provider TVG/EPG ID can make the overall proposal 100% even when the names are unrelated; because Lineuparr does not consume lineup JSON `epg_ids`, that confirmation still exports a name alias when its name score is below 95%. This prevents non-name evidence from being mistaken for a match that Lineuparr can reproduce.
+
+#### Exclusion compatibility and existing decisions
+
+These exports require the full-name/wildcard-escape consumer contract in
+[LineupARR PR #26](https://github.com/PiratesIRC/Dispatcharr-Lineuparr-Plugin/pull/26),
+commit `c766a6bb582ca8ef28ae9548d83af1e61f6cde5d`, or a verified compatible
+successor. Published LineupARR beta.4 does **not** include this contract. Coordinate
+the consumer update and verify Preview Stream Match before deploying changed
+exports; do not assume an older plugin enforces these exclusions correctly.
+Use **Exact** matching. Exclusions affect only stream matching for their channel,
+not EPG matching or global stream availability. Preserve Existing Streams may
+retain previously attached streams.
+
+Automatically generated exclusions are always literal full names, never wildcard
+patterns inferred from a review group. Backslashes are escaped first, then stars;
+JSON serialization handles the additional JSON escaping. For the literal name
+`M*A*S*H`, the exported field is:
+
+```json
+{"excluded_aliases":["M\\*A\\*S\\*H"]}
+```
+
+Stored decisions and draft names remain unescaped. Repeated exports do not add
+escape layers. Existing grouped decisions retain individual stream names and can
+produce the expanded exclusion list without rewriting state; Undo still reverses
+the reviewed group. Earlier exports contained only a representative and cannot
+recover constituent names if the original decision file is missing. Variants
+encountered after a normalized group was reviewed may have been suppressed without
+ever being saved: no exclusions are invented for them. Undo and review the current
+group again to capture such variants. Saved published JSON changes only after a
+new explicit export, so retain the old snapshot until consumer compatibility is
+verified.
 
 Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
