@@ -135,4 +135,23 @@ func TestTMDBCategoryScanRepairsLegacyTimezoneAndSavesProposals(t *testing.T) {
 	if category := s.builder.TMDBCategoryScan(c.Fingerprint()).Categories["100"]; category.Value != "Entertainment" || category.Priority != 4 {
 		t.Fatalf("saved category = %+v", category)
 	}
+	draftRecorder := httptest.NewRecorder()
+	s.handleDraft(draftRecorder, httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil))
+	if draftRecorder.Code != http.StatusOK {
+		t.Fatalf("draft response = %d %s", draftRecorder.Code, draftRecorder.Body.String())
+	}
+	var draft struct {
+		Categorized   int `json:"categorized"`
+		Uncategorized int `json:"uncategorized"`
+		Channels      []struct {
+			Category            string `json:"category"`
+			NeedsCategoryReview bool   `json:"needsCategoryReview"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(draftRecorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.Categorized != 1 || draft.Uncategorized != 0 || len(draft.Channels) != 1 || draft.Channels[0].Category != "Entertainment" || !draft.Channels[0].NeedsCategoryReview {
+		t.Fatalf("refreshed draft = %+v", draft)
+	}
 }
