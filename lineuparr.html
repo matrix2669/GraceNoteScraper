@@ -227,6 +227,13 @@
     .badge.unresolved { color: var(--warning); background: rgba(246,210,116,.09); }
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
+    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 18px 0; border-top: 1px solid var(--line); }
+    .category-review-row > div { min-width: 0; overflow-wrap: anywhere; }
+    .category-review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .category-review-controls label { flex: 1 1 200px; min-width: 0; }
+    .category-review-controls select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
+    .category-review-controls button { flex: 0 0 auto; white-space: nowrap; }
+    @media (max-width: 720px) { .category-review-row { grid-template-columns: minmax(0, 1fr); } }
     .category-input { height: 38px; font-size: 13px; }
     .channel-card > details { margin: 11px 0 0 103px; }
     .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
@@ -376,6 +383,17 @@
           <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
           <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
         </div>
+      </div>
+    </details>
+
+    <details class="panel collapsible-panel" id="category-review-panel" data-section-key="category-review" open>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy"><span class="panel-title">Category review <span id="category-review-count"></span></span><span class="panel-help">Confirm or correct provisional categories for included channels.</span></span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <div id="category-review-list"></div>
+        <div id="category-review-results"></div>
       </div>
     </details>
 
@@ -777,10 +795,10 @@
     }
 
     function renderCategoryOptions() {
+	  renderCategoryReview();
 	  renderCategoryReviewReport();
       const previous = els.categoryFilter.value;
       els.categoryFilter.replaceChildren(new Option('All categories', ''));
-	  els.categoryFilter.add(new Option(`Needs category review (${draft.channels.filter(c => c.included && c.needsCategoryReview).length} included)`, '__review'));
       els.categoryOptions.replaceChildren();
       for (const category of categories()) {
         els.categoryFilter.add(new Option(category, category));
@@ -793,9 +811,40 @@
       return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
+    function renderCategoryReview() {
+      const list = document.getElementById('category-review-list');
+      const channels = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
+      document.getElementById('category-review-count').textContent = `(${channels.length.toLocaleString()} remaining)`;
+      list.replaceChildren();
+      if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
+      for (const channel of channels) {
+        const row = document.createElement('div'); row.className = 'category-review-row';
+        const identity = document.createElement('div');
+        const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
+        const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
+        const evidence = document.createElement('details');
+        const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
+        const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
+        evidence.append(summary, method); identity.append(title, proposed, evidence);
+        const controls = document.createElement('div'); controls.className = 'category-review-controls';
+        const label = document.createElement('label'); label.textContent = 'Category';
+        const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
+        for (const category of categories()) select.add(new Option(category, category));
+        select.value = channel.category; label.append(select);
+        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm';
+        select.addEventListener('change', () => { confirm.textContent = select.value === channel.category ? 'Confirm' : 'Save correction'; });
+        confirm.addEventListener('click', async () => {
+          select.disabled = true;
+          try { await saveChannel(channel, {category:select.value}, confirm); }
+          finally { select.disabled = false; renderCategoryReview(); }
+        });
+        controls.append(label, confirm); row.append(identity, controls); list.append(row);
+      }
+    }
+
     function renderCategoryReviewReport() {
       let panel = document.getElementById('category-review-report');
-      if (!panel) { panel = document.createElement('details'); panel.id = 'category-review-report'; panel.className = 'panel'; document.querySelector('main').append(panel); }
+      if (!panel) { panel = document.createElement('details'); panel.id = 'category-review-report'; document.getElementById('category-review-results').append(panel); }
       const summary = document.createElement('summary'); summary.textContent = 'Category review results (reviewed items only)';
       const body = document.createElement('div'); const groups = new Map();
       for (const channel of draft.channels) {
@@ -865,10 +914,6 @@
         if (event.key === 'Enter') categoryInput.blur();
       });
       actions.append(categoryInput);
-	  if (channel.needsCategoryReview) {
-		const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm category';
-		confirm.addEventListener('click', () => saveChannel(channel, {category:channel.category}, confirm)); actions.append(confirm);
-	  }
       main.append(toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
@@ -899,7 +944,7 @@
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
         showMessage(error.message, true);
       } finally {
-        control.disabled = false; renderSummary(); renderChannels();
+        control.disabled = false; renderSummary(); renderChannels(); renderCategoryReview();
       }
     }
 
