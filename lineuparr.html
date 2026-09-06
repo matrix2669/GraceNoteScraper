@@ -1035,11 +1035,12 @@
         await loadAliasIndex();
       } catch (error) { setMarketMessage(error.message, 'error'); }
     });
-    const tmdbPanel = document.createElement('section'); tmdbPanel.className = 'tmdb-category-evidence';
-    const tmdbTitle = document.createElement('h2'); tmdbTitle.textContent = 'TMDB category evidence';
+    const tmdbPanel = document.createElement('details'); tmdbPanel.className = 'panel collapsible-panel'; tmdbPanel.id = 'tmdb-category-panel'; tmdbPanel.dataset.sectionKey = 'tmdb-category';
+    const tmdbTitle = document.createElement('summary'); tmdbTitle.className = 'panel-summary'; tmdbTitle.textContent = 'TMDB category evidence';
     const tmdbMessage = document.createElement('p'); tmdbMessage.setAttribute('role','status');
     const tmdbScan = document.createElement('button'); tmdbScan.type = 'button'; tmdbScan.textContent = 'Scan TMDB enrichment data'; tmdbScan.disabled = true;
-    tmdbPanel.append(tmdbTitle, tmdbMessage, tmdbScan); document.querySelector('#source-panel > .panel-body').prepend(tmdbPanel);
+    const tmdbBody = document.createElement('div'); tmdbBody.className = 'panel-body'; tmdbBody.append(tmdbMessage, tmdbScan);
+    tmdbPanel.append(tmdbTitle, tmdbBody); document.getElementById('category-review-panel').before(tmdbPanel);
     let tmdbCategoryTimer;
     async function loadTMDBCategoryState() {
       clearTimeout(tmdbCategoryTimer);
