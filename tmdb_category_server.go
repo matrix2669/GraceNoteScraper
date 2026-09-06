@@ -162,12 +162,12 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			return
 		}
 		if s.marketIndex == nil {
-			http.Error(w, "Scan the local providers first to establish the lineup timezone", 409)
+			http.Error(w, "Lineup timezone service unavailable", 503)
 			return
 		}
-		loc := s.marketIndex.LineupTimezone(c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device)
-		if loc == nil {
-			http.Error(w, "Selected lineup timezone unavailable; scan local providers first", 409)
+		loc, err := s.marketIndex.ResolveLineupTimezone(r.Context(), c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device, c.Gracenote.Language)
+		if err != nil {
+			http.Error(w, "Could not establish the selected lineup timezone: "+err.Error(), 409)
 			return
 		}
 		rows := map[string][]channelcategory.ScheduleEvent{}

@@ -121,7 +121,7 @@ func (s *Service) ProviderLineups(ctx context.Context, country, postalCode, lang
 	if response == nil {
 		return nil, errors.New("provider lookup returned no response")
 	}
-	return uniquePostalProviders(response.Providers), nil
+	return uniquePostalProviders(providersWithResponseTimezone(response)), nil
 }
 
 func (s *Service) startPostal(request RunRequest) (JobView, error) {
@@ -198,7 +198,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	}
 	providers := []web.Provider{}
 	if runErr == nil {
-		providers = uniquePostalProviders(result.Providers)
+		providers = uniquePostalProviders(providersWithResponseTimezone(result))
 		s.updatePostalJob(key, func(record *PostalScanRecord) {
 			record.ProviderCount = len(providers)
 		})
