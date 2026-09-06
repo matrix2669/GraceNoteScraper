@@ -811,27 +811,51 @@
       return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
+    const categoryReviewSelection = new Set();
+    let categoryReviewSelectionSource = '';
+    let categoryReviewApproving = false;
     function renderCategoryReview() {
+      if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
       const list = document.getElementById('category-review-list');
       const channels = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
       document.getElementById('category-review-count').textContent = `(${channels.length.toLocaleString()} remaining)`;
       list.replaceChildren();
+      const eligible = new Set(channels.map(channel => channel.id));
+      for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
       if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
+      const batch = document.createElement('div'); batch.className = 'category-review-controls';
+      const allLabel = document.createElement('label');
+      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving;
+      all.checked = categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
+      allLabel.append(all, document.createTextNode(' Select all pending'));
+      all.addEventListener('change', () => { categoryReviewSelection.clear(); if (all.checked) for (const channel of channels) categoryReviewSelection.add(channel.id); renderCategoryReview(); });
+      const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Approving…' : `Approve selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
+      approve.addEventListener('click', async () => {
+        const selected = channels.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
+        categoryReviewApproving = true; renderCategoryReview();
+        try { await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})}); categoryReviewSelection.clear(); await reloadDraft(); }
+        catch(error) { showMessage(error.message,true); }
+        finally { categoryReviewApproving = false; renderCategoryReview(); }
+      });
+      const help = document.createElement('p'); help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      batch.append(allLabel,approve); list.append(help,batch);
       for (const channel of channels) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
+        check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
         const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
         const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
         const evidence = document.createElement('details');
         const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
         const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
-        evidence.append(summary, method); identity.append(title, proposed, evidence);
+        evidence.append(summary, method); identity.append(check, title, proposed, evidence);
         const controls = document.createElement('div'); controls.className = 'category-review-controls';
         const label = document.createElement('label'); label.textContent = 'Category';
         const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
         for (const category of categories()) select.add(new Option(category, category));
-        select.value = channel.category; label.append(select);
-        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm';
+        select.value = channel.category; select.disabled = categoryReviewApproving; label.append(select);
+        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm'; confirm.disabled = categoryReviewApproving;
         select.addEventListener('change', () => { confirm.textContent = select.value === channel.category ? 'Confirm' : 'Save correction'; });
         confirm.addEventListener('click', async () => {
           select.disabled = true;

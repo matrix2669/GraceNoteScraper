@@ -8,13 +8,13 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   const script=html.split('<script>')[1].split('</script>')[0];
   assert.ok(!script.includes("confirm.textContent = 'Confirm category'"));
   await page.setContent(html.replace(/<script>[\s\S]*?<\/script>/g,''));
-  const code=script.slice(script.indexOf('    function renderCategoryReview()'),script.indexOf('    function renderCategoryReviewReport()'));
+  const code=script.slice(script.indexOf('    const categoryReviewSelection'),script.indexOf('    function renderCategoryReviewReport()'));
   await page.evaluate(code=>{
    const panel=document.getElementById('category-review-panel');document.querySelector('main').replaceChildren(panel);
    window.draft={channels:[{id:'a',number:'53',callSign:'FREEFRM',name:'Freeform',category:'Entertainment',categorySource:'provider',categoryPriority:4,categoryMethod:'Long provenance '.repeat(50),included:true,needsCategoryReview:true},{id:'b',number:'104',name:'CSPAN2',category:'News & Weather',categorySource:'provider',categoryPriority:4,included:true,needsCategoryReview:true},{id:'c',included:false,needsCategoryReview:true}]};
    window.categories=()=>['Entertainment','News & Weather','Movies'];window.sourceLabel=()=> 'Official provider';
    window.saves=[];window.saveChannel=async(channel,patch)=>{saves.push(patch);channel.category=patch.category;channel.needsCategoryReview=false;};
-   (0,eval)(code);renderCategoryReview();
+   (0,eval)(code+'\nwindow.renderCategoryReview = renderCategoryReview;');renderCategoryReview();
   },code);
   assert.equal(await page.locator('.category-review-row').count(),2);
   assert.match(await page.locator('#category-review-count').textContent(),/2 remaining/);
@@ -28,6 +28,15 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   assert.equal(await page.locator('.category-review-row').count(),1);
   assert.deepEqual(await page.evaluate(()=>saves),[{category:'Movies'}]);
   await page.getByRole('button',{name:'Confirm',exact:true}).click();
+  assert.match(await page.locator('#category-review-list').textContent(),/No included channels/);
+  await page.evaluate(()=>{
+   draft.channels[0].needsCategoryReview=true; draft.channels[1].needsCategoryReview=true;
+   window.api=async(path,request)=>{window.batchRequest=JSON.parse(request.body);for(const row of batchRequest.channels)draft.channels.find(c=>c.id===row.id).needsCategoryReview=false;return {saved:true}};
+   window.reloadDraft=async()=>{};window.showMessage=()=>{};renderCategoryReview();
+  });
+  await page.getByLabel('Select all pending').check();
+  await page.getByRole('button',{name:'Approve selected (2)',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>batchRequest.channels),[{id:'a',category:'Movies'},{id:'b',category:'News & Weather'}]);
   assert.match(await page.locator('#category-review-list').textContent(),/No included channels/);
   console.log('Category review: separate section, five widths, readable selectors, correction and confirm passed');
  } finally {await browser.close()}
