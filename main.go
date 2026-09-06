@@ -1568,6 +1568,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
 	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)
+	mux.HandleFunc("/api/lineuparr/export-summary", lineuparrHandlers.handleExportSummary)
 	mux.HandleFunc(lineuparrPublishedPrefix, lineuparrHandlers.handlePublishedExport)
 	mux.HandleFunc("/api/lineuparr/alias", lineuparrHandlers.handleAlias)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
