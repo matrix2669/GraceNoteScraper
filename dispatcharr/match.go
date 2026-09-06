@@ -43,10 +43,10 @@ func MatchStreams(sourceFingerprint string, channels []MatchChannel, streams []S
 
 // MatchStreamCandidates returns both the current proposal and every qualifying
 // alternate from one matching pass. A denied proposal exposes the next-best
-// candidate on the next pass; a confirmed stream is omitted until cleared.
+// candidate on the next pass; a reviewed stream/channel pair is omitted until cleared.
 func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, streams []Stream, decisions map[string]Decision) CandidateSet {
 	prepared, exactIndex, tokenIndex, gramIndex, epgIndex := prepareChannels(channels)
-	confirmedStreams := make(map[string]bool)
+	confirmedPairs := make(map[string]bool)
 	denied := make(map[string]bool)
 	confirmedAliases := make(map[string]bool)
 	deniedAliases := make(map[string]bool)
@@ -56,9 +56,9 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			alias = NormalizeAliasName(decision.StreamName)
 		}
 		if decision.Decision == "confirmed" {
-			confirmedStreams[decision.StreamHash] = true
+			confirmedPairs[decisionPairKey(decision.StreamHash, decision.ChannelID)] = true
 			if alias != "" {
-				confirmedAliases[alias] = true
+				confirmedAliases[aliasDecisionKey(alias, decision.ChannelID)] = true
 			}
 		} else if decision.Decision == "denied" {
 			denied[decisionPairKey(decision.StreamHash, decision.ChannelID)] = true
@@ -72,9 +72,6 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 	for _, stream := range streams {
 		streamHash := stream.Fingerprint()
 		normalizedAlias := NormalizeStreamAlias(stream)
-		if confirmedStreams[streamHash] || confirmedAliases[normalizedAlias] {
-			continue
-		}
 		if decorativeStreamName(stream.Name) {
 			continue
 		}
@@ -126,6 +123,9 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 		scored := make([]scoredCandidate, 0, len(indexes))
 		for index := range indexes {
 			channel := prepared[index].channel
+			if confirmedPairs[decisionPairKey(streamHash, channel.ID)] || confirmedAliases[aliasDecisionKey(normalizedAlias, channel.ID)] {
+				continue
+			}
 			if eventFeedName(stream.Name) && !channelAcceptsEventFeed(channel) {
 				continue
 			}

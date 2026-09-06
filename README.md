@@ -140,6 +140,18 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 
 The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Choose either a normal Dispatcharr username/password or an API key; only the fields for the selected method are shown and enabled. Password authentication uses Dispatcharr's JWT API and keeps access and refresh tokens in memory only. The saved connection settings live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
 
+Only **included lineup channels** are eligible matching targets, including
+alternative suggestions. Excluding a lineup channel does not remove any
+Dispatcharr stream from the available stream pool. Matching is **one-to-many**:
+the review queue includes every qualifying target, not just the highest-scoring
+channel. Confirm and Deny apply only to that stream-name group/channel pair;
+neither decision prevents matches to other included channels. Counts distinguish
+physical streams from stream/channel matches. Saved decisions remain in
+review history and support Undo. Re-including the
+channel restores the effect of its saved decisions. After changing channel
+inclusion, refresh match review to rebuild suggestions; cached Confirm/Deny
+requests for a now-excluded target are rejected without saving.
+
 Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Delimited `US`, `GO`, `Prime`, `Tubi`, and `ROKU` provider prefixes, common HD/UHD markers, punctuation, and spacing are normalized. A leading HDHomeRun-style number is removed only when it exactly equals Dispatcharr's channel-number metadata, so event years and unrelated numeric names remain intact. A score is never accepted automatically:
 
 - **Confirm** adds one representative reviewed stream-name alias only when the independent name score is below 95%. Names at or above 95% are already eligible under Lineuparr's required **Exact** sensitivity and are not duplicated in the JSON. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.

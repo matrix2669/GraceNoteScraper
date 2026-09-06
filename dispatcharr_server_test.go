@@ -338,7 +338,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *test
 	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
 		t.Fatal(err)
 	}
-	if review.CandidateCount != 1 || review.CandidateStreamCount != 3 || len(review.Candidates) != 1 {
+	if review.CandidateCount != 2 || review.CandidateStreamCount != 6 || len(review.Candidates) != 2 {
 		t.Fatalf("grouped review = %+v", review)
 	}
 	group := review.Candidates[0]
@@ -406,7 +406,7 @@ func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
 		t.Fatal(err)
 	}
-	if review.ConfirmedCount != 1 || review.CandidateCount != 0 || len(review.Decisions) != 1 {
+	if review.ConfirmedCount != 1 || review.CandidateCount != 1 || len(review.Decisions) != 1 || review.Candidates[0].ChannelID == review.Decisions[0].ChannelID {
 		t.Fatalf("review after auth change = %+v", review)
 	}
 

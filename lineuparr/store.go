@@ -16,6 +16,8 @@ type StateStore struct {
 	state State
 }
 
+var ErrMatchChannelExcluded = errors.New("match target is excluded")
+
 func LoadStateStore(path string) (*StateStore, error) {
 	store := &StateStore{
 		path: path,
@@ -185,6 +187,11 @@ func (s *StateStore) SetMatchDecisions(fingerprint string, decisions []MatchDeci
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.ensureSourceLocked(fingerprint)
+	for _, decision := range decisions {
+		if included := s.state.Channels[decision.ChannelID].Included; included != nil && !*included {
+			return ErrMatchChannelExcluded
+		}
+	}
 	for _, decision := range decisions {
 		s.state.MatchDecisions[decision.Key] = decision
 		if decision.Decision == "confirmed" && decision.ChannelID != "" && decision.StreamName != "" {

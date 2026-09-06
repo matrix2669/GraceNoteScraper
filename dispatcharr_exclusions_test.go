@@ -46,7 +46,7 @@ func TestGroupedDenialRetainsEveryNameAcrossRestartAndGroupUndo(t *testing.T) {
 		return result
 	}
 	initial := review()
-	if len(initial.Candidates) != 1 || initial.CandidateStreamCount != 4 {
+	if len(initial.Candidates) != 2 || initial.CandidateStreamCount != 8 {
 		t.Fatalf("initial review: %+v", initial)
 	}
 	key := initial.Candidates[0].Key
@@ -124,7 +124,7 @@ func TestGroupedDenialRetainsEveryNameAcrossRestartAndGroupUndo(t *testing.T) {
 			t.Fatal("group undo retained exclusions")
 		}
 	}
-	if got := review(); got.CandidateStreamCount != 4 {
+	if got := review(); got.CandidateStreamCount != 8 {
 		t.Fatalf("undo did not restore all variants: %+v", got)
 	}
 }
