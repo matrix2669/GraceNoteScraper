@@ -341,8 +341,18 @@
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
     .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 16px 0; border-top: 1px solid var(--line); align-items: center; }
+    .category-review-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding-bottom: 14px; }
+    .category-review-toolbar label { flex: 1 1 220px; min-width: 0; color: var(--muted); font-size: 11px; }
+    .category-review-toolbar select { display: block; width: 100%; height: 38px; margin-top: 6px; font-size: 13px; }
+    .category-review-visible { flex: 1 0 100%; margin: 0; }
+    .category-review-group { margin-top: 18px; }
+    .category-review-group:first-of-type { margin-top: 12px; }
+    .category-review-group-title { margin: 0; padding: 0 0 9px; color: var(--accent); font-size: 14px; }
     #category-review-panel .category-review-selection { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
     #category-review-panel input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; flex: 0 0 18px; padding: 0; margin: 0; accent-color: var(--accent); }
+    .category-review-channel-link { display: inline-flex; min-height: 0; min-width: 0; max-width: 100%; align-items: baseline; justify-content: flex-start; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
+    .category-review-channel-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .category-review-channel-detail { color: var(--muted); font-weight: 600; }
     .category-review-row p { margin: 8px 0; }
     .category-review-row > div { min-width: 0; overflow-wrap: anywhere; }
     .category-review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
@@ -1579,24 +1589,77 @@
     const categoryReviewSelection = new Set();
     let categoryReviewSelectionSource = '';
     let categoryReviewApproving = false;
+    let categoryReviewFilter = '';
+    let categoryReviewSort = 'number';
+
+    function categoryReviewNaturalCompare(left, right) {
+      return String(left || '').localeCompare(String(right || ''), undefined, {numeric:true, sensitivity:'base'});
+    }
+
+    function categoryReviewDetailedName(channel) {
+      if (typeof window.lineuparrDescriptiveChannelName === 'function') return window.lineuparrDescriptiveChannelName(channel);
+      const callSign = String(channel.callSign || '').trim();
+      const name = String(channel.name || '').trim();
+      const normalize = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return name && normalize(name) !== normalize(callSign) ? name : '';
+    }
+
+    function categoryReviewCompare(left, right) {
+      const leftName = categoryReviewDetailedName(left) || left.callSign || left.name;
+      const rightName = categoryReviewDetailedName(right) || right.callSign || right.name;
+      if (categoryReviewSort === 'name') return categoryReviewNaturalCompare(leftName, rightName) || categoryReviewNaturalCompare(left.number, right.number);
+      if (categoryReviewSort === 'category') return categoryReviewNaturalCompare(left.category, right.category) || categoryReviewNaturalCompare(left.number, right.number);
+      return categoryReviewNaturalCompare(left.number, right.number) || categoryReviewNaturalCompare(leftName, rightName);
+    }
+
+    function openCategoryReviewPrograms(channel) {
+      if (typeof window.lineuparrOpenChannelPrograms === 'function') {
+        window.lineuparrOpenChannelPrograms(channel);
+        return;
+      }
+      showMessage('Programme preview is unavailable in this build.', true);
+    }
+
     function renderCategoryReview() {
       if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
       const list = document.getElementById('category-review-list');
-      const channels = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
-      document.getElementById('category-review-count').textContent = `(${channels.length.toLocaleString()} remaining)`;
+      const pending = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
+      document.getElementById('category-review-count').textContent = `(${pending.length.toLocaleString()} remaining)`;
       list.replaceChildren();
-      const eligible = new Set(channels.map(channel => channel.id));
+      const eligible = new Set(pending.map(channel => channel.id));
       for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
-      if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
+      if (!pending.length) { list.textContent = 'No included channels need category review.'; return; }
+
+      const filterCategories = [...new Set(categories().filter(Boolean))].sort(categoryReviewNaturalCompare);
+      if (categoryReviewFilter && !filterCategories.includes(categoryReviewFilter)) categoryReviewFilter = '';
+      const channels = pending.filter(channel => !categoryReviewFilter || channel.category === categoryReviewFilter).sort(categoryReviewCompare);
+
+      const toolbar = document.createElement('div'); toolbar.className = 'category-review-toolbar';
+      const filterLabel = document.createElement('label'); filterLabel.textContent = 'Filter by category';
+      const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Filter category reviews by category');
+      filter.add(new Option('All pending categories', ''));
+      for (const category of filterCategories) filter.add(new Option(category, category));
+      filter.value = categoryReviewFilter; filter.disabled = categoryReviewApproving;
+      filter.addEventListener('change', () => { categoryReviewFilter = filter.value; categoryReviewSelection.clear(); renderCategoryReview(); });
+      filterLabel.append(filter);
+      const sortLabel = document.createElement('label'); sortLabel.textContent = 'Sort by';
+      const sort = document.createElement('select'); sort.setAttribute('aria-label', 'Sort category reviews');
+      sort.add(new Option('Channel number', 'number')); sort.add(new Option('Channel name', 'name')); sort.add(new Option('Category', 'category'));
+      sort.value = categoryReviewSort; sort.disabled = categoryReviewApproving;
+      sort.addEventListener('change', () => { categoryReviewSort = sort.value; renderCategoryReview(); });
+      sortLabel.append(sort);
+      const visible = document.createElement('p'); visible.className = 'channel-meta category-review-visible'; visible.textContent = `Showing ${channels.length.toLocaleString()} of ${pending.length.toLocaleString()} pending reviews.`;
+      toolbar.append(filterLabel, sortLabel, visible); list.append(toolbar);
+
       const batch = document.createElement('div'); batch.className = 'category-review-controls';
       const allLabel = document.createElement('label'); allLabel.className = 'category-review-selection';
-      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving;
-      all.checked = categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
-      allLabel.append(all, document.createTextNode(' Select all pending'));
+      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving || !channels.length;
+      all.checked = channels.length > 0 && categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
+      allLabel.append(all, document.createTextNode(' Select all shown'));
       all.addEventListener('change', () => { categoryReviewSelection.clear(); if (all.checked) for (const channel of channels) categoryReviewSelection.add(channel.id); renderCategoryReview(); });
       const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Approving…' : `Approve selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
       approve.addEventListener('click', async () => {
-        const selected = channels.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
+        const selected = pending.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
         categoryReviewApproving = true; renderCategoryReview();
         try { await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})}); categoryReviewSelection.clear(); await reloadDraft(); }
         catch(error) { showMessage(error.message,true); }
@@ -1604,17 +1667,41 @@
       });
       const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
       batch.append(allLabel,approve); list.append(help,batch);
+
+      if (!channels.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No pending category reviews match this filter.'; list.append(empty); return;
+      }
+
+      const groups = new Map();
       for (const channel of channels) {
+        const priority = Number(channel.categoryPriority) || 0;
+        if (!groups.has(priority)) groups.set(priority, []);
+        groups.get(priority).push(channel);
+      }
+      const priorities = [...groups.keys()].sort((left, right) => {
+        const rank = priority => priority === 3 ? 0 : priority === 4 ? 1 : 2 + priority;
+        return rank(left) - rank(right);
+      });
+      for (const priority of priorities) {
+        const group = document.createElement('section'); group.className = 'category-review-group'; group.dataset.priority = String(priority);
+        const heading = document.createElement('h3'); heading.className = 'category-review-group-title'; heading.textContent = `Priority ${priority || 'unranked'} (${groups.get(priority).length.toLocaleString()})`;
+        group.append(heading);
+        for (const channel of groups.get(priority)) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
-        const title = document.createElement('strong'); title.className = 'channel-name'; title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
+        const title = document.createElement('button'); title.type = 'button'; title.className = 'channel-name category-review-channel-link'; title.title = 'Show upcoming programmes';
+        const callSign = String(channel.callSign || channel.name || 'Unnamed channel').trim();
+        const primary = document.createElement('span'); primary.textContent = `${channel.number || '—'} · ${callSign}`; title.append(primary);
+        const detailedName = categoryReviewDetailedName(channel);
+        if (detailedName) { const detail = document.createElement('span'); detail.className = 'category-review-channel-detail'; detail.textContent = `· ${detailedName}`; title.append(detail); }
+        title.addEventListener('click', event => { event.preventDefault(); openCategoryReviewPrograms(channel); });
         const proposed = document.createElement('p'); proposed.className = 'channel-meta'; proposed.textContent = `Proposed category: ${channel.category}`;
         const evidence = document.createElement('details'); evidence.className = 'channel-meta';
         const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
         const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
-        const selection = document.createElement('label'); selection.className = 'category-review-selection'; selection.append(check, title);
+        const selection = document.createElement('div'); selection.className = 'category-review-selection'; selection.append(check, title);
         evidence.append(summary, method); identity.append(selection, proposed, evidence);
         const controls = document.createElement('div'); controls.className = 'category-review-controls';
         const label = document.createElement('label'); label.textContent = 'Category';
@@ -1628,7 +1715,9 @@
           try { await saveChannel(channel, {category:select.value}, confirm); }
           finally { select.disabled = false; renderCategoryReview(); }
         });
-        controls.append(label, confirm); row.append(identity, controls); list.append(row);
+        controls.append(label, confirm); row.append(identity, controls); group.append(row);
+        }
+        list.append(group);
       }
     }
 
