@@ -1556,6 +1556,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/tmdb-categories", lineuparrHandlers.handleTMDBCategories)
+	mux.HandleFunc("/api/lineuparr/approve-categories", lineuparrHandlers.handleApproveCategories)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/categories", lineuparrHandlers.handleCategories)
 	mux.HandleFunc("/api/lineuparr/channel-programs", lineuparrHandlers.handleChannelPrograms)

@@ -340,6 +340,13 @@
     .badge.unresolved { color: var(--warning); background: rgba(246,210,116,.09); }
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
+    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 18px 0; border-top: 1px solid var(--line); }
+    .category-review-row > div { min-width: 0; overflow-wrap: anywhere; }
+    .category-review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+    .category-review-controls label { flex: 1 1 200px; min-width: 0; }
+    .category-review-controls select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
+    .category-review-controls button { flex: 0 0 auto; white-space: nowrap; }
+    @media (max-width: 720px) { .category-review-row { grid-template-columns: minmax(0, 1fr); } }
     .category-input { height: 38px; font-size: 13px; }
     .channel-card > details { margin: 11px 0 0 103px; }
     .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
@@ -599,6 +606,17 @@
         </details>
       </div>
       <div class="match-list" id="dispatch-loading"></div>
+      </div>
+    </details>
+
+    <details class="panel collapsible-panel" id="category-review-panel" data-section-key="category-review" open>
+      <summary class="panel-summary">
+        <span class="panel-summary-copy"><span class="panel-title">Category review <span id="category-review-count"></span></span><span class="panel-help">Confirm or correct provisional categories for included channels.</span></span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+        <div id="category-review-list"></div>
+        <div id="category-review-results"></div>
       </div>
     </details>
 
@@ -1500,12 +1518,12 @@
     }
 
     function renderCategoryOptions() {
+	  renderCategoryReview();
 	  renderCategoryReviewReport();
       const previous = els.categoryFilter.value;
       const batchPrevious = els.batchCategory.value;
       els.categoryFilter.replaceChildren(new Option('All categories', ''));
       els.batchCategory.replaceChildren();
-	  els.categoryFilter.add(new Option(`Needs category review (${draft.channels.filter(c => c.included && c.needsCategoryReview).length} included)`, '__review'));
       for (const category of categories()) {
         els.categoryFilter.add(new Option(category, category));
         els.batchCategory.add(new Option(category, category));
@@ -1534,9 +1552,64 @@
       return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
+    const categoryReviewSelection = new Set();
+    let categoryReviewSelectionSource = '';
+    let categoryReviewApproving = false;
+    function renderCategoryReview() {
+      if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
+      const list = document.getElementById('category-review-list');
+      const channels = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
+      document.getElementById('category-review-count').textContent = `(${channels.length.toLocaleString()} remaining)`;
+      list.replaceChildren();
+      const eligible = new Set(channels.map(channel => channel.id));
+      for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
+      if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
+      const batch = document.createElement('div'); batch.className = 'category-review-controls';
+      const allLabel = document.createElement('label');
+      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving;
+      all.checked = categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
+      allLabel.append(all, document.createTextNode(' Select all pending'));
+      all.addEventListener('change', () => { categoryReviewSelection.clear(); if (all.checked) for (const channel of channels) categoryReviewSelection.add(channel.id); renderCategoryReview(); });
+      const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Approving…' : `Approve selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
+      approve.addEventListener('click', async () => {
+        const selected = channels.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
+        categoryReviewApproving = true; renderCategoryReview();
+        try { await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})}); categoryReviewSelection.clear(); await reloadDraft(); }
+        catch(error) { showMessage(error.message,true); }
+        finally { categoryReviewApproving = false; renderCategoryReview(); }
+      });
+      const help = document.createElement('p'); help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      batch.append(allLabel,approve); list.append(help,batch);
+      for (const channel of channels) {
+        const row = document.createElement('div'); row.className = 'category-review-row';
+        const identity = document.createElement('div');
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
+        check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
+        const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
+        const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
+        const evidence = document.createElement('details');
+        const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
+        const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
+        evidence.append(summary, method); identity.append(check, title, proposed, evidence);
+        const controls = document.createElement('div'); controls.className = 'category-review-controls';
+        const label = document.createElement('label'); label.textContent = 'Category';
+        const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
+        for (const category of categories()) select.add(new Option(category, category));
+        select.value = channel.category; select.disabled = categoryReviewApproving; label.append(select);
+        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm'; confirm.disabled = categoryReviewApproving;
+        select.addEventListener('change', () => { confirm.textContent = select.value === channel.category ? 'Confirm' : 'Save correction'; });
+        confirm.addEventListener('click', async () => {
+          select.disabled = true;
+          try { await saveChannel(channel, {category:select.value}, confirm); }
+          finally { select.disabled = false; renderCategoryReview(); }
+        });
+        controls.append(label, confirm); row.append(identity, controls); list.append(row);
+      }
+    }
+
     function renderCategoryReviewReport() {
       let panel = document.getElementById('category-review-report');
-      if (!panel) { panel = document.createElement('details'); panel.id = 'category-review-report'; panel.className = 'panel'; document.querySelector('main').append(panel); }
+      if (!panel) { panel = document.createElement('details'); panel.id = 'category-review-report'; document.getElementById('category-review-results').append(panel); }
       const summary = document.createElement('summary'); summary.textContent = 'Category review results (reviewed items only)';
       const body = document.createElement('div'); const groups = new Map();
       for (const channel of draft.channels) {
@@ -1678,10 +1751,6 @@
       };
       categoryInput.addEventListener('change', saveCategory);
       actions.append(categoryInput);
-	  if (channel.needsCategoryReview) {
-		const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm category';
-		confirm.addEventListener('click', () => saveChannel(channel, {category:channel.category}, confirm)); actions.append(confirm);
-	  }
       main.append(batchLabel, toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
@@ -1834,7 +1903,7 @@
         showMessage(error.message, true);
       } finally {
         pendingChannelSaves--;
-        control.disabled = false; renderSummary(); renderChannels();
+        control.disabled = false; renderSummary(); renderChannels(); renderCategoryReview();
       }
     }
 

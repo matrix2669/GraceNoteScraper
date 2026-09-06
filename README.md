@@ -212,6 +212,10 @@ Source matched counts represent selected-lineup channels with attributable alias
 
 ## Lineuparr JSON Builder
 
+Category review also supports row checkboxes, **Select all pending**, and **Approve selected**. A batch accepts each selected channel's own proposed category in one save; it does not assign a shared category. Save individual corrections first. Excluded or already-reviewed channels are not eligible, and stale selections are rejected without partially approving the batch.
+
+Use the separate collapsible **Category review** section for included channels with provisional assignments. Each row displays its proposed category and expandable source evidence. Choose **Confirm** to accept it, or select another category and choose **Save correction**. Successful saves remove the row and reduce the remaining count; manual choices and review history persist. The Channels section retains ordinary channel editing without inline confirmation buttons.
+
 TMDB category evidence is inside **Enrichment sources**. **Scan TMDB enrichment data** reuses retained programme genre IDs or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. Programme matches without usable genre evidence await normal enrichment. Proposals remain priority 4 and require review.
 
 Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
