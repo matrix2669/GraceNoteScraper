@@ -134,6 +134,8 @@ Per-lineup/device reports distinguish successful enrichment, no matches, unsuppo
 
 In both local-ZIP and major-market scans, each provider's official source may use channel numbers against that provider's own Gracenote grid, with matching channel identity required. The selected provider is not a special case. Numbers never bridge providers or different market lineups; EPG comparisons never use channel numbers. Source adapters must resolve the appropriate regional/address-qualified source where required. Older unverified number-assisted facts remain quarantined. Run a fresh scan to obtain corrected evidence; saved exports change only when explicitly exported again.
 
+Alias discovery displays progress and the last refresh time only for local-ZIP scans. Major-market and scheduled guide work do not overwrite that progress; a separate busy/queue notice explains when another job prevents starting. Major-market enrichment uses the same collapsible panel and progress/action layout, displays only its own progress and errors, and retains the provider audit reports. Its expanded state is remembered. Both workflows retain the shared scan lock and explicit start/stop behavior.
+
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP and joins supported live official provider sources to their own provider grids. Exact station IDs are reused directly. Different station IDs become alias/category bridges only after independent pair-level identity evidence and matching weekday schedules satisfy the rules below.

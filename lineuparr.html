@@ -316,15 +316,25 @@
       </div>
     </details>
 
-    <details class="panel" id="major-market-panel" style="padding:20px;margin-bottom:20px">
-      <summary>Major-market enrichment (experimental)</summary>
+    <details class="panel alias-panel collapsible-panel" id="major-market-panel" data-section-key="major-market">
+      <summary class="panel-summary alias-header">
+        <span class="panel-summary-copy"><span class="eyebrow">Major-market enrichment</span><h2>Expand your station-name index</h2><span class="panel-help">Scan one ranked market at a time (experimental).</span></span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
       <p>Scan one ranked market at a time using provider sources and weekday EPG comparison. Your selected guide stays unchanged. Address-required sources are skipped; your saved address is never reused.</p>
       <p id="major-market-next">Loading market status…</p>
-      <button type="button" id="major-market-start" disabled>Scan next market</button>
-      <button type="button" id="major-market-stop" style="display:none">Stop market scan</button>
-      <p id="major-market-status" role="status"></p>
+      <div class="scan-progress">
+        <div class="progress-copy"><strong id="major-market-status" role="status"></strong><span id="major-market-progress-count"></span></div>
+        <div class="progress-track"><div class="progress-bar" id="major-market-progress-bar"></div></div>
+        <div class="action-row">
+          <button type="button" id="major-market-start" disabled>Scan next market</button>
+          <button class="secondary" type="button" id="major-market-stop" style="display:none">Stop market scan</button>
+        </div>
+      </div>
       <div id="major-market-reports"></div>
       <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new candidate facts, not guaranteed applied categories. The selected lineup remains available as an EPG comparison reference.</p>
+      </div>
     </details>
 
     <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
@@ -605,7 +615,8 @@
     }
 
     function renderAliasIndex(data) {
-      const summary = data.summary || {}, job = data.job || {}, postalScan = data.postalScan;
+      const summary = data.summary || {}, sharedJob = data.job || {}, postalScan = data.postalScan;
+      const job = sharedJob.action === 'postal' ? sharedJob : {};
       const queue = data.queue || {};
 
       els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
@@ -615,18 +626,20 @@
       els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
       els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
       els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
-      els.postalScan.disabled = !!job.running || scanStarting;
+      els.postalScan.disabled = !!sharedJob.running || scanStarting;
       els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
-      const refreshed = postalScan?.completedAt || job.completedAt;
+      const refreshed = postalScan?.completedAt;
       const refreshLabel = document.getElementById('alias-last-refresh');
       if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
       if (scanRequestError) setMarketMessage(scanRequestError, 'error');
       else if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
       else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
-      else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
+      else if (queue.guideBusy) setMarketMessage('Guide preparation is busy. A local ZIP scan request will be queued.');
+      else if (sharedJob.running && !job.running) setMarketMessage('Another scan is running. Local ZIP progress is unchanged.');
       else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
-      const polling = job.running || queue.queued || queue.guideBusy;
+      else setMarketMessage(job.running ? 'Local ZIP scan in progress. Completed checkpoints remain saved.' : '');
+      const polling = sharedJob.running || queue.queued || queue.guideBusy;
       if (polling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
       if (!polling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) reloadDraft().catch(error => showMessage(error.message, true));
@@ -957,6 +970,7 @@
     const marketStart = document.getElementById('major-market-start');
     const marketStatus = document.getElementById('major-market-status');
     let majorMarketPoll;
+    let majorMarketWasRunning = false;
     async function loadMajorMarkets() {
       clearTimeout(majorMarketPoll);
       try {
@@ -964,7 +978,13 @@
         marketStart.disabled = !!view.job.running || !view.next;
         document.getElementById('major-market-stop').style.display = view.job.running && view.job.action === 'market' ? '' : 'none';
         document.getElementById('major-market-next').textContent = view.next ? `Next: #${view.next.rank} ${view.next.name}, ZIP ${view.next.postalCode} — ranked list ${view.catalog.asOf}` : 'All ranked markets completed.';
-        marketStatus.textContent = view.job.running ? `${view.job.action === 'market' ? 'Market scan' : 'Local scan'}: ${view.job.currentProvider || 'preparing'}, ${view.job.completedCount} / ${view.job.totalCount}` : (view.job.lastError || 'Ready. One click starts one market only.');
+        const ownJob = view.job.action === 'market' ? view.job : {};
+        if (majorMarketWasRunning && !ownJob.running) reloadDraft().catch(error => showMessage(error.message, true));
+        majorMarketWasRunning = !!ownJob.running;
+        const progress = ownJob.running && ownJob.totalCount ? Math.max(0, Math.min(100, Math.round(ownJob.completedCount * 100 / ownJob.totalCount))) : 0;
+        document.getElementById('major-market-progress-count').textContent = ownJob.running ? `${ownJob.completedCount} / ${ownJob.totalCount} in this scan` : '';
+        document.getElementById('major-market-progress-bar').style.width = `${progress}%`;
+        marketStatus.textContent = ownJob.running ? `Scanning ${ownJob.currentProvider || 'market provider lineups'}` : view.job.running ? 'Another scan is running. Market scan is waiting.' : (ownJob.lastError || 'Ready. One click starts one market only.');
         const reports = document.getElementById('major-market-reports'); reports.replaceChildren();
         for (const scan of view.scans) {
           const section = document.createElement('details');
