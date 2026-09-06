@@ -340,12 +340,19 @@
     .badge.unresolved { color: var(--warning); background: rgba(246,210,116,.09); }
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
-    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 18px 0; border-top: 1px solid var(--line); }
+    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 16px 0; border-top: 1px solid var(--line); align-items: center; }
+    #category-review-panel .category-review-selection { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+    #category-review-panel input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; flex: 0 0 18px; padding: 0; margin: 0; accent-color: var(--accent); }
+    .category-review-row p { margin: 8px 0; }
     .category-review-row > div { min-width: 0; overflow-wrap: anywhere; }
     .category-review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
     .category-review-controls label { flex: 1 1 200px; min-width: 0; }
     .category-review-controls select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
     .category-review-controls button { flex: 0 0 auto; white-space: nowrap; }
+    #category-review-panel .category-review-controls { font-size: 13px; }
+    #category-review-panel .category-review-controls select { height: 38px; font-size: 13px; }
+    #category-review-panel .category-review-controls button { min-height: 38px; font-size: 13px; }
+    .category-review-row .category-review-controls label { color: var(--muted); font-size: 11px; }
     @media (max-width: 720px) { .category-review-row { grid-template-columns: minmax(0, 1fr); } }
     .category-input { height: 38px; font-size: 13px; }
     .channel-card > details { margin: 11px 0 0 103px; }
@@ -1582,7 +1589,7 @@
       for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
       if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
       const batch = document.createElement('div'); batch.className = 'category-review-controls';
-      const allLabel = document.createElement('label');
+      const allLabel = document.createElement('label'); allLabel.className = 'category-review-selection';
       const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving;
       all.checked = categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
       allLabel.append(all, document.createTextNode(' Select all pending'));
@@ -1595,19 +1602,20 @@
         catch(error) { showMessage(error.message,true); }
         finally { categoryReviewApproving = false; renderCategoryReview(); }
       });
-      const help = document.createElement('p'); help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
       batch.append(allLabel,approve); list.append(help,batch);
       for (const channel of channels) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
-        const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
-        const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
-        const evidence = document.createElement('details');
+        const title = document.createElement('strong'); title.className = 'channel-name'; title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
+        const proposed = document.createElement('p'); proposed.className = 'channel-meta'; proposed.textContent = `Proposed category: ${channel.category}`;
+        const evidence = document.createElement('details'); evidence.className = 'channel-meta';
         const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
         const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
-        evidence.append(summary, method); identity.append(check, title, proposed, evidence);
+        const selection = document.createElement('label'); selection.className = 'category-review-selection'; selection.append(check, title);
+        evidence.append(summary, method); identity.append(selection, proposed, evidence);
         const controls = document.createElement('div'); controls.className = 'category-review-controls';
         const label = document.createElement('label'); label.textContent = 'Category';
         const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
@@ -2188,6 +2196,7 @@
     const tmdbMessage = document.createElement('p'); tmdbMessage.setAttribute('role','status');
     const tmdbScan = document.createElement('button'); tmdbScan.type = 'button'; tmdbScan.textContent = 'Scan TMDB enrichment data'; tmdbScan.disabled = true;
     const tmdbBody = document.createElement('div'); tmdbBody.className = 'panel-body'; tmdbBody.append(tmdbMessage, tmdbScan);
+    const tmdbChevron = document.createElement('span'); tmdbChevron.className = 'panel-chevron'; tmdbChevron.textContent = '›'; tmdbChevron.setAttribute('aria-hidden', 'true'); tmdbTitle.append(tmdbChevron);
     tmdbPanel.append(tmdbTitle, tmdbBody); document.getElementById('category-review-panel').before(tmdbPanel);
     let tmdbCategoryTimer;
     async function loadTMDBCategoryState() {
