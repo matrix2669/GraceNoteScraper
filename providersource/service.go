@@ -332,7 +332,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 		}
 		factMethod += "; identity-policy-v2"
 		if request.AllowChannelNumbers {
-			factMethod += "; number-policy-local-v1"
+			factMethod += "; number-policy-provider-v2"
 		}
 		aliases := append([]string{entry.Name}, entry.Aliases...)
 		aliases = append(aliases, entry.CallSigns...)

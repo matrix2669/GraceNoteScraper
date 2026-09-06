@@ -322,6 +322,9 @@ func TestPostalScanKeepsProviderAddressEphemeralAndSourceFailuresPartial(t *test
 	addresses := make(map[string]ProviderAddress)
 	for range 2 {
 		request := <-captured.requests
+		if !request.AllowChannelNumbers || len(request.Grid.Channels) != 1 || request.Grid.Channels[0].ChannelID != strings.TrimSuffix(request.Provider.LineupID, "1") {
+			t.Fatalf("provider evidence must use its own grid with corroborated numbering: %+v", request)
+		}
 		addresses[request.Provider.LineupID] = request.ServiceAddress
 	}
 	if addresses["X1"].FormattedAddress != address || addresses["S1"].FormattedAddress != "" {

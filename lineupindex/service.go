@@ -207,10 +207,13 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	providers := []web.Provider{}
 	if runErr == nil {
 		providers = uniquePostalProviders(result.Providers)
-		families:=map[string]bool{};for _,provider:=range providers {families[providerFamilyKey(provider.Name)]=true}
+		families := map[string]bool{}
+		for _, provider := range providers {
+			families[providerFamilyKey(provider.Name)] = true
+		}
 		s.updatePostalJob(key, func(record *PostalScanRecord) {
-			record.DiscoveredCount=len(result.Providers)
-			record.ProviderFamilies=len(families)
+			record.DiscoveredCount = len(result.Providers)
+			record.ProviderFamilies = len(families)
 			record.ProviderCount = len(providers)
 		})
 		s.mu.Lock()
@@ -299,7 +302,9 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				serviceAddress = request.ProviderAddress
 			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
-				AllowChannelNumbers: request.marketRank == 0 && request.NumberEvidenceLineupID != "" && provider.LineupID == request.NumberEvidenceLineupID && provider.Device == request.NumberEvidenceDevice,
+				// This is the scanned provider's own grid, never the selected
+				// comparison lineup. The adapter still requires matching identity.
+				AllowChannelNumbers: true,
 				Provider:            provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
 			})
