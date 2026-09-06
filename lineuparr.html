@@ -236,6 +236,10 @@
     .category-review-controls label { flex: 1 1 200px; min-width: 0; }
     .category-review-controls select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
     .category-review-controls button { flex: 0 0 auto; white-space: nowrap; }
+    #category-review-panel .category-review-controls { font-size: 13px; }
+    #category-review-panel .category-review-controls select { height: 38px; font-size: 13px; }
+    #category-review-panel .category-review-controls button { min-height: 38px; font-size: 13px; }
+    .category-review-row .category-review-controls label { color: var(--muted); font-size: 11px; }
     @media (max-width: 720px) { .category-review-row { grid-template-columns: minmax(0, 1fr); } }
     .category-input { height: 38px; font-size: 13px; }
     .channel-card > details { margin: 11px 0 0 103px; }
@@ -840,16 +844,16 @@
         catch(error) { showMessage(error.message,true); }
         finally { categoryReviewApproving = false; renderCategoryReview(); }
       });
-      const help = document.createElement('p'); help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
       batch.append(allLabel,approve); list.append(help,batch);
       for (const channel of channels) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
-        const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
-        const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
-        const evidence = document.createElement('details');
+        const title = document.createElement('strong'); title.className = 'channel-name'; title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
+        const proposed = document.createElement('p'); proposed.className = 'channel-meta'; proposed.textContent = `Proposed category: ${channel.category}`;
+        const evidence = document.createElement('details'); evidence.className = 'channel-meta';
         const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
         const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
         const selection = document.createElement('label'); selection.className = 'category-review-selection'; selection.append(check, title);
