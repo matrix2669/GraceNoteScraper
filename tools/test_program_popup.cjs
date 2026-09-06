@@ -3,6 +3,8 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 const html = fs.readFileSync('lineuparr.html','utf8');
 new vm.Script(html.split('<script>')[1].split('</script>')[0]);
+assert.ok(html.includes('window.lineuparrDescriptiveChannelName = descriptiveChannelName;'));
+assert.ok(html.includes('window.lineuparrOpenChannelPrograms = openChannelPrograms;'));
 const start = html.indexOf("els.programDialog.addEventListener('click', event => {");
 assert.ok(start >= 0);
 const handler = html.slice(start,html.indexOf('    });',start)+7);

@@ -1685,6 +1685,7 @@
       candidates.sort((left, right) => right.score - left.score || left.value.localeCompare(right.value));
       return candidates[0]?.value || '';
     }
+    window.lineuparrDescriptiveChannelName = descriptiveChannelName;
 
     function filteredChannels() {
       const query = els.search.value.trim().toLowerCase();
@@ -1882,6 +1883,7 @@
         els.programList.replaceChildren(emptyMessage(error.message));
       }
     }
+    window.lineuparrOpenChannelPrograms = openChannelPrograms;
 
     function renderPrograms(programs) {
       els.programList.replaceChildren();
