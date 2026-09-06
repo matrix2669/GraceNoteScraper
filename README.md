@@ -2,11 +2,13 @@
 
 ### Experimental category evidence and review
 
-Category evidence uses ordinal priorities: manual choices (1), clear official
-evidence (2), supported weekday schedule inference (3), and weak provider or
-optional TMDB genre inference (4). Priority is not an accuracy percentage.
-Provisional categories are marked for review and may be confirmed or changed;
-the original proposal is retained separately from the manual choice.
+Category evidence uses ordinal priorities: manual choices and maintained exact
+channel identities (1), clear official evidence (2), supported weekday schedule
+inference (3), and weak provider or optional TMDB genre inference (4). Priority
+is not an accuracy percentage. A manual choice is an unconditional override even
+when an automatic exact identity is also priority 1. Provisional categories are
+marked for review and may be confirmed or changed; the original proposal is
+retained separately from the manual choice.
 
 The schedule experiment uses fourteen calendar days in the selected lineup's
 known timezone, Monday-Friday only. It requires at least eight usable weekdays,
@@ -200,7 +202,9 @@ Aliases derived directly from Gracenote include callsigns, station IDs, lineup-p
 - The optional public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records, enabled with `LINEUPARR_IPTV_ORG_URL`.
 - Optional reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), enabled with `LINEUPARR_REFERENCE_CATALOGS=on`.
 
-The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves; explicit PEG/public-access identities and broadcast callsigns with affiliate evidence resolve to `Local & Public`, while ordinary network rows wait for a more specific source. One unambiguous category from the selected provider's exact official source takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
+The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves; explicit PEG/public-access identities and broadcast callsigns with affiliate evidence resolve to `Local & Public`.
+
+A separate maintained exact-identity catalog supplies priority-1 categories for reviewed major networks and callsigns. It includes national entertainment services such as USA, TNT, TBS, Syfy, E!, Freeform and BBC America; major news, sports, kids, music and faith services; broadcast-network identities such as ABC, CBS, NBC, Fox, CW and PBS; premium movie brands such as HBO, Cinemax, Showtime, The Movie Channel, Starz and MGM+; and reviewed adult, international and local identities. Matching is exact after punctuation/whitespace normalization and an optional terminal HD or SD marker—never a substring or fuzzy channel-name match. This lets stable network identity outrank misleading programme-format evidence, such as a movie-heavy Freeform schedule or an international movie service, while preventing a similar-looking unknown name from being assigned automatically. One unambiguous category from the selected provider's exact official source otherwise takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
 
 User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 

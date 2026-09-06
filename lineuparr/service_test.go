@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -146,7 +148,7 @@ func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	if !contains(espn.Aliases, "ESPN US") || !contains(espn.EPGIDs, "20001") {
 		t.Fatalf("ESPN aliases/EPG IDs = %v / %v", espn.Aliases, espn.EPGIDs)
 	}
-	if espn.NameMethod != "exact catalog identity" || !strings.Contains(espn.CategoryMethod, "exact master category") || !evidenceHasMethod(espn.EPGIDEvidence, "20001", "curated catalog EPG ID") {
+	if espn.NameMethod != "exact catalog identity" || espn.CategoryMethod != channelcategory.MaintainedIdentityMethod || !evidenceHasMethod(espn.EPGIDEvidence, "20001", "curated catalog EPG ID") {
 		t.Fatalf("ESPN provenance = name %q category %q EPG %+v", espn.NameMethod, espn.CategoryMethod, espn.EPGIDEvidence)
 	}
 	ambiguous := channelByID(t, draft, "ambiguous")
@@ -177,12 +179,61 @@ func TestBuildUsesScheduleCategoryOnlyWhenExactSourcesDoNotCategorize(t *testing
 		t.Fatalf("Build() error = %v", err)
 	}
 	catalogChannel := channelByID(t, draft, "catalog")
-	if catalogChannel.Category != "Sports" || !strings.Contains(catalogChannel.CategoryMethod, "exact master category") {
+	if catalogChannel.Category != "Sports" || catalogChannel.CategoryPriority != channelcategory.MaintainedIdentityPriority || catalogChannel.CategoryMethod != channelcategory.MaintainedIdentityMethod {
 		t.Fatalf("catalog category = %+v", catalogChannel)
 	}
 	scheduleChannel := channelByID(t, draft, "schedule")
 	if scheduleChannel.Category != "Movies" || scheduleChannel.CategorySource != "gracenote-schedule" || !strings.Contains(scheduleChannel.CategoryMethod, "90%") {
 		t.Fatalf("schedule category = %+v", scheduleChannel)
+	}
+}
+
+func TestBuildMaintainedIdentityOutranksScheduleInference(t *testing.T) {
+	service := newTestService(t, "", "")
+	inputs := []InputChannel{
+		{
+			Key: "freeform", CallSign: "FREEFRM",
+			CategoryHint: &AttributedCategory{Priority: 3, Value: "Movies", Source: "gracenote-schedule", Label: "Weekday schedule inference", Method: "55% movie airtime"},
+		},
+		{
+			Key: "adult", CallSign: "CHSTLRH",
+			ExternalAliases: []AttributedAlias{{Value: "Hustler HD (Comcast)", Source: "xfinity-official-lineup", Method: "exact provider identity"}},
+			CategoryHint:    &AttributedCategory{Priority: 3, Value: "Movies", Source: "gracenote-schedule", Label: "Weekday schedule inference", Method: "100% movie airtime"},
+		},
+		{
+			Key: "international", CallSign: "VMEKIDS",
+			CategoryHint: &AttributedCategory{Priority: 3, Value: "Kids & Family", Source: "gracenote-schedule", Label: "Weekday schedule inference", Method: "82% family airtime"},
+		},
+	}
+	draft, err := service.Build(context.Background(), testContext("source-one"), inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{"freeform": "Entertainment", "adult": "Other", "international": "International"} {
+		channel := channelByID(t, draft, id)
+		if channel.Category != want || channel.CategoryPriority != 1 || channel.NeedsCategoryReview {
+			t.Errorf("%s category = %+v; want %q priority 1 without review", id, channel, want)
+		}
+	}
+	if got := channelByID(t, draft, "adult"); got.CategorySource != "gracenote" {
+		t.Fatalf("adult category source = %q, want exact callsign source", got.CategorySource)
+	}
+}
+
+func TestManualCategoryOverridesMaintainedIdentity(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	category := "News & Weather"
+	if err := service.UpdateChannel(lineup.SourceFingerprint, "usa", ChannelUpdate{Category: &category}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.Build(context.Background(), lineup, []InputChannel{{Key: "usa", CallSign: "USAHD"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel := channelByID(t, draft, "usa")
+	if channel.Category != "News & Weather" || channel.CategorySource != "user" || channel.CategoryPriority != 1 {
+		t.Fatalf("manual category did not override maintained identity: %+v", channel)
 	}
 }
 
@@ -301,7 +352,7 @@ func TestDuplicateSuggestionsAreExplicitAndReversible(t *testing.T) {
 	}
 }
 
-func TestBuildCategorizesExplicitPEGAndBroadcastIdentities(t *testing.T) {
+func TestBuildCategorizesExactMaintainedAndLocalIdentities(t *testing.T) {
 	service := newTestService(t, "", "")
 	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{
 		{Key: "peg", Number: "24", CallSign: "PEG024"},
@@ -317,8 +368,8 @@ func TestBuildCategorizesExplicitPEGAndBroadcastIdentities(t *testing.T) {
 			t.Fatalf("local channel %s = %+v", id, channel)
 		}
 	}
-	if channel := channelByID(t, draft, "cable"); channel.Category != uncategorized {
-		t.Fatalf("ordinary cable identity was classified = %+v", channel)
+	if channel := channelByID(t, draft, "cable"); channel.Category != "Entertainment" || channel.CategoryPriority != 1 {
+		t.Fatalf("maintained cable identity was not classified = %+v", channel)
 	}
 }
 
