@@ -225,7 +225,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 // Preserve their evidence on disk, but quarantine it from current drafts. Old
 // EPG-carried categories also need a fresh scan through the corrected adapters.
 func usableFact(fact StationFact) bool {
-	if strings.Contains(fact.Method, "exact provider channel number plus") && !strings.Contains(fact.Method, "number-policy-local-v1") {
+	if strings.Contains(fact.Method, "exact provider channel number plus") && !strings.Contains(fact.Method, "number-policy-local-v1") && !strings.Contains(fact.Method, "number-policy-provider-v2") {
 		return false
 	}
 	// Old Xfinity labels and their EPG-carried copies must not outlive the
