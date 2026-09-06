@@ -1040,6 +1040,7 @@
     const tmdbMessage = document.createElement('p'); tmdbMessage.setAttribute('role','status');
     const tmdbScan = document.createElement('button'); tmdbScan.type = 'button'; tmdbScan.textContent = 'Scan TMDB enrichment data'; tmdbScan.disabled = true;
     const tmdbBody = document.createElement('div'); tmdbBody.className = 'panel-body'; tmdbBody.append(tmdbMessage, tmdbScan);
+    const tmdbChevron = document.createElement('span'); tmdbChevron.className = 'panel-chevron'; tmdbChevron.textContent = '›'; tmdbChevron.setAttribute('aria-hidden', 'true'); tmdbTitle.append(tmdbChevron);
     tmdbPanel.append(tmdbTitle, tmdbBody); document.getElementById('category-review-panel').before(tmdbPanel);
     let tmdbCategoryTimer;
     async function loadTMDBCategoryState() {
