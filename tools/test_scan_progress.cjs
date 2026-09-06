@@ -15,6 +15,10 @@ c.renderAliasIndex({job:{action:'postal',running:true,completedCount:2,totalCoun
 assert.equal(els.scanProgressBar.style.width,'25%');assert.equal(els.stopScan.hidden,false);
 c.renderAliasIndex({job:{action:'market',running:false,lastError:'foreign error'},postalScan:{status:'complete',completedAt:'2026-09-05T00:00:00Z'}});
 assert.equal(els.scanProgressBar.style.width,'100%');assert.ok(!node('alias-last-refresh').textContent.includes('never'));
+assert.equal(els.postalScan.textContent,'Rescan providers in this ZIP');
+c.renderAliasIndex({job:{},postalScan:{status:'complete'},queue:{queued:true}});assert.equal(els.postalScan.textContent,'Queued — click to cancel');
+c.renderAliasIndex({job:{},postalScan:{status:'complete'},queue:{guideBusy:true}});assert.equal(els.postalScan.textContent,'Queue provider scan');
+c.renderAliasIndex({job:{},postalScan:{status:'error'}});assert.equal(els.postalScan.textContent,'Scan providers in this ZIP');
 const view={job:{action:'postal',running:true,completedCount:7,totalCount:8,currentProvider:'LOCAL'},next:{rank:1,name:'New York',postalCode:'10001'},catalog:{asOf:'2025-09'},scans:[]};
 Object.assign(c,{api:async()=>view,clearTimeout(){},setTimeout:()=>1});
 vm.runInContext(script.slice(script.indexOf('    const marketStart =')),c);

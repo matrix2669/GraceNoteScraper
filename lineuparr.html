@@ -627,7 +627,7 @@
       els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
       els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
       els.postalScan.disabled = !!sharedJob.running || scanStarting;
-      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
+      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : postalScan?.status === 'complete' ? 'Rescan providers in this ZIP' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
       const refreshed = postalScan?.completedAt;
       const refreshLabel = document.getElementById('alias-last-refresh');
@@ -993,6 +993,17 @@
           const count = status => rows.filter(row => row.access === status).length;
           summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${count('error')} source failures, ${count('empty')} no source matches`;
           section.append(summary);
+          const rescan = document.createElement('button');
+          rescan.type = 'button'; rescan.className = 'secondary';
+          rescan.textContent = `Rescan ZIP ${scan.postalCode}`; rescan.disabled = !!view.job.running;
+          rescan.addEventListener('click', async () => {
+            rescan.disabled = true; marketStart.disabled = true;
+            try {
+              await api('/api/lineuparr/markets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rank:scan.marketRank})});
+              await loadAliasIndex(); await loadMajorMarkets();
+            } catch (error) { marketStatus.textContent = error.message; rescan.disabled = false; marketStart.disabled = false; }
+          });
+          section.append(rescan);
           const yieldText = value => `${value.aliases} aliases, ${value.categories} categories, ${value.currentStations} current station IDs`;
           const totals = document.createElement('p');totals.textContent = `All providers: ${yieldText(scan.allProviderYield)}. New families only: ${yieldText(scan.newFamilyYield)}.`;section.append(totals);
           for (const row of rows) {

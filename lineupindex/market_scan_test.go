@@ -86,6 +86,29 @@ func TestOneMarketAddressSkipsAndCounterfactual(t *testing.T) {
 	if len(reopened.index.Lineups) != 5 {
 		t.Fatalf("repeated lineup IDs overwrote market records: %d", len(reopened.index.Lineups))
 	}
+	grids := config.Grids.(*fakeGrids)
+	grids.mu.Lock()
+	before := grids.calls["L1"]
+	grids.mu.Unlock()
+	if _, err := reopened.StartMarket(1, nil); err != nil {
+		t.Fatal(err)
+	}
+	view = waitMarket(t, reopened)
+	grids.mu.Lock()
+	after := grids.calls["L1"]
+	grids.mu.Unlock()
+	if len(view.Scans) != 2 || view.Next.Rank != 3 || after <= before {
+		t.Fatalf("rescan must rerun existing market without consuming next: %+v, calls %d -> %d", view, before, after)
+	}
+	if _, err := reopened.StartMarket(0, nil); err == nil {
+		t.Fatal("invalid rank accepted")
+	}
+	reopened.mu.Lock()
+	reopened.job.Running = true
+	reopened.mu.Unlock()
+	if _, err := reopened.StartMarket(1, nil); err != ErrAlreadyRunning {
+		t.Fatalf("rescan bypassed busy guard: %v", err)
+	}
 }
 func TestMarketCatalogAndNumberOnlyEPGGuard(t *testing.T) {
 	catalog := marketCatalog()
