@@ -20,6 +20,15 @@ sports require a 15-point separation. Missing tags do not imply Entertainment,
 Faith or Music. These provisional thresholds need continued reviewed-sample
 validation, not claims of calibrated accuracy.
 
+Sports airtime describes programming, not whether the service is a permanent
+network. An exact retained identity naming MLB Extra Innings, NBA League Pass,
+NHL Center Ice, NFL RedZone, or another explicit event product classifies that
+channel as priority-1 `PPV & Events` before the schedule profile is considered.
+The rule uses the full attributable package/feed identity; team names, league
+abbreviations, and sports airtime alone do not qualify. A maintained permanent
+network identity such as MLB Network remains `Sports` even if an event-like
+alias is present.
+
 TMDB original-language evidence may provisionally identify an unknown service
 as `International` when, across the same fourteen-day weekday window, usable
 language data covers at least 50% of airtime on at least eight weekdays and at
@@ -214,7 +223,7 @@ Aliases derived directly from Gracenote include callsigns, station IDs, lineup-p
 - The optional public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records, enabled with `LINEUPARR_IPTV_ORG_URL`.
 - Optional reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), enabled with `LINEUPARR_REFERENCE_CATALOGS=on`.
 
-The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves. Explicit PEG/public-access identities resolve to `Local & Public`; an FCC-style station callsign needs a recognized affiliate or a broadcast suffix such as `DT`, `TV`, `LP`, or a numbered digital subchannel. A callsign-like network brand alone is not local evidence.
+The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view, league-package, seasonal, team-event, and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves. Explicit PEG/public-access identities resolve to `Local & Public`; an FCC-style station callsign needs a recognized affiliate or a broadcast suffix such as `DT`, `TV`, `LP`, or a numbered digital subchannel. A callsign-like network brand alone is not local evidence.
 
 A separate maintained exact-identity catalog supplies priority-1 categories for reviewed major networks and callsigns. It includes national entertainment services such as USA, TNT, TBS, Syfy, E!, Freeform, BBC America, COZI, ION, Antenna TV and Rewind TV; major news, sports, kids, music and faith services; broadcast-network identities such as ABC, CBS, NBC, Fox, CW and PBS; premium movie brands such as HBO, Cinemax, Showtime, The Movie Channel, Starz and MGM+; and reviewed adult, international and local identities. Matching is exact after punctuation/whitespace normalization and an optional terminal HD or SD marker—never a substring or fuzzy channel-name match. Language/market identity outranks local distribution: reviewed Spanish-language station identities such as WLTV and WAMI are `International` even though they are terrestrial local stations. This lets stable network identity outrank misleading programme-format evidence, such as a movie-heavy Freeform schedule or an international movie service, while preventing a similar-looking unknown name from being assigned automatically. One unambiguous category from the selected provider's exact official source otherwise takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
 

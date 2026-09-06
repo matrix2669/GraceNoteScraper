@@ -220,6 +220,40 @@ func TestBuildMaintainedIdentityOutranksScheduleInference(t *testing.T) {
 	}
 }
 
+func TestBuildExplicitEventPackageIdentityOutranksSportsSchedule(t *testing.T) {
+	service := newTestService(t, "", "")
+	inputs := []InputChannel{
+		{
+			Key:      "team-feed",
+			CallSign: "MLBARI",
+			ExternalAliases: []AttributedAlias{{
+				Value: "Arizona Diamondbacks: MLB Extra Innings", Source: "xfinity-official-lineup", Method: "exact provider identity",
+			}},
+			CategoryHint: &AttributedCategory{Priority: 3, Value: "Sports", Source: "gracenote-schedule", Label: "Weekday schedule inference", Method: "100% sports airtime"},
+		},
+		{
+			Key:      "permanent-network",
+			CallSign: "MLB Network",
+			ExternalAliases: []AttributedAlias{{
+				Value: "MLB Extra Innings", Source: "contaminated-source", Method: "test contamination",
+			}},
+			CategoryHint: &AttributedCategory{Priority: 3, Value: "Sports", Source: "gracenote-schedule", Label: "Weekday schedule inference", Method: "100% sports airtime"},
+		},
+	}
+	draft, err := service.Build(context.Background(), testContext("source-one"), inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	event := channelByID(t, draft, "team-feed")
+	if event.Category != "PPV & Events" || event.CategoryPriority != 1 || event.NeedsCategoryReview || event.CategorySource != "xfinity-official-lineup" || event.CategoryMethod != channelcategory.ExplicitEventIdentityMethod {
+		t.Fatalf("event package category = %+v", event)
+	}
+	permanent := channelByID(t, draft, "permanent-network")
+	if permanent.Category != "Sports" || permanent.CategoryPriority != 1 || permanent.NeedsCategoryReview || permanent.CategoryMethod != channelcategory.MaintainedIdentityMethod {
+		t.Fatalf("permanent network category = %+v", permanent)
+	}
+}
+
 func TestManualCategoryOverridesMaintainedIdentity(t *testing.T) {
 	service := newTestService(t, "", "")
 	lineup := testContext("source-one")
