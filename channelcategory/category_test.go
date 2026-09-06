@@ -100,6 +100,10 @@ func TestMaintainedIdentityCatalogUsesExactPriorityOneMatches(t *testing.T) {
 		{identity: "SYFYHD", want: Entertainment},
 		{identity: "BBC America", want: Entertainment},
 		{identity: "BBCAHD", want: Entertainment},
+		{identity: "COZI", want: Entertainment},
+		{identity: "IONHD", want: Entertainment},
+		{identity: "Antenna TV", want: Entertainment},
+		{identity: "REWINDTV", want: Entertainment},
 		{identity: "HBOHTS", want: Movies},
 		{identity: "HBODRMA", want: Movies},
 		{identity: "HBOLAHD", want: Movies},
@@ -114,6 +118,21 @@ func TestMaintainedIdentityCatalogUsesExactPriorityOneMatches(t *testing.T) {
 		{identity: "CINLUS", want: International},
 		{identity: "VMOVHD", want: International},
 		{identity: "CDINAHD", want: International},
+		{identity: "GALAHD", want: International},
+		{identity: "ANT3I", want: International},
+		{identity: "ECUAVI", want: International},
+		{identity: "UNIMPHD", want: International},
+		{identity: "UNIPHD", want: International},
+		{identity: "ZEETVH", want: International},
+		{identity: "SETHHD", want: International},
+		{identity: "JADESF", want: International},
+		{identity: "FILPEHD", want: International},
+		{identity: "GMAPNY", want: International},
+		{identity: "SIC", want: International},
+		{identity: "TV5MOHD", want: International},
+		{identity: "RAIIHD", want: International},
+		{identity: "WLTV", want: International},
+		{identity: "WAMIDT", want: International},
 		{identity: "Hustler HD (Comcast)", want: Other},
 		{identity: "VIVIDHC", want: Other},
 		{identity: "MATURE", want: Other},
@@ -186,6 +205,24 @@ func TestMaintainedIdentityCatalogRejectsConflictingChannelEvidence(t *testing.T
 	}
 	if match, ok := ResolveIdentity("UNKNOWN", "", "HBO", "HBOHD"); !ok || match.Category != Movies {
 		t.Fatalf("equivalent exact identities = %+v, %v", match, ok)
+	}
+}
+
+func TestMaintainedInternationalIdentityOutranksBroadcastHeuristic(t *testing.T) {
+	for _, callSign := range []string{"WLTV", "WLTVDT", "WAMI", "WAMIDT"} {
+		match, ok := ResolveIdentity(callSign, "UNIVISION")
+		if !ok || match.Category != International || match.Priority != MaintainedIdentityPriority {
+			t.Errorf("ResolveIdentity(%q) = %+v, %v; want priority-1 International", callSign, match, ok)
+		}
+	}
+}
+
+func TestMaintainedMulticastNetworkOutranksLocalStationCallSign(t *testing.T) {
+	for _, affiliate := range []string{"COZI", "ION Independent Television", "Antenna TV", "Rewind TV"} {
+		match, ok := ResolveIdentity("WXYZDT3", affiliate)
+		if !ok || match.Category != Entertainment || match.Priority != MaintainedIdentityPriority {
+			t.Errorf("ResolveIdentity(WXYZDT3, %q) = %+v, %v; want priority-1 Entertainment", affiliate, match, ok)
+		}
 	}
 }
 

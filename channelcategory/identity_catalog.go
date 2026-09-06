@@ -51,6 +51,8 @@ var maintainedIdentities = []identityDefinition{
 		"Discovery Channel", "Discovery", "TLC", "HGTV", "Food Network", "Travel Channel",
 		"OWN", "Lifetime", "WE tv", "Vice", "Reelz", "UPtv", "Hallmark Channel", "Nat Geo Wild",
 		"MTV", "VH1", "BET", "CMT",
+		"Antenna TV", "ANTENNATV", "Bounce", "Bounce TV", "GRIT", "GRIT TV",
+		"Cozi TV", "COZI", "ION", "ION Television", "ION Independent Television", "Rewind TV", "REWINDTV",
 	}},
 	{category: KidsFamily, aliases: []string{
 		"Disney Channel", "DISN", "Disney XD", "DXD", "Nickelodeon", "NICK",
@@ -70,6 +72,13 @@ var maintainedIdentities = []identityDefinition{
 		"CentroAmerica TV", "CentroAmericaTV", "CENTROA", "Cine Mexicano", "Cine Mexicano US Feed", "CMEX",
 		"Cine Latino", "Cine Latino US", "CINLUS", "ViendoMovies", "VMOV",
 		"Cinema Dinamita", "CDINA",
+		"Galavision", "GALA", "Antena 3 Internacional", "ANT3I", "Ecuavisa Internacional", "ECUAVI",
+		"UniMas Pacific", "UNIMASP", "UNIMP", "Univision Pacific", "UNIP",
+		"Zee TV", "ZEETV", "ZEETVH", "Sony Entertainment Television", "SET", "SETH",
+		"Jade Satellite Feed", "JADESF", "The Filipino Channel", "FILIPE", "FILPE",
+		"GMA Pinoy TV", "GMAPNY", "SIC Internacional", "SIC",
+		"TV5MONDE", "TV5MOND", "TV5MO", "RAI Italia", "RAII",
+		"WLTV", "WLTVDT", "WAMI", "WAMIDT",
 	}},
 	{category: Other, aliases: []string{
 		"Adult Programming", "Hustler", "Hustler TV", "Hustler HD (Comcast)", "CHSTLRH",

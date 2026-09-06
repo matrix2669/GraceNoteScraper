@@ -142,9 +142,16 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		if label == "" {
 			label = source
 		}
+		message := "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence"
+		switch source {
+		case "tmdb-language-schedule":
+			message = "Applied provisionally only when TMDB original_language covers at least 50% of weekday airtime across at least eight days and eight distinct titles, with more than 60% non-English airtime; exact identities and user categories take precedence"
+		case "tmdb-schedule":
+			message = "Applied provisionally from optional TMDB search-result genres when stronger exact or schedule evidence is unavailable; exact identities and user categories take precedence"
+		}
 		statuses = append(statuses, SourceStatus{
 			ID: source, Label: label, Status: "derived", Matched: categoryHintMatches[source],
-			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
+			Message: message,
 		})
 	}
 
