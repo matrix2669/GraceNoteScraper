@@ -2199,23 +2199,38 @@
     const tmdbChevron = document.createElement('span'); tmdbChevron.className = 'panel-chevron'; tmdbChevron.textContent = '›'; tmdbChevron.setAttribute('aria-hidden', 'true'); tmdbTitle.append(tmdbChevron);
     tmdbPanel.append(tmdbTitle, tmdbBody); document.getElementById('category-review-panel').before(tmdbPanel);
     let tmdbCategoryTimer;
+    let tmdbCategoryState = '';
+    function renderTMDBCategoryState(state) {
+      clearTimeout(tmdbCategoryTimer);
+      tmdbCategoryState = state.state || tmdbCategoryState;
+      tmdbMessage.textContent = state.message;
+      tmdbScan.disabled = !['ready','current'].includes(tmdbCategoryState);
+      tmdbScan.hidden = tmdbCategoryState === 'not-configured' || tmdbCategoryState === 'no-provider';
+      if (!['not-configured','no-provider'].includes(tmdbCategoryState)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+    }
     async function loadTMDBCategoryState() {
       clearTimeout(tmdbCategoryTimer);
       try {
         const state = await api('/api/lineuparr/tmdb-categories');
-        tmdbMessage.textContent = state.message;
-        tmdbScan.disabled = !['ready','current'].includes(state.state);
-        tmdbScan.hidden = state.state === 'not-configured' || state.state === 'no-provider';
-        if (!['not-configured','no-provider'].includes(state.state)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+        renderTMDBCategoryState(state);
       } catch(error) { tmdbMessage.textContent = error.message; tmdbScan.disabled = true; }
     }
     tmdbScan.addEventListener('click', async () => {
+      clearTimeout(tmdbCategoryTimer);
       tmdbScan.disabled = true;
+      tmdbScan.setAttribute('aria-busy', 'true');
+      tmdbMessage.textContent = 'Scanning cached TMDB programme evidence…';
       try {
         const result = await api('/api/lineuparr/tmdb-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-        tmdbMessage.textContent = result.message; await loadDraft();
-      } catch(error) { tmdbMessage.textContent = error.message; }
-      finally { await loadTMDBCategoryState(); }
+        renderTMDBCategoryState(result);
+        await loadDraft();
+      } catch(error) {
+        tmdbMessage.textContent = error.message;
+        tmdbScan.disabled = !['ready','current'].includes(tmdbCategoryState);
+        if (!['not-configured','no-provider'].includes(tmdbCategoryState)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+      } finally {
+        tmdbScan.removeAttribute('aria-busy');
+      }
     });
     loadTMDBCategoryState();
     initCollapsibleSections();
