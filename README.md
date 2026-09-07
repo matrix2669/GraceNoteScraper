@@ -71,6 +71,9 @@ docker compose up -d --build
 ## Requirements
 
 - Docker and Docker Compose, **or** Go 1.25+ for building from source
+- Native Dispatcharr stream review also requires Python 3. Docker includes it.
+  The matcher scripts are embedded in the binary. For faster native matching,
+  install `rapidfuzz==3.14.5` in the selected Python environment.
 - (Optional) A [TMDB API read access token](https://www.themoviedb.org/settings/api) for poster images and metadata
 
 ## Building from Source
@@ -104,6 +107,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
 | `LINEUPARR_IPTV_ORG_URL` | Public channel database URL. Set to `off` to disable. | `https://iptv-org.github.io/api/channels.json` |
 | `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
+| `LINEUPARR_MATCHER_PYTHON` | Python 3 executable for explicit Dispatcharr stream refresh (native installations may use an absolute path) | `python3` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -148,19 +152,19 @@ channel. Confirm and Deny apply only to that stream-name group/channel pair;
 neither decision prevents matches to other included channels. Counts distinguish
 physical streams from stream/channel matches. Saved decisions remain in
 review history and support Undo. Re-including the
-channel restores the effect of its saved decisions. After changing channel
-inclusion, refresh match review to rebuild suggestions; cached Confirm/Deny
+channel restores the effect of its saved decisions. Removing channels filters the saved pairs immediately. Adding or re-including a
+channel hides cached results until Refresh streams is pressed; cached Confirm/Deny
 requests for a now-excluded target are rejected without saving.
 
-Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Delimited `US`, `GO`, `Prime`, `Tubi`, and `ROKU` provider prefixes, common HD/UHD markers, punctuation, and spacing are normalized. A leading HDHomeRun-style number is removed only when it exactly equals Dispatcharr's channel-number metadata, so event years and unrelated numeric names remain intact. A score is never accepted automatically:
+Press **Refresh streams** to fetch the current stream inventory and run the pinned Lineuparr Python matcher once at 70%. It returns all accepted stream/channel pairs with its original scores. A visible progress bar starts with fetching streams, then shows actual channels processed and percentage during matching. This measures completed channels, not estimated remaining time. Refresh is explicit: connecting, browsing, Load more, Confirm, Deny, Undo, and export do not launch Python or fetch streams. A score is never accepted automatically:
 
-- **Confirm** adds one representative reviewed stream-name alias only when the independent name score is below 95%. Names at or above 95% are already eligible under Lineuparr's required **Exact** sensitivity and are not duplicated in the JSON. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.
+- **Confirm** adds one representative reviewed stream-name alias only when the independent name score is below 95%. Names at or above 95% are omitted under the selected returned-score export policy. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.
 - **Deny** records every current constituent stream/channel pairing in the reviewed group. Each saved full stream name with its own independent name score of at least 95 is exported in that channel's `excluded_aliases`. A higher score on another group member or an EPG-ID-boosted overall score cannot qualify a lower-scoring name. Only equivalent full names are deduplicated, ignoring capitalization and collapsing whitespace; prefixes, punctuation, quality suffixes, and word boundaries remain significant. Lower-scoring denials are not exported because Exact mode would not accept them. When a fuzzy proposal had other qualifying targets, the already-scored alternatives open immediately for separate confirmation or denial.
 - **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
 
 Confirm and deny actions remove their row immediately without locking or re-sorting the remaining review page. The initial page contains 100 groups; **Load more** explicitly requests the next 100. Decisions retain the safe normalized stream identity as well as the active lineup, stream fingerprint, and target channel, so equivalent account variants, authentication changes, and container restarts do not restore reviewed rows. The confirmed counter opens reviewed matches.
 
-The threshold decision uses an independent name score rather than the overall proposal score. An exact provider TVG/EPG ID can make the overall proposal 100% even when the names are unrelated; because Lineuparr does not consume lineup JSON `epg_ids`, that confirmation still exports a name alias when its name score is below 95%. This prevents non-name evidence from being mistaken for a match that Lineuparr can reproduce.
+New decisions store the returned Python score and matcher revision. Go does not add a score boost or admit extra EPG-only candidates. Earlier decisions retain their original scores; use Undo and refresh to review those pairs with the new matcher. The same implementation requires the same matching inputs for score equivalence; see [matcher provenance and input profile](lineuparr_matcher/README.md). In particular, Lineuparr can boost a sub-95 score above 95 after admission at 70 even when an Exact scan would reject it before boosting. This implementation retains the returned score as requested and does not run a second Exact scan.
 
 #### Exclusion compatibility and existing decisions
 
@@ -194,7 +198,7 @@ group again to capture such variants. Saved published JSON changes only after a
 new explicit export, so retain the old snapshot until consumer compatibility is
 verified.
 
-Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
+Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Scored pairs are retained in memory until the next explicit refresh or restart. Failed refreshes preserve the previous complete snapshot with a visible warning. After restart or changes to channel names, numbers, or base aliases, press Refresh streams again. Removing channels and making review decisions filter existing pairs. Adding or re-including channels hides the cached results and requires Refresh streams.
 
 ## HTTP Endpoints
 

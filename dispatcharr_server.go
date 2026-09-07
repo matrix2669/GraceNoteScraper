@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +16,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	lineuparrmatcher "github.com/daniel-widrick/GraceNoteScraper/lineuparr_matcher"
 )
 
 const (
@@ -29,13 +32,55 @@ type dispatcharrAPI interface {
 }
 
 type dispatcharrServer struct {
-	lineup   *lineuparrServer
-	config   *dispatcharr.ConfigStore
-	client   dispatcharrAPI
-	configMu sync.Mutex
-	cache    dispatcharrStreamCache
-	reviewMu sync.RWMutex
-	review   dispatcharrCandidateCache
+	lineup     *lineuparrServer
+	config     *dispatcharr.ConfigStore
+	client     dispatcharrAPI
+	configMu   sync.Mutex
+	cache      dispatcharrStreamCache
+	reviewMu   sync.RWMutex
+	review     dispatcharrCandidateCache
+	refreshMu  sync.Mutex
+	progressMu sync.Mutex
+	progress   dispatcharrMatchProgress
+	snapshot   dispatcharrMatchSnapshot
+	matcher    func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
+}
+
+type dispatcharrMatchProgress struct {
+	Stage     string `json:"stage"`
+	Completed int    `json:"completed"`
+	Total     int    `json:"total"`
+}
+
+func (s *dispatcharrServer) setMatchProgress(stage string, completed, total int) {
+	s.progressMu.Lock()
+	s.progress = dispatcharrMatchProgress{stage, completed, total}
+	s.progressMu.Unlock()
+}
+
+func (s *dispatcharrServer) handleProgress(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.progressMu.Lock()
+	progress := s.progress
+	s.progressMu.Unlock()
+	w.Header().Set("Cache-Control", "no-store")
+	writeLineuparrJSON(w, http.StatusOK, progress)
+}
+
+type dispatcharrMatchSnapshot struct {
+	channels               []dispatcharr.MatchChannel
+	dispatcharrFingerprint string
+	lineupFingerprint      string
+	digest                 string
+	candidates             []dispatcharr.Candidate
+	streamCount            int
+	fetchedAt              time.Time
+	version                string
+	warning                string
 }
 
 type dispatcharrCandidateCache struct {
@@ -259,26 +304,16 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 	if !ok {
 		return
 	}
+	if _, built := s.buildReview(w, r, false); !built {
+		return
+	}
 	candidates, found := s.cachedCandidateGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
 	if !found {
 		if candidate, candidateFound := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key); candidateFound {
 			candidates, found = []dispatcharr.Candidate{candidate}, true
 		}
 	}
-	if !found {
-		build, built := s.buildReview(w, r, false)
-		if !built {
-			return
-		}
-		dispatchConfig = build.dispatchConfig
-		lineupConfig = build.lineupConfig
-		candidates, found = s.cachedCandidateGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
-		if !found {
-			if candidate, candidateFound := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key); candidateFound {
-				candidates, found = []dispatcharr.Candidate{candidate}, true
-			}
-		}
-	}
+
 	if !found {
 		http.Error(w, "match candidate is no longer current", http.StatusConflict)
 		return
@@ -300,7 +335,8 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			decisionKey = body.Key
 		}
 		decisions = append(decisions, lineuparrbuilder.MatchDecision{
-			Key: decisionKey, Decision: body.Decision,
+			MatcherVersion: candidate.MatcherVersion,
+			Key:            decisionKey, Decision: body.Decision,
 			DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
 			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
 			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
@@ -313,7 +349,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 	}, w) {
 		return
 	}
-	s.removeCachedGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key, candidates)
+
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
 
@@ -332,31 +368,112 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return dispatcharrReviewBuild{}, false
 	}
-	streams, fetchedAt, cached, warning, err := s.cache.get(r.Context(), s.client, dispatchConfig, force)
-	if err != nil {
-		http.Error(w, "Unable to load M3U streams: "+err.Error(), http.StatusBadGateway)
-		return dispatcharrReviewBuild{}, false
+
+	channels, includedTargets := dispatcharrSnapshotChannels(draft)
+	digest := dispatcharrInputDigest(channels)
+	s.reviewMu.RLock()
+	snapshot := s.snapshot
+	s.reviewMu.RUnlock()
+	// Removing targets can reuse the previous scan. Remember the reduced input
+	// set so a later addition is not silently treated as part of that review.
+	if snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && !snapshot.fetchedAt.IsZero() && dispatcharrInputsSubset(channels, snapshot.channels) {
+		previousDigest := snapshot.digest
+		snapshot.channels = channels
+		snapshot.digest = digest
+		s.reviewMu.Lock()
+		if s.snapshot.digest == previousDigest && s.snapshot.fetchedAt.Equal(snapshot.fetchedAt) {
+			s.snapshot = snapshot
+		}
+		s.reviewMu.Unlock()
 	}
-	currentDispatch, stillConfigured := s.config.Get()
-	if !stillConfigured || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() {
+	if force {
+		if !s.refreshMu.TryLock() {
+			http.Error(w, "A stream refresh is already running", http.StatusConflict)
+			return dispatcharrReviewBuild{}, false
+		}
+		defer s.refreshMu.Unlock()
+		s.setMatchProgress("fetching", 0, 0)
+		defer s.setMatchProgress("idle", 0, 0)
+		streams, fetchErr := s.client.Streams(r.Context(), dispatchConfig)
+		failureMessage := "Unable to fetch Dispatcharr streams. Check the connection and retry Refresh streams."
+		var matches dispatcharr.CandidateSet
+		var version string
+		if fetchErr == nil {
+			matcher := s.matcher
+			if matcher == nil {
+				matcher = dispatcharr.MatchStreamCandidatesWithLineuparr
+			}
+			country := lineupConfig.Gracenote.Country
+			if country == "USA" {
+				country = "US"
+			}
+			if country == "CAN" {
+				country = "CA"
+			}
+			s.setMatchProgress("matching", 0, len(channels))
+			matchContext := dispatcharr.WithMatchProgress(r.Context(), func(done, total int) {
+				s.setMatchProgress("matching", done, total)
+			})
+			matches, version, fetchErr = matcher(matchContext, dispatchConfig.Fingerprint(), country, channels, streams, nil)
+			s.setMatchProgress("finishing", len(channels), len(channels))
+			failureMessage = "Matching failed. Check that Python 3 is installed (LINEUPARR_MATCHER_PYTHON), or retry with a smaller stream inventory if the match exceeded five minutes."
+		}
+		if fetchErr != nil {
+			// The previous complete snapshot is retained. No partial results are published.
+			if snapshot.dispatcharrFingerprint != dispatchConfig.Fingerprint() || snapshot.lineupFingerprint != lineupConfig.Fingerprint() || snapshot.digest != digest || snapshot.fetchedAt.IsZero() {
+				http.Error(w, failureMessage, http.StatusBadGateway)
+				return dispatcharrReviewBuild{}, false
+			}
+			snapshot.warning = failureMessage + " Showing the last completed stream review."
+		} else {
+			currentDraft, currentLineup, _, valid := s.lineup.buildDraft(w, r)
+			if !valid {
+				return dispatcharrReviewBuild{}, false
+			}
+			currentChannels, currentIncluded := dispatcharrSnapshotChannels(currentDraft)
+			currentDispatch, connected := s.config.Get()
+			if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() || currentLineup.Fingerprint() != lineupConfig.Fingerprint() || !dispatcharrInputsSubset(currentChannels, channels) {
+				http.Error(w, "The lineup or connection changed during refresh; refresh streams again", http.StatusConflict)
+				return dispatcharrReviewBuild{}, false
+			}
+			generation := fmt.Sprintf("%s:%d", digest, time.Now().UnixNano())
+			for i := range matches.All {
+				matches.All[i].ReviewGeneration = generation
+				matches.All[i].Key = fmt.Sprintf("%x", sha256.Sum256([]byte(matches.All[i].Key+generation)))
+			}
+			snapshot = dispatcharrMatchSnapshot{
+				dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
+				channels: channels, digest: digest, candidates: matches.All, streamCount: len(streams), fetchedAt: time.Now().UTC(), version: version,
+			}
+			includedTargets = currentIncluded
+			snapshot.channels = currentChannels
+			snapshot.digest = dispatcharrInputDigest(currentChannels)
+			digest = snapshot.digest
+		}
+		s.reviewMu.Lock()
+		s.snapshot = snapshot
+		s.reviewMu.Unlock()
+	}
+	currentDispatch, connected := s.config.Get()
+	if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() {
 		http.Error(w, "The Dispatcharr connection changed; reload match review", http.StatusConflict)
 		return dispatcharrReviewBuild{}, false
 	}
-
-	channels := make([]dispatcharr.MatchChannel, 0, len(draft.Channels))
-	includedTargets := make(map[string]bool)
-	for _, channel := range draft.Channels {
-		if !channel.Included {
-			continue
-		}
-		includedTargets[channel.ID] = true
-		channels = append(channels, dispatcharr.MatchChannel{
-			ID: channel.ID, Number: channel.Number, Name: channel.Name, Category: channel.Category,
-			Aliases: append([]string(nil), channel.Aliases...), EPGIDs: append([]string(nil), channel.EPGIDs...),
-		})
+	validSnapshot := snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && snapshot.digest == digest && !snapshot.fetchedAt.IsZero()
+	warning := snapshot.warning
+	if !validSnapshot {
+		warning = "Refresh required to match streams to the included channels. Press Refresh streams."
+		snapshot.streamCount = 0
+		snapshot.fetchedAt = time.Time{}
 	}
 	stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
 	matcherDecisions := make(map[string]dispatcharr.Decision, len(stored))
+	for _, decision := range stored {
+		if decision.MatcherVersion != lineuparrmatcher.Revision {
+			warning = strings.TrimSpace(warning + " Some saved reviews use an older matcher. Undo and refresh to review them with the current matcher.")
+			break
+		}
+	}
 	for key, decision := range stored {
 		// Retain history, but an excluded target cannot reserve a stream.
 		if !includedTargets[decision.ChannelID] {
@@ -372,7 +489,12 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if len(history) > dispatcharrReviewLimit {
 		history = history[:dispatcharrReviewLimit]
 	}
-	matches := dispatcharr.MatchStreamCandidates(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
+
+	matches := dispatcharr.CandidateSet{}
+	if validSnapshot {
+		matches.All = dispatcharr.FilterSnapshotCandidates(snapshot.candidates, includedTargets, matcherDecisions)
+	}
+
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
@@ -382,8 +504,8 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
-			FetchedAt: fetchedAt, Cached: cached, Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
+			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
+			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
 		candidates: matches.Primary, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
 	}, true
@@ -568,6 +690,7 @@ func (s *dispatcharrServer) removeCachedGroup(dispatchFingerprint, lineupFingerp
 func (s *dispatcharrServer) clearCandidateCache() {
 	s.reviewMu.Lock()
 	s.review = dispatcharrCandidateCache{}
+	s.snapshot = dispatcharrMatchSnapshot{}
 	s.reviewMu.Unlock()
 }
 
@@ -619,4 +742,54 @@ func (c *dispatcharrStreamCache) clear() {
 	c.fetchedAt = time.Time{}
 	c.streams = nil
 	c.mu.Unlock()
+}
+
+// Snapshot inputs omit evidence generated by review decisions: confirmation and
+// Undo only filter existing pairs. Removals reuse the remaining pairs; additions
+// require an explicit refresh against the new set of included channels.
+func dispatcharrSnapshotChannels(draft *lineuparrbuilder.Draft) ([]dispatcharr.MatchChannel, map[string]bool) {
+	channels := make([]dispatcharr.MatchChannel, 0, len(draft.Channels))
+	included := make(map[string]bool)
+	for _, c := range draft.Channels {
+		included[c.ID] = c.Included
+		if !c.Included {
+			continue
+		}
+		aliases := make([]string, 0)
+		for _, evidence := range c.AliasEvidence {
+			for _, source := range evidence.Sources {
+				if source != "dispatcharr-confirmed" && source != "dispatcharr-denied" {
+					aliases = append(aliases, evidence.Value)
+					break
+				}
+			}
+		}
+		sort.Strings(aliases)
+		channels = append(channels, dispatcharr.MatchChannel{ID: c.ID, Number: c.Number, Name: c.Name, Aliases: aliases, EPGIDs: []string{c.StationID}})
+	}
+	sort.Slice(channels, func(i, j int) bool { return channels[i].ID < channels[j].ID })
+	return channels, included
+}
+func dispatcharrInputDigest(channels []dispatcharr.MatchChannel) string {
+	encoded, _ := json.Marshal(struct {
+		Revision string
+		Channels []dispatcharr.MatchChannel
+	}{lineuparrmatcher.Revision, channels})
+	return fmt.Sprintf("%x", sha256.Sum256(encoded))
+}
+
+func dispatcharrInputsSubset(current, scanned []dispatcharr.MatchChannel) bool {
+	if len(current) > len(scanned) {
+		return false
+	}
+	indexed := make(map[string]string, len(scanned))
+	for _, c := range scanned {
+		indexed[c.ID] = dispatcharrInputDigest([]dispatcharr.MatchChannel{c})
+	}
+	for _, c := range current {
+		if indexed[c.ID] != dispatcharrInputDigest([]dispatcharr.MatchChannel{c}) {
+			return false
+		}
+	}
+	return true
 }

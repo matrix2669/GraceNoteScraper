@@ -253,7 +253,7 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		if normalized == "" {
 			continue
 		}
-		key := candidateGroupKey(candidate.Source, candidate.ChannelID, normalized)
+		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration, candidate.ChannelID, normalized)
 		group := groups[key]
 		if group == nil {
 			group = &CandidateGroup{

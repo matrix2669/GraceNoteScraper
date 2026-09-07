@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
@@ -102,7 +103,9 @@ func newDispatcharrTestServer(t *testing.T, configured bool) (*dispatcharrServer
 	fake := &fakeDispatcharrAPI{streams: []dispatcharr.Stream{
 		{ID: 10, Name: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3},
 	}}
-	return &dispatcharrServer{lineup: lineup, config: config, client: fake}, fake
+	return &dispatcharrServer{lineup: lineup, config: config, client: fake, matcher: func(_ context.Context, source, _ string, channels []dispatcharr.MatchChannel, streams []dispatcharr.Stream, decisions map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error) {
+		return dispatcharr.MatchStreamCandidates(source, channels, streams, decisions), "test-matcher", nil
+	}}, fake
 }
 
 func TestDispatcharrConfigNeverReturnsPassword(t *testing.T) {
@@ -157,7 +160,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	// station ID makes it reviewable, preserving coverage for a user-confirmed
 	// sub-threshold alias without relying on the retired broad fuzzy proposal.
 	fake.streams = []dispatcharr.Stream{{ID: 10, Name: "TWO East", TVGID: "100", M3UAccountID: 3}}
-	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
 	if recorder.Code != http.StatusOK {
@@ -267,6 +270,12 @@ func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 		t.Fatalf("alternate groups = %+v", groups)
 	}
 	server.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), []dispatcharr.Candidate{candidate})
+	draft, _, _, ok := server.lineup.buildDraft(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/lineuparr/draft", nil))
+	if !ok {
+		t.Fatal("draft unavailable")
+	}
+	channels, _ := dispatcharrSnapshotChannels(draft)
+	server.snapshot = dispatcharrMatchSnapshot{dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(), digest: dispatcharrInputDigest(channels), candidates: []dispatcharr.Candidate{candidate}, fetchedAt: time.Now(), streamCount: 1}
 	fake.streamErr = errors.New("alternate decision must not refresh streams")
 	payload := `{"key":"` + groups[0].Key + `","decision":"confirmed","tvgIds":["Two.us"]}`
 	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
@@ -284,7 +293,7 @@ func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 
 func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	server, _ := newDispatcharrTestServer(t, true)
-	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
 	var review dispatcharrReviewResponse
@@ -347,7 +356,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *test
 		{ID: 11, Name: "US: TWO", TVGID: "Two.us", M3UAccountID: 7},
 		{ID: 12, Name: "TWO", TVGID: "Two-East.us", M3UAccountID: 11},
 	}
-	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
 	var review dispatcharrReviewResponse
@@ -389,7 +398,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *test
 
 func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
 	server, _ := newDispatcharrTestServer(t, true)
-	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
 	var review dispatcharrReviewResponse
@@ -413,7 +422,7 @@ func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
 	server.cache.clear()
 	server.clearCandidateCache()
 
-	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil)
 	recorder = httptest.NewRecorder()
 	server.handleReview(recorder, request)
 	if recorder.Code != http.StatusOK {
