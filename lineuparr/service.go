@@ -287,6 +287,9 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 		draft.AliasCount += len(channel.Aliases)
 	}
+	if err := AttachDraftSignatures(draft); err != nil {
+		return nil, fmt.Errorf("signing Lineuparr draft: %w", err)
+	}
 	return draft, nil
 }
 
@@ -473,6 +476,18 @@ func sourceMatchForChannel(statusID string, ids, providerIDs map[string]bool, ch
 		methods = appendUniqueStringFold(methods, channel.CategoryMethod)
 	}
 	return matched, aliases, epgIDs, methods
+}
+
+func (s *Service) WorkflowProgress(fingerprint string) WorkflowProgress {
+	return s.store.WorkflowProgress(fingerprint)
+}
+
+func (s *Service) SetTMDBDisposition(fingerprint, disposition string, completedAt time.Time) error {
+	return s.store.SetTMDBDisposition(fingerprint, disposition, completedAt)
+}
+
+func (s *Service) CompleteCustomization(fingerprint, signature string, completedAt time.Time) error {
+	return s.store.CompleteCustomization(fingerprint, signature, completedAt)
 }
 
 func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpdate) error {
