@@ -12,7 +12,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.evaluate(({code})=>{
    const main=document.querySelector('main');
    const add=(id)=>{const panel=document.createElement('details');panel.id=id;panel.className='panel';panel.append(document.createElement('summary'));const body=document.createElement('div');body.className='panel-body';panel.append(body);main.append(panel)};
-   for(const id of ['alias-panel','major-market-panel','tmdb-category-panel','category-review-panel','dispatch-panel'])add(id);
+   for(const id of ['alias-panel','major-market-panel','tmdb-category-panel','category-review-panel','dispatch-panel'])if(!document.getElementById(id))add(id);
    window.els={exportOpen:document.getElementById('export-open')};
    window.draft={sourceFingerprint:'source',customizationSignature:'custom',exportSignatures:{included:'i',aliases:'a',categories:'c',rows:{}},channels:[{id:'one',included:true,category:'News',needsCategoryReview:true}]};
    window.saving=false;window.localExportChanges=new Set();window.workflowProgress={};window.workflowRemote={};window.workflowVector='';window.workflowInitialized=false;window.workflowRefreshTimer=0;window.workflowRefreshing=false;window.savedExport=null;window.savedExportDownload=null;window.exportSummaryRequest=0;
