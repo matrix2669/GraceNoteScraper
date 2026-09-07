@@ -1015,10 +1015,10 @@
         completeButton.textContent = customization.complete ? 'Lineup Customization Complete' : 'Mark Lineup Customization Complete';
         completeButton.disabled = saving || customization.complete;
       }
-      if (!states.length || states.some(item => !item.ready)) return;
-      const vector = states.map(item => `${item.step}:${item.complete ? 1 : 0}:${item.skipped ? 1 : 0}`).join('|');
+      if (!states.length) return;
+      const vector = states.map(item => `${item.step}:${item.ready ? 1 : 0}:${item.complete ? 1 : 0}:${item.skipped ? 1 : 0}`).join('|');
       if (!workflowInitialized || vector !== workflowVector) {
-        const next = states.find(item => !item.complete);
+        const next = states.find(item => !item.ready || !item.complete);
         for (const item of states) item.panel.open = item === next;
         workflowVector = vector;
         workflowInitialized = true;
