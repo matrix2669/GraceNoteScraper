@@ -25,19 +25,27 @@ func TestMatchStreamsNormalizesProviderPrefixesAndQuality(t *testing.T) {
 	}
 }
 
-func TestMatchStreamsRejectsNamesThatLineuparrExactRejects(t *testing.T) {
-	channels := []MatchChannel{
-		{ID: "tmc", Name: "TMCHD"},
-		{ID: "nat-geo-wild", Name: "NGWILD"},
-		{ID: "freeform", Name: "FREFMHD"},
+func TestMatchStreamsPreservesPlusAndShiftIdentity(t *testing.T) {
+	channels := []MatchChannel{{ID: "disney-plus", Name: "Disney+"}, {ID: "nick-plus-one", Name: "Nickelodeon+1"}}
+	streams := []Stream{{ID: 1, M3UAccountID: 3, Name: "Disney HD"}, {ID: 2, M3UAccountID: 3, Name: "Nickelodeon 1"}}
+	for _, candidate := range MatchStreams("source", channels, streams, nil) {
+		if candidate.NameScore >= 95 {
+			t.Fatalf("plus or shift collapsed into Exact match: %+v", candidate)
+		}
 	}
-	streams := []Stream{
-		{ID: 1, M3UAccountID: 3, Name: "885 TMC HD"},
-		{ID: 2, M3UAccountID: 3, Name: "US| NAT GEO WILD HD"},
-		{ID: 3, M3UAccountID: 3, Name: "US: FREEFORM EAST HD"},
+}
+
+func TestMatchStreamsNormalizesLineuparrCountryAndNumberVariants(t *testing.T) {
+	channels := []MatchChannel{{ID: "bbc-one", Name: "BBC One"}, {ID: "cnn", Name: "CNN"}}
+	streams := []Stream{{ID: 1, M3UAccountID: 3, Name: "UK| BBC 1 HD"}, {ID: 2, M3UAccountID: 3, Name: "US CNN HD"}}
+	got := MatchStreams("source", channels, streams, nil)
+	if len(got) != 2 {
+		t.Fatalf("country or number variants = %+v", got)
 	}
-	if got := MatchStreams("source", channels, streams, nil); len(got) != 0 {
-		t.Fatalf("Lineuparr-incompatible proposals = %+v", got)
+	for _, candidate := range got {
+		if candidate.NameScore != 100 {
+			t.Fatalf("expected Lineuparr-compatible exact score: %+v", candidate)
+		}
 	}
 }
 
@@ -195,36 +203,36 @@ func TestUnrelatedStreamHasNoCandidate(t *testing.T) {
 	}
 }
 
-func TestMatchStreamsDoesNotProposeSingleTokenTypoBelowLineuparrExact(t *testing.T) {
+func TestMatchStreamsFindsSingleTokenTypoForAliasReview(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "discovery", Number: "620", Name: "Discovery"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "Discvery HD"}},
 		nil,
 	)
-	if len(got) != 0 {
-		t.Fatalf("Lineuparr-incompatible typo candidate = %+v", got)
+	if len(got) != 1 || got[0].ChannelID != "discovery" || got[0].Score < minimumReviewCandidateScore {
+		t.Fatalf("single-token typo candidate = %+v", got)
 	}
 }
 
-func TestMatchStreamsDoesNotProposeAdjacentTranspositionBelowLineuparrExact(t *testing.T) {
+func TestMatchStreamsFindsAdjacentTranspositionForAliasReview(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "discovery", Number: "620", Name: "Discovery"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "Dicsovery HD"}},
 		nil,
 	)
-	if len(got) != 0 {
-		t.Fatalf("Lineuparr-incompatible transposition candidate = %+v", got)
+	if len(got) != 1 || got[0].ChannelID != "discovery" || got[0].Score < minimumReviewCandidateScore {
+		t.Fatalf("transposed-name candidate = %+v", got)
 	}
 }
 
-func TestShortDistinctiveChannelNameMustMeetLineuparrExact(t *testing.T) {
+func TestShortDistinctiveChannelNameCanBeReviewed(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "cnn", Number: "600", Name: "CNN"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "CNN USA East"}},
 		nil,
 	)
-	if len(got) != 0 {
-		t.Fatalf("Lineuparr-incompatible short-name candidate = %+v", got)
+	if len(got) != 1 || got[0].ChannelID != "cnn" || got[0].Score < minimumReviewCandidateScore {
+		t.Fatalf("short-name candidate = %+v", got)
 	}
 }
 

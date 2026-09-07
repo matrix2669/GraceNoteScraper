@@ -11,10 +11,10 @@ import (
 	"unicode"
 )
 
-// minimumCandidateScore is Lineuparr's "Exact" sensitivity threshold.  The
-// Dispatcharr review is an authoring aid for a Lineuparr export, so it must not
-// offer a name that the consumer would subsequently reject.
-const minimumCandidateScore = 95
+// minimumReviewCandidateScore bounds the operator's review queue. It is
+// deliberately independent from Lineuparr Exact's 95% export boundary: an
+// operator confirms sub-95 names specifically so they can be emitted as aliases.
+const minimumReviewCandidateScore = 70
 
 type preparedIdentity struct {
 	compact string
@@ -117,7 +117,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			}
 		}
 		for index := range gramCandidates {
-			if score := identitiesSingleTypoScore(streamIdentities, prepared[index].identities); !indexes[index] && score >= minimumCandidateScore {
+			if score := identitiesSingleTypoScore(streamIdentities, prepared[index].identities); !indexes[index] && score >= minimumReviewCandidateScore {
 				indexes[index] = true
 				typoScores[index] = score
 			}
@@ -141,7 +141,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			if tvgID := strings.ToLower(strings.TrimSpace(stream.TVGID)); tvgID != "" && prepared[index].epgIDs[tvgID] {
 				score, reason = 100, "Exact EPG ID"
 			}
-			if score < minimumCandidateScore {
+			if score < minimumReviewCandidateScore {
 				continue
 			}
 			if denied[decisionPairKey(streamHash, channel.ID)] || deniedAliases[aliasDecisionKey(normalizedAlias, channel.ID)] {
@@ -552,8 +552,7 @@ func scoreStreamName(stream Stream, streamIdentities []preparedIdentity, channel
 		}
 	}
 	// Channel numbers can help the operator understand a candidate, but they
-	// are not part of Lineuparr's stream-name matcher and must never promote a
-	// name across its Exact threshold.
+	// are not part of the name score used by the Lineuparr export decision.
 	return bestScore, bestReason
 }
 
@@ -699,6 +698,12 @@ func normalizedTokens(value string, stripQuality bool) []string {
 	value = stripDelimitedProviderPrefix(strings.TrimSpace(value))
 	var builder strings.Builder
 	for _, r := range strings.ToLower(value) {
+		if r == '+' {
+			// Plus is semantic in names such as Disney+ and Nickelodeon+1; treating
+			// it as decoration incorrectly turns those into their base channels.
+			builder.WriteString(" plus ")
+			continue
+		}
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			builder.WriteRune(r)
 		} else {
@@ -707,7 +712,7 @@ func normalizedTokens(value string, stripQuality bool) []string {
 	}
 	tokens := strings.Fields(builder.String())
 	if !stripQuality {
-		return tokens
+		return normalizeNumberWords(tokens)
 	}
 	result := tokens[:0]
 	for _, token := range tokens {
@@ -716,10 +721,55 @@ func normalizedTokens(value string, stripQuality bool) []string {
 		}
 		result = append(result, token)
 	}
-	return result
+	return normalizeNumberWords(result)
+}
+
+func normalizeNumberWords(tokens []string) []string {
+	// Do not collapse a one-word callsign such as "TWO" into a one-character
+	// token. Number-word equivalence matters in compound names (BBC One/BBC 1),
+	// while a standalone callsign remains its own identity.
+	if len(tokens) < 2 {
+		return tokens
+	}
+	for index, token := range tokens {
+		switch token {
+		case "zero":
+			tokens[index] = "0"
+		case "one":
+			tokens[index] = "1"
+		case "two":
+			tokens[index] = "2"
+		case "three":
+			tokens[index] = "3"
+		case "four":
+			tokens[index] = "4"
+		case "five":
+			tokens[index] = "5"
+		case "six":
+			tokens[index] = "6"
+		case "seven":
+			tokens[index] = "7"
+		case "eight":
+			tokens[index] = "8"
+		case "nine":
+			tokens[index] = "9"
+		}
+	}
+	return tokens
 }
 
 func stripDelimitedProviderPrefix(value string) string {
+	fields := strings.Fields(value)
+	if len(fields) > 1 {
+		country := strings.ToLower(fields[0])
+		if country == "usa" && strings.EqualFold(fields[1], "network") {
+			return value
+		}
+		switch country {
+		case "us", "uk", "ca", "au", "fr", "de", "mx", "mex", "fra", "ger", "usa":
+			return strings.Join(fields[1:], " ")
+		}
+	}
 	lower := strings.ToLower(value)
 	for _, prefix := range []string{"prime", "tubi", "roku", "usa", "can", "go", "us", "ca", "uk", "gb"} {
 		if !strings.HasPrefix(lower, prefix) || len(value) <= len(prefix) {
