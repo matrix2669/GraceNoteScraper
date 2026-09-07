@@ -178,6 +178,7 @@ type ChannelOverride struct {
 }
 
 type MatchDecision struct {
+	MatcherVersion         string    `json:"matcherVersion,omitempty"`
 	Key                    string    `json:"key"`
 	Decision               string    `json:"decision"`
 	DispatcharrFingerprint string    `json:"dispatcharrFingerprint"`

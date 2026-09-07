@@ -62,7 +62,10 @@ func newLineuparrTestServer(t *testing.T, configured bool) *lineuparrServer {
 	}
 	state.UpdateForSource(&guide.TVGuide{LineupChannels: []guide.Channel{
 		{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TWO", Affiliate: "Two Network", EventCallSigns: []string{"TWO"}},
-		{ID: "100", PlacementID: "1002", ChannelNo: "502", CallSign: "TWOHD", Affiliate: "Two Network", EventCallSigns: []string{"TWOHD"}},
+		// Use two genuinely equivalent consumer-facing identities so the
+		// Dispatcharr one-to-many review tests do not depend on the former
+		// local fuzzy match between TWO and TWOHD.
+		{ID: "100", PlacementID: "1002", ChannelNo: "502", CallSign: "TWO", Affiliate: "Two Network", EventCallSigns: []string{"TWO"}},
 	}}, fingerprint)
 	return &lineuparrServer{store: store, state: state, builder: builder}
 }
