@@ -70,15 +70,24 @@ func TestApproveMixedCategoriesAtomically(t *testing.T) {
 	}
 	service := &Service{store: store}
 	rows := []DraftChannel{{ID: "a", Category: "Movies", Included: true, NeedsCategoryReview: true, CategoryPriority: 4}, {ID: "b", Category: "Sports", Included: true, NeedsCategoryReview: true, CategoryPriority: 3}}
-	bad := append([]DraftChannel(nil), rows...)
-	bad[1].Included = false
+	choices := []CategoryReviewChoice{{Channel: rows[0], Category: "Entertainment"}, {Channel: rows[1], Category: "Sports"}}
+	bad := append([]CategoryReviewChoice(nil), choices...)
+	bad[1].Channel.Included = false
 	if err := service.ApproveReviewedCategories("test", bad); err == nil {
 		t.Fatal("invalid batch accepted")
 	}
 	if len(store.Snapshot("test")) != 0 {
 		t.Fatal("partial batch persisted")
 	}
-	if err := service.ApproveReviewedCategories("test", rows); err != nil {
+	invalidCategory := append([]CategoryReviewChoice(nil), choices...)
+	invalidCategory[1].Category = "Not a master category"
+	if err := service.ApproveReviewedCategories("test", invalidCategory); err == nil {
+		t.Fatal("invalid category accepted")
+	}
+	if len(store.Snapshot("test")) != 0 {
+		t.Fatal("invalid category partially persisted")
+	}
+	if err := service.ApproveReviewedCategories("test", choices); err != nil {
 		t.Fatal(err)
 	}
 	reopened, err := LoadStateStore(path)
@@ -86,10 +95,10 @@ func TestApproveMixedCategoriesAtomically(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := reopened.Snapshot("test")
-	if got["a"].Category != "Movies" || got["b"].Category != "Sports" || got["b"].CategoryReview.Proposed != "Sports" {
+	if got["a"].Category != "Entertainment" || got["a"].CategoryReview.Proposed != "Movies" || got["a"].CategoryReview.Chosen != "Entertainment" || got["b"].Category != "Sports" || got["b"].CategoryReview.Proposed != "Sports" || got["b"].CategoryReview.Chosen != "Sports" {
 		t.Fatal(got)
 	}
-	if err := service.ApproveReviewedCategories("test", rows); err == nil {
+	if err := service.ApproveReviewedCategories("test", choices); err == nil {
 		t.Fatal("stale batch overwrote manual choices")
 	}
 }

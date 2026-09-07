@@ -829,6 +829,7 @@
     }
 
     const categoryReviewSelection = new Set();
+    const categoryReviewEdits = new Map();
     let categoryReviewSelectionSource = '';
     let categoryReviewApproving = false;
     let categoryReviewFilter = '';
@@ -844,6 +845,10 @@
       const name = String(channel.name || '').trim();
       const normalize = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
       return name && normalize(name) !== normalize(callSign) ? name : '';
+    }
+
+    function categoryReviewCategory(channel) {
+      return categoryReviewEdits.has(channel.id) ? categoryReviewEdits.get(channel.id) : channel.category;
     }
 
     function categoryReviewCompare(left, right) {
@@ -863,13 +868,14 @@
     }
 
     function renderCategoryReview() {
-      if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
+      if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewEdits.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
       const list = document.getElementById('category-review-list');
       const pending = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
       document.getElementById('category-review-count').textContent = `(${pending.length.toLocaleString()} remaining)`;
       list.replaceChildren();
       const eligible = new Set(pending.map(channel => channel.id));
       for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
+      for (const id of categoryReviewEdits.keys()) if (!eligible.has(id)) categoryReviewEdits.delete(id);
       if (!pending.length) { list.textContent = 'No included channels need category review.'; return; }
 
       const filterCategories = [...new Set(categories().filter(Boolean))].sort(categoryReviewNaturalCompare);
@@ -899,15 +905,20 @@
       all.checked = channels.length > 0 && categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
       allLabel.append(all, document.createTextNode(' Select all shown'));
       all.addEventListener('change', () => { categoryReviewSelection.clear(); if (all.checked) for (const channel of channels) categoryReviewSelection.add(channel.id); renderCategoryReview(); });
-      const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Approving…' : `Approve selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
+      const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Confirming…' : `Confirm selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
       approve.addEventListener('click', async () => {
-        const selected = pending.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
+        const selected = pending.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:categoryReviewCategory(channel)}));
         categoryReviewApproving = true; renderCategoryReview();
-        try { await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})}); categoryReviewSelection.clear(); await reloadDraft(); }
+        try {
+          await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})});
+          categoryReviewSelection.clear();
+          for (const channel of selected) categoryReviewEdits.delete(channel.id);
+          await reloadDraft();
+        }
         catch(error) { showMessage(error.message,true); }
         finally { categoryReviewApproving = false; renderCategoryReview(); }
       });
-      const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Changing a category selects that row. Commit saves one row; Confirm selected saves every selected row with the category currently shown.';
       batch.append(allLabel,approve); list.append(help,batch);
 
       if (!channels.length) {
@@ -931,7 +942,7 @@
         for (const channel of groups.get(priority)) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
-        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for confirmation`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
         const title = document.createElement('button'); title.type = 'button'; title.className = 'channel-name category-review-channel-link'; title.title = 'Show upcoming programmes';
         const callSign = String(channel.callSign || channel.name || 'Unnamed channel').trim();
@@ -949,12 +960,21 @@
         const label = document.createElement('label'); label.textContent = 'Category';
         const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
         for (const category of categories()) select.add(new Option(category, category));
-        select.value = channel.category; select.disabled = categoryReviewApproving; label.append(select);
-        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Confirm'; confirm.disabled = categoryReviewApproving;
-        select.addEventListener('change', () => { confirm.textContent = select.value === channel.category ? 'Confirm' : 'Save correction'; });
+        select.value = categoryReviewCategory(channel); select.disabled = categoryReviewApproving; label.append(select);
+        const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Commit'; confirm.disabled = categoryReviewApproving;
+        select.addEventListener('change', () => {
+          if (select.value === channel.category) categoryReviewEdits.delete(channel.id); else categoryReviewEdits.set(channel.id, select.value);
+          categoryReviewSelection.add(channel.id);
+          renderCategoryReview();
+        });
         confirm.addEventListener('click', async () => {
           select.disabled = true;
-          try { await saveChannel(channel, {category:select.value}, confirm); }
+          try {
+            if (await saveChannel(channel, {category:categoryReviewCategory(channel)}, confirm)) {
+              categoryReviewSelection.delete(channel.id);
+              categoryReviewEdits.delete(channel.id);
+            }
+          }
           finally { select.disabled = false; renderCategoryReview(); }
         });
         controls.append(label, confirm); row.append(identity, controls); group.append(row);
@@ -1061,9 +1081,11 @@
         const saved = await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
         if ('category' in patch) { channel.categoryReview = saved.categoryReview; channel.categorySource = 'user'; channel.categoryPriority = 1; channel.needsCategoryReview = false; renderCategoryOptions(); }
         showMessage('Saved.'); setTimeout(() => { if (els.message.textContent === 'Saved.') showMessage(''); }, 1300);
+        return true;
       } catch (error) {
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
         showMessage(error.message, true);
+        return false;
       } finally {
         control.disabled = false; renderSummary(); renderChannels(); renderCategoryReview();
       }

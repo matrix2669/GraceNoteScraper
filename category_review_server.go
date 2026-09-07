@@ -40,16 +40,16 @@ func (s *lineuparrServer) handleApproveCategories(w http.ResponseWriter, r *http
 	for _, channel := range draft.Channels {
 		currentRows[channel.ID] = channel
 	}
-	selected := []lineuparrbuilder.DraftChannel{}
+	selected := []lineuparrbuilder.CategoryReviewChoice{}
 	seen := map[string]bool{}
 	for _, requested := range body.Channels {
 		channel, exists := currentRows[requested.ID]
-		if !exists || seen[requested.ID] || !channel.Included || !channel.NeedsCategoryReview || channel.Category != requested.Category {
+		if !exists || seen[requested.ID] || !channel.Included || !channel.NeedsCategoryReview {
 			http.Error(w, "Category proposals changed; reload before approving. Nothing was saved.", 409)
 			return
 		}
 		seen[requested.ID] = true
-		selected = append(selected, channel)
+		selected = append(selected, lineuparrbuilder.CategoryReviewChoice{Channel: channel, Category: requested.Category})
 	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error { return s.builder.ApproveReviewedCategories(config.Fingerprint(), selected) })
 	if err != nil {
