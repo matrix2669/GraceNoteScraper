@@ -52,7 +52,12 @@ func (s *lineuparrServer) handleExportSummary(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Provider changed; reload", 409)
 		return
 	}
-	writeLineuparrJSON(w, 200, map[string]any{"exists": true, "filename": filename, "publishedAt": record.PublishedAt, "path": lineuparrPublishedPrefix + url.PathEscape(filename)})
+	signatures, err := lineuparrbuilder.SignExportJSON(record.Data)
+	if err != nil {
+		http.Error(w, "The saved export could not be compared", http.StatusInternalServerError)
+		return
+	}
+	writeLineuparrJSON(w, 200, map[string]any{"exists": true, "filename": filename, "publishedAt": record.PublishedAt, "path": lineuparrPublishedPrefix + url.PathEscape(filename), "signatures": signatures})
 }
 
 var publishedLineuparrFilename = regexp.MustCompile(`^[A-Z]{2}_[\pL\pN-]+_lineup\.json$`)
@@ -117,7 +122,7 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 	}
 	writeLineuparrJSON(w, http.StatusOK, map[string]any{
 		"path":     lineuparrPublishedPrefix + url.PathEscape(record.Filename),
-		"filename": record.Filename, "publishedAt": record.PublishedAt,
+		"filename": record.Filename, "publishedAt": record.PublishedAt, "signatures": draft.ExportSignatures,
 	})
 }
 

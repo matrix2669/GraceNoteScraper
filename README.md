@@ -100,7 +100,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | Variable | Description | Default |
 |---|---|---|
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
-| `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
+| `LINEUPARR_STATE_PATH` | Saved channel choices and source-scoped Lineuparr workflow progress | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
 | `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, keyed by export filename | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
 | `LINEUPARR_CATALOG_URLS` | Comma-separated Lineuparr JSON source override. Blank uses the matching built-in source list; `off` disables catalogs. | — |
@@ -122,21 +122,15 @@ A saved `CONFIG_PATH` selection takes precedence over legacy `GN_*` settings. De
 
 ## Lineuparr JSON Builder
 
-The workflow places Enrichment sources, Alias discovery, Major market enrichment,
-TMDB category evidence, Category review, Channels, Dispatcharr matching, and
-Export JSON in that order when those features are available. Enrichment sources
-remains collapsed by default in the combined application.
+The page presents Local Alias Discovery, Major Market Alias Discovery, TMDB Category Enrichment, Channel Category Review, Lineup Customization, Dispatcharr Stream Matching, and lineup-file generation as seven numbered steps. The next incomplete step opens automatically; every section remains manually accessible and no incomplete step blocks generation. Enrichment sources remains above the workflow and starts collapsed.
 
-Export JSON is a separate section at the bottom. After publishing, it shows the
-saved file's creation time, copyable browser and configured Docker-network URLs,
-and a download link. This summary survives page reloads. Reading it or downloading
-the saved file does not publish edits; use Export JSON again to update the snapshot.
+Local discovery is complete after a normal configured-ZIP scan even if an optional source failed. A stopped scan remains incomplete. Major-market discovery is complete after one normal market scan enriches at least one provider. TMDB can be skipped when no token is configured; a later token reopens that step. Once TMDB category evidence has been scanned, later guide refreshes do not revoke completion, although a manual rescan remains available. Category review completes when no included channels need confirmation. Lineup customization has an explicit completion button and becomes incomplete after a channel inclusion or category choice changes. Dispatcharr has no skip action, but it remains advisory like every earlier step.
 
-Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
+Step 7 is always visible and cannot be collapsed. **Generate Lineup File** publishes without downloading. Afterward it becomes **Re-generate Lineup File** and a separate **Download Lineup File** action appears. The creation time plus browser and configured Docker-network URLs appear as link-styled text; clicking either URL copies it without navigating. Reading or downloading the saved file never publishes edits.
 
-When an Internal base URL is saved in Setup, **Copy Docker-network URL** is also available. It publishes the same snapshot using the configured internal hostname and listening port; it does not create a different lineup or change image URLs. Use this link only from containers sharing the scraper's Docker network. Downloads still use the browser-accessible address. If optional internal-link settings are unavailable, normal downloads and browser URLs remain usable.
+If included channels, aliases, or categories change after generation, the saved snapshot and its URLs remain available and Step 7 names each changed dimension in red. Re-generate the file to replace the snapshot and clear the notice.
 
-The URL serves the **last explicitly exported version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while exporting the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; export again to create the descriptive URL.
+The URL serves the **last explicitly generated version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; use Re-generate Lineup File to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while generating the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; generate again to create the descriptive URL.
 
 Use a scraper hostname and port that the Lineuparr host can reach. A compatible Lineuparr URL-import action can fetch the JSON using its normal lineup filename from the `Content-Disposition` header. The URL grants read access to the exported lineup to anyone who can reach the scraper. It contains no provider credentials or stream URLs. The existing `/api/lineuparr/export` endpoint remains a direct download of the live draft for older clients; it does not update the published snapshot.
 
@@ -174,6 +168,8 @@ Source failures do not interrupt guide generation or prevent a Gracenote-only ex
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
+| `GET, POST /api/lineuparr/workflow` | Read or update source-scoped TMDB and lineup-customization completion state |
+| `GET /api/lineuparr/export-summary` | Read the last generated file summary and comparison signatures without rebuilding the guide |
 | `GET, HEAD /lineuparr/exports/{filename}` | Read the last explicitly exported JSON by its descriptive download filename, without rebuilding; `?download=1` requests an attachment |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |

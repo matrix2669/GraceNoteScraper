@@ -90,23 +90,38 @@ type SourceStatus struct {
 }
 
 type Draft struct {
-	SourceFingerprint    string                `json:"sourceFingerprint"`
-	GeneratedAt          time.Time             `json:"generatedAt"`
-	Package              string                `json:"package"`
-	ProviderName         string                `json:"providerName"`
-	PostalCode           string                `json:"postalCode"`
-	LineupID             string                `json:"lineupId"`
-	CountryCode          string                `json:"countryCode"`
-	Channels             []DraftChannel        `json:"channels"`
-	DuplicateSuggestions []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups      []DuplicateGroup      `json:"duplicateGroups"`
-	Sources              []SourceStatus        `json:"sources"`
-	Total                int                   `json:"total"`
-	Included             int                   `json:"included"`
-	Excluded             int                   `json:"excluded"`
-	AliasCount           int                   `json:"aliasCount"`
-	Categorized          int                   `json:"categorized"`
-	Uncategorized        int                   `json:"uncategorized"`
+	SourceFingerprint      string                `json:"sourceFingerprint"`
+	GeneratedAt            time.Time             `json:"generatedAt"`
+	Package                string                `json:"package"`
+	ProviderName           string                `json:"providerName"`
+	PostalCode             string                `json:"postalCode"`
+	LineupID               string                `json:"lineupId"`
+	CountryCode            string                `json:"countryCode"`
+	Channels               []DraftChannel        `json:"channels"`
+	DuplicateSuggestions   []DuplicateSuggestion `json:"duplicateSuggestions"`
+	DuplicateGroups        []DuplicateGroup      `json:"duplicateGroups"`
+	Sources                []SourceStatus        `json:"sources"`
+	Total                  int                   `json:"total"`
+	Included               int                   `json:"included"`
+	Excluded               int                   `json:"excluded"`
+	AliasCount             int                   `json:"aliasCount"`
+	Categorized            int                   `json:"categorized"`
+	Uncategorized          int                   `json:"uncategorized"`
+	CustomizationSignature string                `json:"customizationSignature"`
+	ExportSignatures       ExportSignatures      `json:"exportSignatures"`
+}
+
+type ExportSignatures struct {
+	Included   string                         `json:"included"`
+	Aliases    string                         `json:"aliases"`
+	Categories string                         `json:"categories"`
+	Rows       map[string]ExportRowSignatures `json:"rows,omitempty"`
+}
+
+type ExportRowSignatures struct {
+	Count      int      `json:"count"`
+	Aliases    []string `json:"aliases"`
+	Categories []string `json:"categories"`
 }
 
 type ChannelUpdate struct {
@@ -123,6 +138,14 @@ type State struct {
 	Version           int                        `json:"version"`
 	SourceFingerprint string                     `json:"sourceFingerprint"`
 	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
+	Workflow          WorkflowProgress           `json:"workflow,omitempty"`
+}
+
+type WorkflowProgress struct {
+	TMDBDisposition          string    `json:"tmdbDisposition,omitempty"`
+	TMDBCompletedAt          time.Time `json:"tmdbCompletedAt,omitempty,omitzero"`
+	CustomizationSignature   string    `json:"customizationSignature,omitempty"`
+	CustomizationCompletedAt time.Time `json:"customizationCompletedAt,omitempty,omitzero"`
 }
 
 type ExportFile struct {
