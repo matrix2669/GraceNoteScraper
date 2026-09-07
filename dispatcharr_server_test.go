@@ -23,6 +23,17 @@ type fakeDispatcharrAPI struct {
 	reset       int
 }
 
+func findDraftChannel(t *testing.T, draft lineuparrbuilder.Draft, id string) lineuparrbuilder.DraftChannel {
+	t.Helper()
+	for _, channel := range draft.Channels {
+		if channel.ID == id {
+			return channel
+		}
+	}
+	t.Fatalf("draft channel %q missing from %+v", id, draft.Channels)
+	return lineuparrbuilder.DraftChannel{}
+}
+
 func (f *fakeDispatcharrAPI) Test(_ context.Context, config dispatcharr.Config) error {
 	f.tested = config
 	return f.testErr
@@ -142,7 +153,10 @@ func TestDispatcharrConfigNeverReturnsAPIKey(t *testing.T) {
 
 func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	server, fake := newDispatcharrTestServer(t, true)
-	fake.streams = []dispatcharr.Stream{{ID: 10, Name: "TWO East", M3UAccountID: 3}}
+	// The name deliberately does not meet Lineuparr Exact. Its trusted Gracenote
+	// station ID makes it reviewable, preserving coverage for a user-confirmed
+	// sub-threshold alias without relying on the retired broad fuzzy proposal.
+	fake.streams = []dispatcharr.Stream{{ID: 10, Name: "TWO East", TVGID: "100", M3UAccountID: 3}}
 	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil)
 	recorder := httptest.NewRecorder()
 	server.handleReview(recorder, request)
@@ -153,13 +167,14 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &review); err != nil {
 		t.Fatal(err)
 	}
-	if review.StreamCount != 1 || review.CandidateCount != 1 || len(review.Candidates) != 1 {
+	if review.StreamCount != 1 || review.CandidateCount != 2 || len(review.Candidates) != 2 {
 		t.Fatalf("review = %+v", review)
 	}
 	if strings.Contains(recorder.Body.String(), "streamFingerprint") || strings.Contains(recorder.Body.String(), "dispatcharrFingerprint") {
 		t.Fatalf("internal fingerprints leaked: %s", recorder.Body.String())
 	}
 	key := review.Candidates[0].Key
+	channelID := review.Candidates[0].ChannelID
 	server.cache.clear()
 	fake.streamErr = errors.New("decision should use the cached candidate")
 
@@ -179,7 +194,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
 		t.Fatal(err)
 	}
-	channel := draft.Channels[0]
+	channel := findDraftChannel(t, draft, channelID)
 	if !containsString(channel.Aliases, "TWO East") || containsString(channel.EPGIDs, "Two.us") {
 		t.Fatalf("confirmed draft channel = %+v", channel)
 	}
@@ -198,8 +213,9 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
 		t.Fatal(err)
 	}
-	if containsString(draft.Channels[0].Aliases, "TWO East") || containsString(draft.Channels[0].EPGIDs, "Two.us") {
-		t.Fatalf("cleared decision still applied: %+v", draft.Channels[0])
+	channel = findDraftChannel(t, draft, channelID)
+	if containsString(channel.Aliases, "TWO East") {
+		t.Fatalf("cleared decision still applied: %+v", channel)
 	}
 }
 

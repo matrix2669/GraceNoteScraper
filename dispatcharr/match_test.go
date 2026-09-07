@@ -1,9 +1,6 @@
 package dispatcharr
 
-import (
-	"strings"
-	"testing"
-)
+import "testing"
 
 func TestMatchStreamsNormalizesProviderPrefixesAndQuality(t *testing.T) {
 	channels := []MatchChannel{
@@ -25,6 +22,22 @@ func TestMatchStreamsNormalizesProviderPrefixesAndQuality(t *testing.T) {
 	}
 	if byStream[2].ChannelID != "usa" {
 		t.Fatalf("USA Network candidate = %+v", byStream[2])
+	}
+}
+
+func TestMatchStreamsRejectsNamesThatLineuparrExactRejects(t *testing.T) {
+	channels := []MatchChannel{
+		{ID: "tmc", Name: "TMCHD"},
+		{ID: "nat-geo-wild", Name: "NGWILD"},
+		{ID: "freeform", Name: "FREFMHD"},
+	}
+	streams := []Stream{
+		{ID: 1, M3UAccountID: 3, Name: "885 TMC HD"},
+		{ID: 2, M3UAccountID: 3, Name: "US| NAT GEO WILD HD"},
+		{ID: 3, M3UAccountID: 3, Name: "US: FREEFORM EAST HD"},
+	}
+	if got := MatchStreams("source", channels, streams, nil); len(got) != 0 {
+		t.Fatalf("Lineuparr-incompatible proposals = %+v", got)
 	}
 }
 
@@ -182,36 +195,36 @@ func TestUnrelatedStreamHasNoCandidate(t *testing.T) {
 	}
 }
 
-func TestMatchStreamsFindsSingleTokenTypo(t *testing.T) {
+func TestMatchStreamsDoesNotProposeSingleTokenTypoBelowLineuparrExact(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "discovery", Number: "620", Name: "Discovery"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "Discvery HD"}},
 		nil,
 	)
-	if len(got) != 1 || got[0].ChannelID != "discovery" || got[0].Score < minimumCandidateScore || !strings.HasPrefix(got[0].Reason, "Fuzzy name") {
-		t.Fatalf("single-token typo candidate = %+v", got)
+	if len(got) != 0 {
+		t.Fatalf("Lineuparr-incompatible typo candidate = %+v", got)
 	}
 }
 
-func TestMatchStreamsFindsAdjacentTransposition(t *testing.T) {
+func TestMatchStreamsDoesNotProposeAdjacentTranspositionBelowLineuparrExact(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "discovery", Number: "620", Name: "Discovery"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "Dicsovery HD"}},
 		nil,
 	)
-	if len(got) != 1 || got[0].ChannelID != "discovery" || got[0].Score < minimumCandidateScore {
-		t.Fatalf("transposed-name candidate = %+v", got)
+	if len(got) != 0 {
+		t.Fatalf("Lineuparr-incompatible transposition candidate = %+v", got)
 	}
 }
 
-func TestShortDistinctiveChannelNameCanBeProposed(t *testing.T) {
+func TestShortDistinctiveChannelNameMustMeetLineuparrExact(t *testing.T) {
 	got := MatchStreams("source",
 		[]MatchChannel{{ID: "cnn", Number: "600", Name: "CNN"}},
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "CNN USA East"}},
 		nil,
 	)
-	if len(got) != 1 || got[0].ChannelID != "cnn" || got[0].Score < minimumCandidateScore {
-		t.Fatalf("short-name candidate = %+v", got)
+	if len(got) != 0 {
+		t.Fatalf("Lineuparr-incompatible short-name candidate = %+v", got)
 	}
 }
 
@@ -224,7 +237,7 @@ func TestExactChannelNameBeatsConflictingAlias(t *testing.T) {
 		[]Stream{{ID: 1, M3UAccountID: 3, Name: "CSPAN2"}},
 		nil,
 	)
-	if len(got) != 1 || got[0].ChannelID != "cspan2" || got[0].Score != 99 {
+	if len(got) != 1 || got[0].ChannelID != "cspan2" || got[0].Score != 100 {
 		t.Fatalf("direct-name candidate = %+v", got)
 	}
 }

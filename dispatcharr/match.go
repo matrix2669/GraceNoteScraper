@@ -11,7 +11,10 @@ import (
 	"unicode"
 )
 
-const minimumCandidateScore = 78
+// minimumCandidateScore is Lineuparr's "Exact" sensitivity threshold.  The
+// Dispatcharr review is an authoring aid for a Lineuparr export, so it must not
+// offer a name that the consumer would subsequently reject.
+const minimumCandidateScore = 95
 
 type preparedIdentity struct {
 	compact string
@@ -548,19 +551,18 @@ func scoreStreamName(stream Stream, streamIdentities []preparedIdentity, channel
 			}
 		}
 	}
-	if sameNumber && bestScore >= 60 {
-		bestScore = min(99, bestScore+4)
-		bestReason += " + channel number"
-	}
+	// Channel numbers can help the operator understand a candidate, but they
+	// are not part of Lineuparr's stream-name matcher and must never promote a
+	// name across its Exact threshold.
 	return bestScore, bestReason
 }
 
 func identityScore(left, right preparedIdentity, allowBroadContainment bool) (int, string) {
 	if left.compact == right.compact {
 		if right.primary {
-			return 99, "Exact normalized channel name"
+			return 100, "Exact normalized channel name"
 		}
-		return 98, "Exact normalized name or alias"
+		return 99, "Exact normalized name or alias"
 	}
 	if qualifiedIdentityContained(left, right) || qualifiedIdentityContained(right, left) {
 		return 88, "Qualified contained name"
@@ -645,7 +647,10 @@ func prepareIdentities(values []string) []preparedIdentity {
 	seen := make(map[string]bool)
 	result := make([]preparedIdentity, 0, len(values)*2)
 	for _, value := range values {
-		for _, stripQuality := range []bool{false, true} {
+		// Lineuparr normalizes provider decoration and standalone quality tags
+		// before comparing names.  Keeping a second raw identity here created
+		// false "exact" matches such as TMCHD -> TMC HD that Lineuparr rejects.
+		for _, stripQuality := range []bool{true} {
 			tokens := normalizedTokens(value, stripQuality)
 			compact := strings.Join(tokens, "")
 			if len(compact) < 3 || seen[compact] {
