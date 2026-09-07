@@ -31,7 +31,7 @@ func TestDuplicateGroupsManualKeeperAndLastPositionGuard(t *testing.T) {
 	}
 	suggestions := findDuplicateSuggestions(channels)
 	groups := duplicateReviewGroups(channels, suggestions)
-	if len(groups) != 1 || len(groups[0].ChannelIDs) != 3 {
+	if len(groups) != 1 || len(groups[0].ChannelIDs) != 3 || groups[0].KeepID != "a" {
 		t.Fatalf("groups: %+v", groups)
 	}
 	draft := &Draft{Channels: channels, DuplicateSuggestions: suggestions}
@@ -56,5 +56,17 @@ func TestDuplicateGroupsManualKeeperAndLastPositionGuard(t *testing.T) {
 	channels[2].CallSign = "UNRELATED"
 	if got := findDuplicateSuggestions(channels); len(got) != 1 {
 		t.Fatalf("shared ID merged unrelated callsigns: %+v", got)
+	}
+}
+
+func TestDuplicateGroupPrefersQualityThenLowestNumber(t *testing.T) {
+	channels := []DraftChannel{
+		{ID: "sd", StationID: "1", Number: "2", CallSign: "TNTSD", OriginalName: "TNT SD", Included: true},
+		{ID: "hd-high", StationID: "2", Number: "1404", CallSign: "TNTHD", OriginalName: "TNT HD", Included: true},
+		{ID: "hd-low", StationID: "2", Number: "407", CallSign: "TNTHD", OriginalName: "TNT HD", Included: true},
+	}
+	groups := duplicateReviewGroups(channels, findDuplicateSuggestions(channels))
+	if len(groups) != 1 || groups[0].KeepID != "hd-low" {
+		t.Fatalf("preferred group keeper: %+v", groups)
 	}
 }

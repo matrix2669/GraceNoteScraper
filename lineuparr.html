@@ -360,7 +360,7 @@
     <form class="duplicate-review-form" id="duplicate-review-form">
       <header class="duplicate-review-header">
         <h2>Review duplicate channel groups</h2>
-        <p>Checked positions will be kept. SD removal is suggested; exact repeated positions stay checked until you choose which to remove. Keep at least one position in every group.</p>
+        <p>Checked positions will be kept. One preferred position starts checked in each group: the strongest recognized quality, then the lowest channel number. Check any additional positions you also want to keep.</p>
       </header>
       <div class="duplicate-review-list" id="duplicate-review-list"></div>
       <div class="duplicate-review-actions">
@@ -473,6 +473,11 @@
     function activeDuplicateGroups() {
       const byID = new Map(draft.channels.filter(channel => channel.included).map(channel => [channel.id, channel]));
       return (draft.duplicateGroups || []).map(group => ({...group, channels: group.channelIds.map(id => byID.get(id)).filter(Boolean)})).filter(group => group.channels.length > 1);
+    }
+
+    function duplicateDefaultKeepID(group) {
+      if (group.channels.some(channel => channel.id === group.keepId)) return group.keepId;
+      return group.channels[0]?.id || '';
     }
 
     function renderSources() {
@@ -799,14 +804,16 @@
       for (const group of groups) {
         const box = document.createElement('fieldset');
         const title = document.createElement('legend'); title.textContent = `${group.channels[0].name} · ${group.channels.length} positions`;
+        const defaultKeepID = duplicateDefaultKeepID(group);
         box.append(title);
         for (const channel of group.channels) {
           const row = document.createElement('label'); row.className = 'duplicate-review-row';
-          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = !sdRemovals.has(channel.id);
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = channel.id === defaultKeepID;
           input.addEventListener('change', updateDuplicateReviewCount);
           const copy = document.createElement('div'); copy.className = 'duplicate-review-copy';
           const name = document.createElement('div'); name.className = 'duplicate-review-name'; name.textContent = `Keep ${channel.number || '—'} · ${channel.name}`;
-          const meta = document.createElement('div'); meta.className = 'duplicate-review-meta'; meta.textContent = `Callsign ${channel.callSign} · Gracenote ${channel.stationId || 'unknown'} · ${sdRemovals.has(channel.id) ? 'Lower-quality removal suggested' : 'Choose manually if this position is repeated'}`;
+          const recommendation = channel.id === defaultKeepID ? 'Preferred default keeper' : sdRemovals.has(channel.id) ? 'Lower-quality removal suggested' : 'Alternate duplicate position';
+          const meta = document.createElement('div'); meta.className = 'duplicate-review-meta'; meta.textContent = `Callsign ${channel.callSign} · Gracenote ${channel.stationId || 'unknown'} · ${recommendation}`;
           copy.append(name, meta); row.append(input, copy); box.append(row);
         }
         els.duplicateReviewList.append(box);
