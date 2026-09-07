@@ -265,6 +265,9 @@ func ResolveIdentity(callSign, affiliate string, identities ...string) (Match, b
 	if match, ok := resolveMaintainedIdentity(values...); ok {
 		return match, true
 	}
+	if match, ok := resolveExplicitEventIdentity(values...); ok {
+		return match, true
+	}
 	for _, identity := range values {
 		key := strings.ToUpper(compact(identity))
 		key = strings.TrimSuffix(key, "HD")
@@ -441,7 +444,7 @@ func hasEventIdentity(identities []string) bool {
 		key := compact(identity)
 		for _, marker := range []string{
 			"ppv", "payperview", "specialevent", "eventchannel", "eventfeed", "seasonpass", "sportspackage",
-			"leaguepass", "sundayticket", "extrainnings", "centerice", "directkick", "fullcourt", "gameplan",
+			"leaguepass", "sundayticket", "extrainnings", "centerice", "directkick", "fullcourt", "gameplan", "redzone",
 		} {
 			if strings.Contains(key, marker) {
 				return true

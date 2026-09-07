@@ -239,6 +239,50 @@ func TestMaintainedIdentityCatalogHasNoConflictingAliases(t *testing.T) {
 	}
 }
 
+func TestExplicitSportsEventIdentityOutranksScheduleClassification(t *testing.T) {
+	tests := []struct {
+		callSign string
+		identity string
+	}{
+		{callSign: "MLBARI", identity: "Arizona Diamondbacks: MLB Extra Innings"},
+		{callSign: "NBAMIA", identity: "Miami Heat: NBA League Pass"},
+		{callSign: "NHLFLA", identity: "Florida Panthers: NHL Center Ice"},
+		{callSign: "NFLNRZD"},
+	}
+	for _, test := range tests {
+		match, ok := ResolveIdentity(test.callSign, "", test.identity)
+		wantAlias := test.identity
+		if wantAlias == "" {
+			wantAlias = test.callSign
+		}
+		if !ok || match.Category != PPVEvents || match.Priority != MaintainedIdentityPriority || match.Method != ExplicitEventIdentityMethod || match.MatchedAlias != wantAlias {
+			t.Errorf("ResolveIdentity(%q, %q) = %+v, %v; want priority-1 PPV & Events", test.callSign, test.identity, match, ok)
+		}
+	}
+}
+
+func TestExplicitSportsEventIdentityDoesNotOverridePermanentNetwork(t *testing.T) {
+	for _, test := range []struct {
+		callSign string
+		alias    string
+	}{
+		{callSign: "NFL Network", alias: "NFL RedZone event feed"},
+		{callSign: "MLB Network", alias: "MLB Extra Innings"},
+		{callSign: "NBA TV", alias: "NBA League Pass"},
+		{callSign: "NHL Network", alias: "NHL Center Ice"},
+	} {
+		match, ok := ResolveIdentity(test.callSign, "", test.alias)
+		if !ok || match.Category != Sports || match.Priority != MaintainedIdentityPriority || match.Method != MaintainedIdentityMethod {
+			t.Errorf("ResolveIdentity(%q, %q) = %+v, %v; want permanent priority-1 Sports identity", test.callSign, test.alias, match, ok)
+		}
+	}
+	for _, identity := range []string{"MLBARI", "Miami Heat", "NBA Basketball", "NHL Tonight", "League Passing Report", "Extra Inningsish"} {
+		if match, ok := ResolveIdentity(identity, ""); ok {
+			t.Errorf("ResolveIdentity(%q) unexpectedly inferred an event identity: %+v", identity, match)
+		}
+	}
+}
+
 func TestOnDemandAndPPVDisambiguation(t *testing.T) {
 	onDemand, ok := Resolve("On Demand & PPV", "HBO On Demand")
 	if !ok || onDemand.Category != Other {
