@@ -152,6 +152,67 @@ func TestEPGMatchingRejectsAffiliateOnlyIdentity(t *testing.T) {
 	}
 }
 
+func TestSharedProviderIdentityBecomesCrossGNIDCandidateWithoutPersistence(t *testing.T) {
+	blocks := testEPGBlocks()
+	scan := testEPGScan("L1", "DIRECTV", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+		testEPGChannel("10093", "FREEFRM", "", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "SD"),
+		testEPGChannel("59615", "FREFMHD", "", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "HD"),
+	}}})
+	scan.Facts = epgIdentityFacts(ProviderEvidenceResult{
+		Facts: []ProviderFact{{StationID: "10093", Kind: FactCategory, Value: "Entertainment"}},
+		IdentityFacts: []ProviderFact{
+			{StationID: "10093", Kind: FactAlias, Value: "Freeform", Method: "exact shared provider identity; EPG confirmation required"},
+			{StationID: "59615", Kind: FactAlias, Value: "Freeform", Method: "exact shared provider identity; EPG confirmation required"},
+			{StationID: "10093", Kind: FactCategory, Value: "Entertainment", Method: "must remain transient and unused"},
+		},
+	})
+	if len(scan.Facts) != 3 {
+		t.Fatalf("only persisted facts and transient aliases should enter EPG matching: %+v", scan.Facts)
+	}
+	stations, pairs := buildEPGCandidates([]*postalLineupScan{scan}, blocks[0].ID)
+	if len(pairs) != 1 || len(pairs[0].Evidence) != 1 || pairs[0].Evidence[0] != "identity-name:FREEFORM" {
+		t.Fatalf("Freeform pair = %+v", pairs)
+	}
+	if stations["10093"].ProviderNames["FREEFORM"] != "Freeform" || stations["59615"].ProviderNames["FREEFORM"] != "Freeform" {
+		t.Fatalf("Freeform provider identities = %+v", stations)
+	}
+	derived := buildEPGDerivedFacts(stations, []epgPairResult{{
+		Pair: pairs[0], Status: "confirmed", Occurrences: 12, MatchedMinutes: 720,
+	}}, "test-epg", "America/New_York")
+	if !hasEPGAlias(derived, "10093", "Freeform") || !hasEPGAlias(derived, "10093", "FREFMHD") || !hasEPGAlias(derived, "59615", "FREEFRM") {
+		t.Fatalf("confirmed Freeform aliases = %+v", derived)
+	}
+}
+
+func TestExactProviderAliasAcrossLineupsConfirmsFreeformCrossGNID(t *testing.T) {
+	blocks := testEPGBlocks()
+	xfinity := testEPGScan("XFINITY", "Xfinity", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+		testEPGChannel("10093", "FREEFRM", "", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "SD"),
+	}}})
+	xfinity.Facts = []ProviderFact{{
+		StationID: "10093", Kind: FactAlias, Value: "Freeform",
+		Method: "unique provider-local channel number; number-policy-provider-alias-v3",
+	}}
+	optimum := testEPGScan("OPTIMUM", "Optimum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+		testEPGChannel("59615", "FREFMHD", "", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "HD"),
+	}}})
+	optimum.Facts = []ProviderFact{{
+		StationID: "59615", Kind: FactAlias, Value: "Freeform",
+		Method: "unique provider-local channel number; number-policy-provider-alias-v3",
+	}}
+
+	stations, pairs := buildEPGCandidates([]*postalLineupScan{xfinity, optimum}, blocks[0].ID)
+	if len(pairs) != 1 || len(pairs[0].Evidence) != 1 || pairs[0].Evidence[0] != "identity-name:FREEFORM" {
+		t.Fatalf("cross-lineup Freeform pair = %+v", pairs)
+	}
+	derived := buildEPGDerivedFacts(stations, []epgPairResult{{
+		Pair: pairs[0], Status: "confirmed", Occurrences: 12, MatchedMinutes: 720,
+	}}, "test-epg", "America/New_York")
+	if !hasEPGAlias(derived, "10093", "FREFMHD") || !hasEPGAlias(derived, "59615", "FREEFRM") {
+		t.Fatalf("confirmed cross-lineup Freeform aliases = %+v", derived)
+	}
+}
+
 func TestEPGDerivedFactsExcludeTemporaryEventAliases(t *testing.T) {
 	stations := map[string]*epgIdentityStation{
 		"WPXN": {
