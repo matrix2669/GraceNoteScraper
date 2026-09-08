@@ -29,7 +29,8 @@ func TestLineupSnapshotPersistsOnlyReusableIdentityEvidence(t *testing.T) {
 			{StationID: "S1", Kind: FactAlias, Value: "Example Network", SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
 			{StationID: "S1", Kind: FactCategory, Value: "News & Weather", RawValue: "News & Info", MatchMethod: "exact category alias", MatchConfidence: 1, SourceID: "provider-one", SourceLabel: "Provider One official lineup", Method: "exact provider channel number"},
 		},
-		Sources: []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: StatusComplete, Matched: 1, Aliases: 1, Categories: 1}},
+		IdentityFacts: []ProviderFact{{StationID: "S1", Kind: FactAlias, Value: "transient EPG candidate only"}},
+		Sources:       []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: StatusComplete, Matched: 1, Aliases: 1, Categories: 1}},
 	}
 	if err := service.writeLineupSnapshot(lineup, grid, evidence); err != nil {
 		t.Fatal(err)
@@ -39,8 +40,8 @@ func TestLineupSnapshotPersistsOnlyReusableIdentityEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(data), "must not persist") || strings.Contains(string(data), "events\"") {
-		t.Fatalf("snapshot persisted programme payload: %s", data)
+	if strings.Contains(string(data), "must not persist") || strings.Contains(string(data), "transient EPG candidate only") || strings.Contains(string(data), "events\"") {
+		t.Fatalf("snapshot persisted transient identity or programme payload: %s", data)
 	}
 	var snapshot LineupSnapshot
 	if err := json.Unmarshal(data, &snapshot); err != nil {

@@ -516,6 +516,35 @@ func TestProviderCatalogDoesNotCreateAliasesSharedByDifferentStations(t *testing
 	if aliases != 0 || categories != 2 {
 		t.Fatalf("facts = %+v", result.Facts)
 	}
+	if len(result.IdentityFacts) != 2 {
+		t.Fatalf("shared exact identities = %+v", result.IdentityFacts)
+	}
+}
+
+func TestProviderCatalogKeepsSharedExactIdentityForEPGConfirmation(t *testing.T) {
+	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "10093", ChannelNo: "311", CallSign: "FREEFRM"},
+		{ChannelID: "59615", ChannelNo: "311", CallSign: "FREFMHD"},
+	}}}, catalogSource{
+		ID: "directv", Label: "DIRECTV", Entries: []catalogEntry{{
+			Numbers: []string{"311"}, Name: "Freeform", Category: "Entertainment",
+		}},
+	})
+	if len(result.Facts) != 0 {
+		t.Fatalf("same-position multi-GNID evidence must not persist directly: %+v", result.Facts)
+	}
+	owners := map[string]bool{}
+	for _, fact := range result.IdentityFacts {
+		if fact.Kind == lineupindex.FactAlias && fact.Value == "Freeform" {
+			owners[fact.StationID] = true
+		}
+	}
+	if !owners["10093"] || !owners["59615"] {
+		t.Fatalf("shared Freeform identity was not retained for EPG confirmation: %+v", result.IdentityFacts)
+	}
+	if len(result.Sources) != 1 || result.Sources[0].Matched != 2 || result.Sources[0].Aliases != 0 || result.Sources[0].Categories != 0 {
+		t.Fatalf("same-position candidate source result = %+v", result.Sources)
+	}
 }
 
 func TestProviderCatalogDeduplicatesFactsForRepeatedStationPositions(t *testing.T) {

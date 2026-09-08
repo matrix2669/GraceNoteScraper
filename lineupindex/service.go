@@ -303,7 +303,8 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				// This is the scanned provider's own grid, never the selected
-				// comparison lineup. The adapter still requires matching identity.
+				// comparison lineup. Only a unique same-grid position may bypass
+				// identity, and then only to recover aliases.
 				AllowChannelNumbers: true,
 				Provider:            provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
@@ -366,7 +367,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		}
 		postalScans = append(postalScans, &postalLineupScan{
 			Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{gridID: grid},
-			Facts: append([]ProviderFact(nil), evidence.Facts...), Sources: append([]EvidenceSourceRecord(nil), evidence.Sources...),
+			Facts: epgIdentityFacts(evidence), Sources: append([]EvidenceSourceRecord(nil), evidence.Sources...),
 		})
 		s.mu.Lock()
 		s.job.CompletedCount++
@@ -463,6 +464,16 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	}
 	s.cancel = nil
 	s.mu.Unlock()
+}
+
+func epgIdentityFacts(evidence ProviderEvidenceResult) []ProviderFact {
+	facts := append([]ProviderFact(nil), evidence.Facts...)
+	for _, fact := range evidence.IdentityFacts {
+		if fact.Kind == FactAlias {
+			facts = append(facts, fact)
+		}
+	}
+	return facts
 }
 
 func sameProviderFamily(left, right string) bool {
@@ -819,7 +830,9 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 	aliases := 0
 	categories := 0
 	for _, fact := range facts {
-		fact.Method = appendMethod(fact.Method, "identity-policy-v2")
+		if !strings.Contains(fact.Method, "number-policy-provider-alias-v3") {
+			fact.Method = appendMethod(fact.Method, "identity-policy-v2")
+		}
 		stationID := strings.TrimSpace(fact.StationID)
 		value := strings.TrimSpace(fact.Value)
 		kind := strings.TrimSpace(fact.Kind)
