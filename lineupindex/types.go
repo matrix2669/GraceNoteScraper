@@ -127,6 +127,10 @@ type Station struct {
 const (
 	FactAlias    = "alias"
 	FactCategory = "category"
+	// ProviderSourceAlignmentV1 marks provider-number aliases produced only
+	// after the source demonstrated exact same-number identity agreement with
+	// the Gracenote grid at the catalog-level alignment threshold.
+	ProviderSourceAlignmentV1 = "provider-source-alignment-v1"
 )
 
 // StationFact is official evidence joined to a provider's Gracenote grid and
