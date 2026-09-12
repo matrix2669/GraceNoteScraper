@@ -18,3 +18,19 @@ func TestConvertChannelRetainsLineupAndEventIdentities(t *testing.T) {
 		t.Fatalf("event callsigns = %v", channel.EventCallSigns)
 	}
 }
+
+func TestConvertEventKeepsRawFiltersSeparateFromOutputCategories(t *testing.T) {
+	p := ConvertEvent(web.JSONEvent{Filter: []string{"filter-news", "filter-new"}}, "64549", "en", "USA")
+	if len(p.RawFilters) != 2 || p.RawFilters[0] != "news" || p.RawFilters[1] != "new" {
+		t.Fatalf("raw response filters were lost: %v", p.RawFilters)
+	}
+	p.Categories = append(p.Categories, Category{Name: "Entertainment"})
+	p.Categories[0].Name = "Movies"
+	if p.RawFilters[0] != "news" || len(p.RawFilters) != 2 {
+		t.Fatal("output category changes contaminated independent programme evidence")
+	}
+	legacy := ConvertEvent(web.JSONEvent{}, "64549", "en", "USA")
+	if len(legacy.RawFilters) != 0 {
+		t.Fatal("channel identity manufactured programme filters")
+	}
+}

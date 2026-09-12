@@ -79,6 +79,7 @@ func copyGuideForTMDB(g *guide.TVGuide) *guide.TVGuide {
 		p.Images = append([]guide.Image(nil), p.Images...)
 		p.EpisodeNumbers = append([]guide.EpisodeNumber(nil), p.EpisodeNumbers...)
 		p.Categories = append([]guide.Category(nil), p.Categories...)
+		p.RawFilters = append([]string(nil), p.RawFilters...)
 		p.Subtitles = append([]guide.Subtitle(nil), p.Subtitles...)
 	}
 	return &copy

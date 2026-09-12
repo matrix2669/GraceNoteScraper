@@ -58,14 +58,18 @@ type Program struct {
 	Country            string
 	EpisodeNumbers     []EpisodeNumber
 	Categories         []Category
-	New                bool
-	Premiere           bool
-	PreviouslyShown    bool
-	Subtitles          []Subtitle
-	Rating             string
-	RatingSystem       string
-	StarRating         string
-	Date               string
+	// RawFilters preserves response-level Gracenote filters before channel and
+	// TMDB-derived categories are injected into Categories. Schedule inference
+	// must use this field; legacy mixed Categories are not safe to reinterpret.
+	RawFilters      []string `json:"RawFilters,omitempty"`
+	New             bool
+	Premiere        bool
+	PreviouslyShown bool
+	Subtitles       []Subtitle
+	Rating          string
+	RatingSystem    string
+	StarRating      string
+	Date            string
 }
 
 type Image struct {
@@ -219,10 +223,14 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 
 	// Categories from filter array (strip "filter-" prefix)
 	var categories []Category
+	rawFilters := make([]string, 0, len(ev.Filter))
 	isMovie := false
 	for _, f := range ev.Filter {
-		name := strings.TrimPrefix(f, "filter-")
+		name := strings.TrimPrefix(strings.TrimSpace(f), "filter-")
 		categories = append(categories, Category{Name: name, Lang: lang})
+		if name != "" {
+			rawFilters = append(rawFilters, name)
+		}
 		if name == "movie" {
 			isMovie = true
 		}
@@ -335,6 +343,7 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 		Country:         country,
 		EpisodeNumbers:  episodeNumbers,
 		Categories:      categories,
+		RawFilters:      rawFilters,
 		New:             isNew,
 		Premiere:        isPremiere,
 		PreviouslyShown: !isNew,
