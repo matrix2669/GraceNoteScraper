@@ -447,6 +447,8 @@ guide.tmpl       XMLTV output template (embedded at build time)
 
 ### Provider scan safety and refreshes
 
+An official `Adult` category maps to `Other` without a content-specific confidence downgrade. Clear official evidence keeps its normal priority; genuinely low-quality evidence and provider conflicts retain their normal review requirements.
+
 Provider numbers are never cross-provider join keys. Within a provider's own scanned grid, an aligned single unambiguous position may recover descriptive aliases. A retained provider alias/category relationship can then supply a reviewable candidate; it cannot independently confirm category or identity. When one unambiguous official row maps to multiple same-position station variants, its exact name is transient EPG evidence only and cannot persist without weekday schedule confirmation. A generic document for another headend cannot contribute unless the adapter first resolves it as that provider's applicable source. Terminal HD and broadcast DT can normalize for identity matching, but DT2/DT3 remain distinct.
 
 After updating, run **Scan providers in this ZIP** once. Unsafe legacy number-only joins and older derived EPG evidence are excluded from drafts until refreshed. Evidence files remain available for audit; published JSON snapshots change only when you export again.

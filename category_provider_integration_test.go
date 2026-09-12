@@ -55,6 +55,50 @@ func TestGuideEnrichmentCopyDoesNotMutatePublishedRawFilters(t *testing.T) {
 	}
 }
 
+func TestOfficialAdultCategoryUsesEvidenceQualityNotContentLabel(t *testing.T) {
+	for _, tc := range []struct {
+		name, method string
+		priority     int
+		review       bool
+	}{
+		{"clear official evidence", "exact provider identity; identity-policy-v2", 2, false},
+		{"explicit low quality evidence", "exact provider identity; identity-policy-v2; priority-4", 4, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newLineuparrTestServer(t, true)
+			idx := lineupindex.Index{SchemaVersion: lineupindex.CurrentIndexVersion,
+				Stations:          map[string]*lineupindex.Station{"S1": {StationID: "S1", Names: []lineupindex.StationName{{Value: "UNBRANDEDTEST", Normalized: "UNBRANDEDTEST", Kind: lineupindex.NameCallSign}}, Facts: []lineupindex.StationFact{{Kind: lineupindex.FactCategory, Value: "Other", RawValue: "Adult", SourceID: "dish-official-lineup", Method: tc.method}}}},
+				CategoryRelations: []lineupindex.ProviderCategoryRelation{{StationID: "S1", AliasValue: "UNBRANDEDTEST", AliasNormalized: "UNBRANDEDTEST", Category: "Other", RawCategory: "Adult", SourceID: "dish-official-lineup", SourceLabel: "DISH", SourceRowID: "row-1", Method: tc.method}},
+			}
+			data, err := json.Marshal(idx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(t.TempDir(), "index.json")
+			if err := os.WriteFile(path, data, 0600); err != nil {
+				t.Fatal(err)
+			}
+			s.marketIndex, err = lineupindex.NewService(lineupindex.ServiceConfig{Path: path, Providers: &fakeProviderFinder{response: &web.ProviderResponse{}}, Grids: fakeMarketGridFetcher{}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate := s.marketIndex.CategoriesForStations([]string{"S1"})["S1"]
+			if candidate.Value != "Other" || candidate.Priority != tc.priority {
+				t.Fatalf("candidate: %+v", candidate)
+			}
+			inputs := []builder.InputChannel{{StationID: "S1", Key: "S1", CallSign: "UNBRANDEDTEST"}}
+			s.applyMarketAliases("USA", "11743", "dish-official-lineup", inputs)
+			draft, err := s.builder.Build(context.Background(), builder.LineupContext{Country: "USA", SourceFingerprint: "test"}, inputs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(draft.Channels) != 1 || draft.Channels[0].Category != "Other" || draft.Channels[0].CategoryPriority != tc.priority || draft.Channels[0].NeedsCategoryReview != tc.review {
+				t.Fatalf("draft: %+v", draft)
+			}
+		})
+	}
+}
+
 // This exercises the complete persisted-index -> provider bridge -> maintained
 // identity -> HTTP draft -> manual review path. A classifier-only test misses
 // the priority-1 HLN identity that otherwise hides the provider disagreement.

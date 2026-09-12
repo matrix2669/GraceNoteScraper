@@ -189,7 +189,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			}
 			fact.Value = match.Category
 			priority := categoryFactPriority(fact)
-			if fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "priority-4") || strings.Contains(fact.Method, channelcategory.MethodFuzzy) || strings.EqualFold(strings.TrimSpace(fact.RawValue), "Adult") {
+			if fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "priority-4") || strings.Contains(fact.Method, channelcategory.MethodFuzzy) {
 				priority = 4
 			}
 			fact.Normalized = normalizeName(match.Category)
