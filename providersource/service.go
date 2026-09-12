@@ -26,14 +26,22 @@ const dishURL = "https://webapps.dish.com/api/clu/cludataservice.asmx/getdata?so
 var officialCatalogData []byte
 
 type Service struct {
-	httpClient        *http.Client
-	catalog           catalog
-	runMu             sync.Mutex
-	spectrumRunSource map[string]providerResult
+	httpClient         *http.Client
+	catalog            catalog
+	runMu              sync.Mutex
+	spectrumRunSource  map[string]providerResult
+	spectrumMu         sync.Mutex
+	spectrum           spectrumCatalogState
+	spectrumCachePath  string
+	spectrumForceToken string
+	now                func() time.Time
 }
 
 type Options struct {
-	UseEmbeddedCatalogs bool
+	UseEmbeddedCatalogs  bool
+	SpectrumCatalogPath  string
+	SpectrumRefreshToken string
+	Now                  func() time.Time
 }
 
 type catalog struct {
@@ -55,10 +63,12 @@ type catalogSource struct {
 
 type catalogEntry struct {
 	Numbers        []string `json:"numbers,omitempty"`
+	StationIDs     []string `json:"stationIds,omitempty"`
 	Name           string   `json:"name"`
 	Aliases        []string `json:"aliases,omitempty"`
 	CallSigns      []string `json:"callSigns,omitempty"`
 	Category       string   `json:"category,omitempty"`
+	RawCategory    string   `json:"-"`
 	CategoryMethod string   `json:"-"`
 	EventFeed      bool     `json:"-"`
 }
@@ -101,7 +111,16 @@ func newServiceWithOptions(client *http.Client, options Options) *Service {
 		}
 		sources.Sources = filtered
 	}
-	return &Service{httpClient: client, catalog: sources}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
+	service := &Service{
+		httpClient: client, catalog: sources, spectrumCachePath: strings.TrimSpace(options.SpectrumCatalogPath),
+		spectrumForceToken: strings.TrimSpace(options.SpectrumRefreshToken), now: now,
+	}
+	service.spectrum = loadSpectrumCatalog(service.spectrumCachePath)
+	return service
 }
 
 // OfficialSourceID returns the runtime official-source identifier used for a
@@ -169,7 +188,10 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	case strings.Contains(providerName, "xfinity") || strings.Contains(providerName, "comcast"):
 		live = s.fetchXfinity(ctx, request)
 	case strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner"):
-		live = s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
+		// Spectrum's public page is a national TMS-ID catalog, not proof of a
+		// local headend. It is joined below by exact station ID like every
+		// other provider-independent reference.
+		hasLiveSource = false
 	default:
 		hasLiveSource = false
 	}
@@ -180,6 +202,13 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		result.Facts = append(result.Facts, matched.Facts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
+	spectrum := s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
+	spectrumMatched := matchCatalog(request, spectrum.source)
+	result.Facts = append(result.Facts, spectrumMatched.Facts...)
+	isSpectrumProvider := strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner")
+	if isSpectrumProvider || (len(spectrumMatched.Sources) > 0 && spectrumMatched.Sources[0].Matched > 0) {
+		result.Sources = append(result.Sources, spectrumMatched.Sources...)
+	}
 	for _, source := range s.catalog.Sources {
 		if !sourceMatches(source, providerName, request.PostalCode) {
 			continue
@@ -188,7 +217,10 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		result.Facts = append(result.Facts, matched.Facts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
-	return result, live.err
+	if live.err != nil {
+		return result, live.err
+	}
+	return result, spectrum.err
 }
 
 // EndProviderEvidenceRun discards run-scoped raw source reuse. A later explicit
@@ -304,9 +336,13 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			ID: source.ID, Label: source.Label, URL: source.URL, Status: status, Message: source.Message,
 		}}}
 	}
+	byStationID := make(map[string][]web.JSONChannel)
 	byNumber := make(map[string][]web.JSONChannel)
 	byIdentity := make(map[string][]web.JSONChannel)
 	for _, channel := range request.Grid.Channels {
+		if stationID := strings.TrimSpace(channel.ChannelID); stationID != "" {
+			byStationID[stationID] = append(byStationID[stationID], channel)
+		}
 		if number := normalizeNumber(channel.ChannelNo); request.AllowChannelNumbers && number != "" {
 			byNumber[number] = append(byNumber[number], channel)
 		}
@@ -328,7 +364,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	matches := make([]matchedEntry, 0, len(source.Entries))
 	aliasOwners := make(map[string]map[string]bool)
 	for _, entry := range source.Entries {
-		channels, method, ok := matchEntry(entry, byNumber, byIdentity, ambiguousNumbers)
+		channels, method, ok := matchEntry(entry, byStationID, byNumber, byIdentity, ambiguousNumbers)
 		if !ok {
 			continue
 		}
@@ -401,11 +437,15 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 				continue
 			}
 			seenFacts[factKey] = true
+			rawCategory := strings.TrimSpace(entry.RawCategory)
+			if rawCategory == "" {
+				rawCategory = strings.TrimSpace(entry.Category)
+			}
 			result.Facts = append(result.Facts, lineupindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
-				RawValue: strings.TrimSpace(entry.Category), MatchMethod: category.Method, MatchConfidence: category.Confidence,
+				RawValue: rawCategory, MatchMethod: category.Method, MatchConfidence: category.Confidence,
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
-				Method: factMethod + "; provider category " + strconv.Quote(strings.TrimSpace(entry.Category)) + " mapped by " + categoryMethod,
+				Method: factMethod + "; provider category " + strconv.Quote(rawCategory) + " mapped by " + categoryMethod,
 			})
 		}
 	}
@@ -441,7 +481,26 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	return result
 }
 
-func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel, ambiguousNumbers map[string]bool) ([]web.JSONChannel, string, bool) {
+func matchEntry(entry catalogEntry, byStationID map[string][]web.JSONChannel, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel, ambiguousNumbers map[string]bool) ([]web.JSONChannel, string, bool) {
+	if len(entry.StationIDs) > 0 {
+		matches := make(map[string]web.JSONChannel)
+		for _, stationID := range entry.StationIDs {
+			for _, channel := range byStationID[strings.TrimSpace(stationID)] {
+				if strings.TrimSpace(channel.ChannelID) != "" {
+					matches[channel.ChannelID] = channel
+				}
+			}
+		}
+		if len(matches) == 0 {
+			return nil, "", false
+		}
+		result := make([]web.JSONChannel, 0, len(matches))
+		for _, channel := range matches {
+			result = append(result, channel)
+		}
+		sort.Slice(result, func(i, j int) bool { return result[i].ChannelID < result[j].ChannelID })
+		return result, "exact Gracenote station ID from official provider source", true
+	}
 	if entry.EventFeed {
 		if channel, ok := uniqueIdentityMatch(entry, byIdentity); ok {
 			return []web.JSONChannel{channel}, "unique exact event-feed identity", true

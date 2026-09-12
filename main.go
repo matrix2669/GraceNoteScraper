@@ -1179,8 +1179,10 @@ func main() {
 		},
 	}
 	var marketService *lineupindex.Service
+	marketIndexPath := util.GetEnv("MARKET_INDEX_PATH", "market_index.json")
+	spectrumCatalogPath := util.GetEnv("SPECTRUM_CATALOG_PATH", filepath.Join(filepath.Dir(marketIndexPath), "spectrum_catalog_cache.json"))
 	service, serviceErr := lineupindex.NewService(lineupindex.ServiceConfig{
-		Path:        util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+		Path:        marketIndexPath,
 		SnapshotDir: util.GetEnv("LINEUP_SNAPSHOT_DIR", ""),
 		ProviderAccess: func(provider web.Provider, postal string) string {
 			if lineupindex.ExcludedEnrichmentProvider(provider.Name) {
@@ -1195,9 +1197,13 @@ func main() {
 			}
 			return "public"
 		},
-		Providers:       setupHandlers.providers,
-		Grids:           lineupindex.WebGridFetcher{},
-		Evidence:        providersource.NewService(providersource.Options{UseEmbeddedCatalogs: referenceCatalogsEnabled}),
+		Providers: setupHandlers.providers,
+		Grids:     lineupindex.WebGridFetcher{},
+		Evidence: providersource.NewService(providersource.Options{
+			UseEmbeddedCatalogs:  referenceCatalogsEnabled,
+			SpectrumCatalogPath:  spectrumCatalogPath,
+			SpectrumRefreshToken: util.GetEnv("SPECTRUM_CATALOG_REFRESH_TOKEN", ""),
+		}),
 		CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
 		ProviderDelay:   500 * time.Millisecond,
 		GridDelay:       5 * time.Second,
