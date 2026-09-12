@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "addresses": [
+    {
+      "marketRank": 3,
+      "providerFamily": "xfinity",
+      "label": "Trump International Hotel & Tower Chicago public address",
+      "provenance": "Operator-supplied public landmark address",
+      "validatedAt": "2026-09-11",
+      "validation": "Xfinity public lineup service returned channel records; Gracenote ZIP 60611 returned two Xfinity Chicago lineups and no Spectrum lineup.",
+      "address": {
+        "formattedAddress": "401 N Wabash Ave, Chicago, IL 60611",
+        "streetAddress": "401 N Wabash Ave",
+        "city": "Chicago",
+        "state": "IL",
+        "postalCode": "60611",
+        "countryCode": "US"
+      }
+    }
+  ]
+}

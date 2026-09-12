@@ -2,8 +2,11 @@ package lineupindex
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
+	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -120,6 +123,9 @@ func TestMarketCatalogAndNumberOnlyEPGGuard(t *testing.T) {
 			t.Fatal(m)
 		}
 	}
+	if catalog.Markets[2].Name != "Chicago, IL" || catalog.Markets[2].PostalCode != "60611" {
+		t.Fatalf("Chicago market seed = %+v", catalog.Markets[2])
+	}
 	if hasStrongEPGIdentityEvidence([]string{"provider-position:comcast|2"}) {
 		t.Fatal("number accepted as EPG identity")
 	}
@@ -128,5 +134,94 @@ func TestMarketCatalogAndNumberOnlyEPGGuard(t *testing.T) {
 	}
 	if usableFact(StationFact{Method: "exact provider channel number plus exact identity across same-number variants; identity-policy-v2"}) {
 		t.Fatal("older number-scoped evidence not quarantined")
+	}
+}
+
+func TestChicagoReferenceAddressIsXfinityOnlyAndEphemeral(t *testing.T) {
+	reference, ok := marketReferenceAddressForRank(3, "60611")
+	if !ok || reference.ProviderFamily != "xfinity" || reference.Address.FormattedAddress != "401 N Wabash Ave, Chicago, IL 60611" {
+		t.Fatalf("Chicago reference = %+v, found %v", reference, ok)
+	}
+	if _, ok := marketReferenceAddressForRank(3, "60601"); ok {
+		t.Fatal("Chicago reference accepted for the old market ZIP")
+	}
+
+	xfinity, dish, spectrum := testProvider("L1"), testProvider("L2"), testProvider("L3")
+	xfinity.Name = "Xfinity Chicago Areas 1,4,&5"
+	dish.Name = "DISH Chicago"
+	spectrum.Name = "Spectrum Chicago"
+	for _, provider := range []*web.Provider{&xfinity, &dish, &spectrum} {
+		provider.Timezone = "America/Chicago"
+	}
+	evidence := &marketEvidenceSpy{}
+	directory := t.TempDir()
+	service, err := NewService(ServiceConfig{
+		Path: filepath.Join(directory, "index.json"), SnapshotDir: filepath.Join(directory, "snapshots"),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{"60611": {xfinity, dish, spectrum}}},
+		Grids: &fakeGrids{responses: map[string]*web.GridResponse{
+			"L1": {Channels: []web.JSONChannel{{ChannelID: "S1", CallSign: "ESPN"}}},
+			"L2": {Channels: []web.JSONChannel{{ChannelID: "S2", CallSign: "OTHER"}}},
+			"L3": {Channels: []web.JSONChannel{{ChannelID: "S3", CallSign: "THIRD"}}},
+		}, calls: map[string]int{}, failures: map[string]int{}},
+		Evidence: evidence,
+		ProviderAccess: func(provider web.Provider, _ string) string {
+			if strings.Contains(provider.Name, "Xfinity") || strings.Contains(provider.Name, "Spectrum") {
+				return "address-required"
+			}
+			return "public"
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartMarket(3, nil); err != nil {
+		t.Fatal(err)
+	}
+	view := waitMarket(t, service)
+	if len(view.Scans) != 1 || view.Scans[0].PostalCode != "60611" {
+		t.Fatalf("Chicago scan = %+v", view.Scans)
+	}
+
+	evidence.mu.Lock()
+	calls := append([]ProviderEvidenceRequest(nil), evidence.calls...)
+	evidence.mu.Unlock()
+	if len(calls) != 2 {
+		t.Fatalf("evidence calls = %+v", calls)
+	}
+	addresses := map[string]ProviderAddress{}
+	for _, call := range calls {
+		addresses[call.Provider.LineupID] = call.ServiceAddress
+	}
+	if addresses["L1"].FormattedAddress != reference.Address.FormattedAddress {
+		t.Fatalf("Xfinity address = %+v", addresses["L1"])
+	}
+	if addresses["L2"].FormattedAddress != "" {
+		t.Fatalf("public DISH received reference address: %+v", addresses["L2"])
+	}
+	if _, called := addresses["L3"]; called {
+		t.Fatal("Spectrum used the Xfinity-only reference address")
+	}
+
+	viewJSON, err := json.Marshal(view)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(viewJSON), "Wabash") {
+		t.Fatal("reference address appeared in market API view")
+	}
+	if err := filepath.Walk(directory, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil || info.IsDir() {
+			return walkErr
+		}
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		if strings.Contains(string(data), "Wabash") {
+			t.Fatalf("reference address persisted in %s", path)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
 }

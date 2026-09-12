@@ -291,16 +291,10 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			break
 		}
 		evidence := ProviderEvidenceResult{}
-		if s.evidence != nil && access == "public" {
+		serviceAddress, addressAllowed := approvedProviderAddress(request, provider)
+		evidenceEligible := access == "public" || (access == "address-required" && addressAllowed)
+		if s.evidence != nil && evidenceEligible {
 			var evidenceErr error
-			serviceAddress := ProviderAddress{}
-			addressAllowed := sameProviderFamily(provider.Name, request.AddressProvider)
-			for _, approved := range request.AddressProviders {
-				addressAllowed = addressAllowed || sameProviderFamily(provider.Name, approved)
-			}
-			if addressAllowed {
-				serviceAddress = request.ProviderAddress
-			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				// This is the scanned provider's own grid, never the selected
 				// comparison lineup. The adapter still requires matching identity.
@@ -337,7 +331,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		}
 		if request.marketRank > 0 {
 			audit := MarketProviderAudit{Provider: provider.Name, Family: providerFamilyKey(provider.Name), LineupKey: lineup.Key, Access: access, GridStatus: StatusComplete, RepeatedFamily: request.priorFamilies[providerFamilyKey(provider.Name)]}
-			if access == "public" {
+			if evidenceEligible {
 				audit.Access = "empty"
 				if len(evidence.Facts) > 0 {
 					audit.Access = "enriched"
@@ -463,6 +457,21 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 	}
 	s.cancel = nil
 	s.mu.Unlock()
+}
+
+func approvedProviderAddress(request RunRequest, provider web.Provider) (ProviderAddress, bool) {
+	if strings.TrimSpace(request.ProviderAddress.FormattedAddress) == "" ||
+		!strings.EqualFold(strings.TrimSpace(request.ProviderAddress.PostalCode), strings.TrimSpace(request.PostalCode)) {
+		return ProviderAddress{}, false
+	}
+	allowed := sameProviderFamily(provider.Name, request.AddressProvider)
+	for _, approved := range request.AddressProviders {
+		allowed = allowed || sameProviderFamily(provider.Name, approved)
+	}
+	if !allowed {
+		return ProviderAddress{}, false
+	}
+	return request.ProviderAddress, true
 }
 
 func sameProviderFamily(left, right string) bool {

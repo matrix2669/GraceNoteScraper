@@ -7,7 +7,7 @@
   "markets": [
     {"rank": 1, "name": "New York, NY", "country": "USA", "postalCode": "10001"},
     {"rank": 2, "name": "Los Angeles, CA", "country": "USA", "postalCode": "90012"},
-    {"rank": 3, "name": "Chicago, IL", "country": "USA", "postalCode": "60601"},
+    {"rank": 3, "name": "Chicago, IL", "country": "USA", "postalCode": "60611"},
     {"rank": 4, "name": "Dallas-Fort Worth, TX", "country": "USA", "postalCode": "75201"},
     {"rank": 5, "name": "Philadelphia, PA", "country": "USA", "postalCode": "19103"},
     {"rank": 6, "name": "Houston, TX", "country": "USA", "postalCode": "77002"},
