@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -25,8 +26,10 @@ const dishURL = "https://webapps.dish.com/api/clu/cludataservice.asmx/getdata?so
 var officialCatalogData []byte
 
 type Service struct {
-	httpClient *http.Client
-	catalog    catalog
+	httpClient        *http.Client
+	catalog           catalog
+	runMu             sync.Mutex
+	spectrumRunSource map[string]providerResult
 }
 
 type Options struct {
@@ -166,7 +169,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	case strings.Contains(providerName, "xfinity") || strings.Contains(providerName, "comcast"):
 		live = s.fetchXfinity(ctx, request)
 	case strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner"):
-		live = s.fetchSpectrum(ctx)
+		live = s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
 	default:
 		hasLiveSource = false
 	}
@@ -186,6 +189,35 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
 	return result, live.err
+}
+
+// EndProviderEvidenceRun discards run-scoped raw source reuse. A later explicit
+// scan must retrieve fresh provider data rather than inheriting an older run.
+func (s *Service) EndProviderEvidenceRun(runID string) {
+	if strings.TrimSpace(runID) == "" {
+		return
+	}
+	s.runMu.Lock()
+	delete(s.spectrumRunSource, runID)
+	s.runMu.Unlock()
+}
+
+func (s *Service) fetchSpectrumForRun(ctx context.Context, runID string) providerResult {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return s.fetchSpectrum(ctx)
+	}
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if result, ok := s.spectrumRunSource[runID]; ok {
+		return result
+	}
+	result := s.fetchSpectrum(ctx)
+	if s.spectrumRunSource == nil {
+		s.spectrumRunSource = make(map[string]providerResult)
+	}
+	s.spectrumRunSource[runID] = result
+	return result
 }
 
 func sourceMatches(source catalogSource, providerName, postalCode string) bool {

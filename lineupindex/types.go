@@ -153,10 +153,13 @@ type ProviderEvidenceFetcher interface {
 
 type ProviderEvidenceRequest struct {
 	AllowChannelNumbers bool
-	Provider            web.Provider
-	LineupKey           string
-	Country             string
-	PostalCode          string
+	// EvidenceRunID scopes provider-source download reuse to one explicit scan.
+	// It is transient and must never be serialized or logged.
+	EvidenceRunID string `json:"-"`
+	Provider      web.Provider
+	LineupKey     string
+	Country       string
+	PostalCode    string
 	// ServiceAddress is an in-memory copy for an approved address-required provider. It must not
 	// be persisted in the index, snapshots, logs, source URLs, or API views.
 	ServiceAddress ProviderAddress `json:"-"`
@@ -272,6 +275,7 @@ type RunRequest struct {
 	comparison             *LineupRecord
 	priorFamilies          map[string]bool
 	priorFacts             map[string]bool
+	evidenceRunID          string
 	Action                 string `json:"action"`
 	BatchSize              int    `json:"batchSize,omitempty"`
 	Ranks                  []int  `json:"ranks,omitempty"`

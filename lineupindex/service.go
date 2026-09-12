@@ -173,6 +173,7 @@ func (s *Service) startPostal(request RunRequest) (JobView, error) {
 	request.Country = country
 	request.PostalCode = postalCode
 	request.Language = language
+	request.evidenceRunID = record.Key + ":" + startedAt
 	go s.runPostal(ctx, request)
 	return job, nil
 }
@@ -188,6 +189,9 @@ func (s *Service) Stop() bool {
 }
 
 func (s *Service) runPostal(ctx context.Context, request RunRequest) {
+	if lifecycle, ok := s.evidence.(interface{ EndProviderEvidenceRun(string) }); ok && request.evidenceRunID != "" {
+		defer lifecycle.EndProviderEvidenceRun(request.evidenceRunID)
+	}
 	country := request.Country
 	postalCode := request.PostalCode
 	language := request.Language
@@ -298,8 +302,8 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				// This is the scanned provider's own grid, never the selected
 				// comparison lineup. The adapter still requires matching identity.
-				AllowChannelNumbers: true,
-				Provider:            provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				AllowChannelNumbers: true, EvidenceRunID: request.evidenceRunID,
+				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
 			})
 			if evidenceErr != nil {
@@ -313,19 +317,14 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				// preserves the attributable failure without invalidating Gracenote
 				// lineup data or successful evidence from other providers.
 			}
-			_, _, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
+			aliases, categories, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
 			if ingestErr != nil {
 				runErr = ingestErr
 				break
 			}
 			s.updatePostalJob(key, func(record *PostalScanRecord) {
-				for _, fact := range evidence.Facts {
-					if fact.Kind == FactAlias {
-						record.Aliases++
-					} else if fact.Kind == FactCategory {
-						record.Categories++
-					}
-				}
+				record.Aliases += aliases
+				record.Categories += categories
 				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
 			})
 		}
@@ -387,10 +386,22 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				err = errors.New("comparison grid returned no data")
 			} else {
 				_, err = s.ingestGrid(0, lineup.Key, grid, current, owners)
-				postalScans = append(postalScans, &postalLineupScan{Comparison: true, Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{blocks[0].ID: grid}})
+				if err == nil {
+					err = s.completeLineup(lineup.Key, len(grid.Channels))
+				}
+				if err == nil {
+					postalScans = append(postalScans, &postalLineupScan{Comparison: true, Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{blocks[0].ID: grid}})
+				}
 			}
 		}
 		if err != nil {
+			if lineup != nil {
+				if errors.Is(err, context.Canceled) {
+					_ = s.pendingLineup(lineup.Key)
+				} else {
+					_ = s.failLineup(lineup.Key, err)
+				}
+			}
 			runErr = fmt.Errorf("selected-lineup EPG comparison: %w", err)
 		}
 	}

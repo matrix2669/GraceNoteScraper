@@ -225,3 +225,43 @@ func TestChicagoReferenceAddressIsXfinityOnlyAndEphemeral(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMarketComparisonLineupLeavesRunningState(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		failures   map[string]int
+		wantStatus string
+	}{
+		{name: "complete", failures: map[string]int{}, wantStatus: StatusComplete},
+		{name: "failed", failures: map[string]int{"COMPARE": 1}, wantStatus: StatusError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			provider := testProvider("MARKET")
+			provider.Timezone = "America/New_York"
+			service, err := NewService(ServiceConfig{
+				Path:      filepath.Join(t.TempDir(), "index.json"),
+				Providers: &fakeProviders{responses: map[string][]web.Provider{"10001": {provider}}},
+				Grids: &fakeGrids{responses: map[string]*web.GridResponse{
+					"MARKET":  {Channels: []web.JSONChannel{{ChannelID: "M1", CallSign: "MARKET"}}},
+					"COMPARE": {Channels: []web.JSONChannel{{ChannelID: "C1", CallSign: "COMPARE"}}},
+				}, failures: test.failures, calls: map[string]int{}},
+				ProviderAccess: func(web.Provider, string) string { return "unsupported" },
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			comparison := &LineupRecord{
+				ProviderName: "Selected provider", LineupID: "COMPARE", HeadendID: "COMPARE-HEADEND",
+				Device: "X", Country: "USA", PostalCode: "33308", Timezone: "America/New_York",
+			}
+			if _, err := service.StartMarket(1, comparison); err != nil {
+				t.Fatal(err)
+			}
+			waitMarket(t, service)
+			lineup := service.index.Lineups["market:1:USA:10001|comparison"]
+			if lineup == nil || lineup.Status != test.wantStatus || lineup.Status == StatusRunning {
+				t.Fatalf("comparison lineup = %+v", lineup)
+			}
+		})
+	}
+}

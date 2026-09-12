@@ -43,6 +43,35 @@ func TestOfficialSourceID(t *testing.T) {
 	}
 }
 
+func TestSpectrumSourceReuseIsLimitedToOneEvidenceRun(t *testing.T) {
+	calls := 0
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("spectrum unavailable")
+	})}
+	service := newService(client)
+	request := lineupindex.ProviderEvidenceRequest{
+		EvidenceRunID: "market-run-one",
+		Provider:      web.Provider{Name: "Spectrum Los Angeles"},
+		Grid:          &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "ONE", ChannelNo: "1"}}},
+	}
+	for range 2 {
+		if _, err := service.FetchProviderEvidence(context.Background(), request); err == nil {
+			t.Fatal("expected Spectrum source failure")
+		}
+	}
+	if calls != 1 {
+		t.Fatalf("same-run Spectrum retrievals = %d, want 1", calls)
+	}
+	service.EndProviderEvidenceRun(request.EvidenceRunID)
+	if _, err := service.FetchProviderEvidence(context.Background(), request); err == nil {
+		t.Fatal("expected fresh-run Spectrum source failure")
+	}
+	if calls != 2 {
+		t.Fatalf("later-run Spectrum retrievals = %d, want 2", calls)
+	}
+}
+
 type failingBody struct {
 	message string
 }

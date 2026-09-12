@@ -48,6 +48,8 @@ type fakeEvidence struct{}
 
 type crossStationCategoryEvidence struct{}
 
+type repeatingEvidence struct{}
+
 type captureEvidence struct {
 	requests chan ProviderEvidenceRequest
 	fail     bool
@@ -76,6 +78,13 @@ func (fakeEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvi
 		},
 		Sources: []EvidenceSourceRecord{{ID: "provider-one", Label: "Provider One official lineup", Status: "complete", Matched: 1, Aliases: 1, Categories: 1}},
 	}, nil
+}
+
+func (repeatingEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
+	return ProviderEvidenceResult{Facts: []ProviderFact{
+		{StationID: "S1", Kind: FactAlias, Value: "Repeated Alias", SourceID: "repeated-source", SourceLabel: "Repeated source", Method: "unique exact provider callsign or name"},
+		{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: "repeated-source", SourceLabel: "Repeated source", Method: "unique exact provider callsign or name"},
+	}}, nil
 }
 
 func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, request ProviderEvidenceRequest) (ProviderEvidenceResult, error) {
@@ -345,6 +354,28 @@ func TestPostalScanKeepsProviderAddressEphemeralAndSourceFailuresPartial(t *test
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPostalScanCountsOnlyNewlyRetainedProviderFacts(t *testing.T) {
+	first, second := testProvider("L1"), testProvider("L2")
+	providers := &fakeProviders{responses: map[string][]web.Provider{"11743": {first, second}}}
+	grids := &fakeGrids{responses: map[string]*web.GridResponse{
+		"L1": {Channels: []web.JSONChannel{{ChannelID: "S1", CallSign: "ONE"}}},
+		"L2": {Channels: []web.JSONChannel{{ChannelID: "S1", CallSign: "ONE"}}},
+	}, failures: map[string]int{}, calls: map[string]int{}}
+	service, err := NewService(ServiceConfig{
+		Path: filepath.Join(t.TempDir(), "index.json"), Providers: providers, Grids: grids, Evidence: repeatingEvidence{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Start(RunRequest{Action: "postal", Country: "USA", PostalCode: "11743"}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := waitForPostal(t, service, "USA", "11743")
+	if snapshot.PostalScan.Aliases != 1 || snapshot.PostalScan.Categories != 1 {
+		t.Fatalf("retained fact totals = aliases %d, categories %d", snapshot.PostalScan.Aliases, snapshot.PostalScan.Categories)
 	}
 }
 
