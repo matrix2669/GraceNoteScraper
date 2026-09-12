@@ -170,7 +170,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			}
 			categoryValue := fact.Value
 			// A miscellaneous provider bucket is not evidence of a service channel.
-			if fact.Value == channelcategory.Other && strings.EqualFold(strings.TrimSpace(fact.RawValue), "Other") {
+			if miscellaneousCategoryBucket(fact.Value, fact.RawValue) {
 				continue
 			}
 			if strings.TrimSpace(fact.RawValue) != "" {
@@ -222,7 +222,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 				continue
 			}
 			match, ok := channelcategory.Resolve(relation.Category)
-			if !ok {
+			if !ok || miscellaneousCategoryBucket(match.Category, relation.RawCategory) {
 				continue
 			}
 			fact := StationFact{Kind: FactCategory, Value: match.Category, RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel, SourceURL: relation.SourceURL, Method: relation.Method + "; provider-category-relation", LineupKeys: append([]string(nil), relation.LineupKeys...), SourceRowID: relation.SourceRowID, RootSourceID: relation.SourceID, RootSourceLabel: relation.SourceLabel, RootSourceURL: relation.SourceURL}
@@ -386,6 +386,12 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 		result[stationID] = candidate
 	}
 	return result
+}
+
+// A generic provider bucket is not a channel classification. Apply this guard
+// to both representations of the same source evidence; Adult is not generic.
+func miscellaneousCategoryBucket(category, raw string) bool {
+	return category == channelcategory.Other && strings.EqualFold(strings.TrimSpace(raw), "Other")
 }
 
 func categoryFactPriority(fact StationFact) int {
