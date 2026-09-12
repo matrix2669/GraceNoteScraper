@@ -649,7 +649,9 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 		}
 	}
 	candidates := s.marketIndex.AliasesForStations(stationIDs)
-	categories := s.marketIndex.CategoriesForStationsWithPreferredSource(stationIDs, preferredSourceID)
+	// Category votes are independent of the active provider; the former
+	// preferred-source override allowed one lineup to mask disagreement.
+	categories := s.marketIndex.CategoriesForStations(stationIDs)
 	matched := 0
 	providerMatched := make(map[string]map[int]bool)
 	providerConflicts := make(map[string]int)
@@ -703,11 +705,33 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 				Value:    category.Value, Source: sourceID, Label: label,
 				Method: strings.Join(category.Methods, "; "),
 			}
+			inputs[index].CategoryEvidenceMethod = providerCategory.Method
+			// A provisional winner remains visible even when providers disagree.
+			// Preserve that choice for the review UI; do not collapse it back to
+			// Uncategorized or let a maintained identity hide the disagreement.
+			if categoryMethodsNeedReview(category.Methods) {
+				inputs[index].CategoryConflict = true
+			}
+			if inputs[index].IndependentScheduleConfirmed && !strings.EqualFold(strings.TrimSpace(inputs[index].IndependentCategory), strings.TrimSpace(providerCategory.Value)) {
+				// Independent schedule evidence disagrees with the provider
+				// proposal. Keep the provider-selected category visible, but it
+				// remains explicitly reviewable.
+				inputs[index].CategoryConflict = true
+			}
 			if existing := inputs[index].CategoryHint; existing != nil && existing.Priority > 0 && existing.Priority < providerCategory.Priority {
 				continue
 			}
 			if inputs[index].CategoryConflict {
 				providerConflicts[sourceID]++
+				// Conflict is a review flag, not a reason to discard a supported
+				// winner. Keep the selected provider vote visible so an unknown
+				// channel does not regress to Uncategorized.
+				inputs[index].CategoryHint = providerCategory
+				if providerMatched[sourceID] == nil {
+					providerMatched[sourceID] = make(map[int]bool)
+				}
+				providerMatched[sourceID][index] = true
+				added = true
 			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Priority == providerCategory.Priority && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
 				inputs[index].CategoryHint = nil
 				inputs[index].CategoryConflict = true
@@ -739,6 +763,15 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 		}
 	}
 	return statuses
+}
+
+func categoryMethodsNeedReview(methods []string) bool {
+	for _, method := range methods {
+		if strings.Contains(strings.ToLower(method), "category review:") {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeAlias(value string) string {
@@ -971,15 +1004,48 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 		channels = g.Channels
 	}
 	categoryHints := s.weekdayCategoryHints(g, config)
-	tmdbCategories := s.builder.TMDBCategoryScan(config.Fingerprint()).Categories
+	tmdbScan := s.builder.TMDBCategoryScan(config.Fingerprint())
+	if currentRevision, _ := tmdbGuideRevision(s.categoryEvidenceGuide(g)); tmdbScan.Revision == "" || currentRevision != tmdbScan.Revision || !s.tmdbScanTimezoneCurrent(config, tmdbScan) {
+		// A persisted confirmation is evidence-bound. Keep any old proposal
+		// visible for compatibility, but never let it clear current review until
+		// the same guide evidence is scanned again.
+		tmdbScan.IndependentCategories = nil
+		for id, hint := range tmdbScan.Categories {
+			hint.IndependentConfirmation = false
+			hint.IndependentCategories = nil
+			tmdbScan.Categories[id] = hint
+		}
+	}
+	tmdbCategories := tmdbScan.Categories
 	inputs := make([]lineuparrbuilder.InputChannel, 0, len(channels))
 	seenKeys := make(map[string]int)
 	for _, channel := range channels {
 		input := lineupInput(channel)
-		input.CategoryHint = categoryHints[channel.ID]
+		if independent := tmdbScan.IndependentCategories[channel.ID]; len(independent) > 0 {
+			input.IndependentCategories = append([]string(nil), independent...)
+			input.IndependentScheduleConfirmed = true
+		}
+		if hint := categoryHints[channel.ID]; hint != nil {
+			if hint.Value != "" {
+				input.CategoryHint = hint
+			}
+			input.IndependentCategories = mergeConfirmedCategories(input.IndependentCategories, hint.IndependentCategories)
+			if len(hint.IndependentCategories) > 0 {
+				input.IndependentScheduleConfirmed = true
+			}
+			if hint.IndependentConfirmation {
+				input.IndependentCategory = hint.Value
+				input.IndependentScheduleConfirmed = true
+			}
+		}
 		if hint, ok := tmdbCategories[channel.ID]; ok && preferTMDBCategoryHint(input.CategoryHint, hint) {
 			copy := hint
 			input.CategoryHint = &copy
+		}
+		if hint, ok := tmdbCategories[channel.ID]; ok && hint.IndependentConfirmation {
+			input.IndependentCategory = hint.Value
+			input.IndependentCategories = mergeConfirmedCategories(input.IndependentCategories, hint.IndependentCategories)
+			input.IndependentScheduleConfirmed = true
 		}
 		baseKey := strings.TrimSpace(input.Key)
 		if count := seenKeys[baseKey]; count > 0 {
@@ -1029,6 +1095,9 @@ func scheduleCategoryHints(g *guide.TVGuide) map[string]*lineuparrbuilder.Attrib
 		profile.programs++
 		profile.minutes += minutes
 		seenFilters := make(map[string]bool)
+		// This legacy, conservative proposal helper predates the independent
+		// schedule assessor. It remains proposal-only (never priority-1
+		// confirmation); the active independent path uses Program.RawFilters.
 		for _, category := range program.Categories {
 			filter := strings.ToLower(strings.TrimSpace(category.Name))
 			switch filter {

@@ -42,17 +42,19 @@ type postalLineupScan struct {
 	Provider   web.Provider
 	Grids      map[string]*web.GridResponse
 	Facts      []ProviderFact
+	Relations  []ProviderCategoryRelation
 	Sources    []EvidenceSourceRecord
 }
 
 type epgIdentityStation struct {
-	StationID     string
-	CallSigns     map[string]string
-	Affiliates    map[string]string
-	ProviderNames map[string]string
-	Positions     map[string]map[string]bool
-	Categories    []ProviderFact
-	LineupKeys    map[string]bool
+	StationID         string
+	CallSigns         map[string]string
+	Affiliates        map[string]string
+	ProviderNames     map[string]string
+	ProviderNameFacts map[string][]ProviderFact
+	Positions         map[string]map[string]bool
+	Categories        []ProviderFact
+	LineupKeys        map[string]bool
 }
 
 type epgCandidatePair struct {
@@ -296,10 +298,28 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 				value := strings.TrimSpace(fact.Value)
 				if normalized := normalizeEPGCallSign(value); !ignoredName(normalized) && !isEPGEventFeedName(value) {
 					station.ProviderNames[normalized] = value
+					station.ProviderNameFacts[normalized] = append(station.ProviderNameFacts[normalized], fact)
 				}
 			case FactCategory:
 				station.Categories = append(station.Categories, fact)
 			}
+		}
+		for _, relation := range scan.Relations {
+			// A station-bound national catalog fact is tied to this GNID and
+			// must never become cross-lineup identity/category evidence.
+			if relation.StationBound || strings.TrimSpace(relation.StationID) == "" {
+				continue
+			}
+			station := stations[strings.TrimSpace(relation.StationID)]
+			if station == nil || strings.TrimSpace(relation.Category) == "" {
+				continue
+			}
+			station.Categories = append(station.Categories, ProviderFact{
+				StationID: relation.StationID, Kind: FactCategory, Value: relation.Category,
+				RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel,
+				SourceURL: relation.SourceURL, Method: strings.Trim(strings.ReplaceAll(relation.Method, "number-policy-provider-alias-v3", ""), "; ") + "; provider-category-relation", SourceRevision: relation.SourceRevision,
+				SourceRowID: relation.SourceRowID, RootSourceLineupKey: relation.SourceLineupKey, RootSourceStationID: relation.StationID,
+			})
 		}
 	}
 	for stationID, station := range stations {
@@ -360,7 +380,7 @@ func ensureEPGIdentityStation(stations map[string]*epgIdentityStation, stationID
 	if station == nil {
 		station = &epgIdentityStation{
 			StationID: stationID, CallSigns: make(map[string]string), Affiliates: make(map[string]string),
-			ProviderNames: make(map[string]string), Positions: make(map[string]map[string]bool), LineupKeys: make(map[string]bool),
+			ProviderNames: make(map[string]string), ProviderNameFacts: make(map[string][]ProviderFact), Positions: make(map[string]map[string]bool), LineupKeys: make(map[string]bool),
 		}
 		stations[stationID] = station
 	}
@@ -807,6 +827,7 @@ func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epg
 func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdentityStation, sourceID, method string) {
 	lineups := unionStringKeys(target.LineupKeys, peer.LineupKeys)
 	aliases := make(map[string]string)
+	aliasFacts := make(map[string][]ProviderFact)
 	for normalized, value := range peer.CallSigns {
 		aliases[normalizeName(value)] = value
 		if normalized != normalizeName(value) {
@@ -816,22 +837,41 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 	for normalized, value := range peer.ProviderNames {
 		aliases[normalized] = value
 	}
+	for normalized, facts := range peer.ProviderNameFacts {
+		for _, fact := range facts {
+			aliases[normalized] = strings.TrimSpace(fact.Value)
+			aliasFacts[normalized] = append(aliasFacts[normalized], fact)
+		}
+	}
 	for normalized, value := range aliases {
 		if ignoredName(normalized) || isEPGEventFeedName(value) {
 			continue
 		}
-		key := target.StationID + "\x00" + FactAlias + "\x00" + normalized
-		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
-			StationID: target.StationID, Kind: FactAlias, Value: value,
-			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: method,
-		}, LineupKeys: lineups}
+		facts := aliasFacts[normalized]
+		if len(facts) == 0 {
+			facts = []ProviderFact{{Value: value}}
+		}
+		for _, providerFact := range facts {
+			rootID := providerFactRootSourceID(providerFact)
+			rowID := strings.TrimSpace(providerFact.SourceRowID)
+			key := target.StationID + "\x00" + FactAlias + "\x00" + normalized + "\x00" + rootID + "\x00" + rowID + "\x00" + providerFact.RootSourceLineupKey + "\x00" + providerFact.RootSourceStationID
+			byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
+				StationID: target.StationID, Kind: FactAlias, Value: value,
+				SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: method,
+				SourceRevision: providerFact.SourceRevision, SourceRowID: rowID,
+				RootSourceID: rootID, RootSourceLabel: providerFactRootSourceLabel(providerFact), RootSourceURL: providerFactRootSourceURL(providerFact),
+				RootSourceLineupKey: providerFact.RootSourceLineupKey, RootSourceStationID: providerFact.RootSourceStationID,
+			}, LineupKeys: lineups}
+		}
 	}
 	for _, category := range peer.Categories {
 		normalized := normalizeName(category.Value)
 		if ignoredName(normalized) {
 			continue
 		}
-		key := target.StationID + "\x00" + FactCategory + "\x00" + normalized
+		rootID := providerFactRootSourceID(category)
+		rowID := strings.TrimSpace(category.SourceRowID)
+		key := target.StationID + "\x00" + FactCategory + "\x00" + normalized + "\x00" + rootID + "\x00" + rowID + "\x00" + category.RootSourceLineupKey + "\x00" + category.RootSourceStationID
 		categoryMethod := method + "; category carried from " + strings.TrimSpace(category.SourceLabel)
 		// Identity confirmation must retain, not upgrade, category provenance.
 		categoryMethod += "; " + category.Method
@@ -841,9 +881,32 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
 			StationID: target.StationID, Kind: FactCategory, Value: category.Value, RawValue: category.RawValue,
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation",
-			Method: categoryMethod,
+			Method: categoryMethod, SourceRevision: category.SourceRevision, SourceRowID: category.SourceRowID,
+			RootSourceID: providerFactRootSourceID(category), RootSourceLabel: providerFactRootSourceLabel(category), RootSourceURL: providerFactRootSourceURL(category),
+			RootSourceLineupKey: category.RootSourceLineupKey, RootSourceStationID: category.RootSourceStationID,
 		}, LineupKeys: lineups}
 	}
+}
+
+func providerFactRootSourceID(fact ProviderFact) string {
+	if value := strings.TrimSpace(fact.RootSourceID); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fact.SourceID)
+}
+
+func providerFactRootSourceLabel(fact ProviderFact) string {
+	if value := strings.TrimSpace(fact.RootSourceLabel); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fact.SourceLabel)
+}
+
+func providerFactRootSourceURL(fact ProviderFact) string {
+	if value := strings.TrimSpace(fact.RootSourceURL); value != "" {
+		return value
+	}
+	return strings.TrimSpace(fact.SourceURL)
 }
 
 func isEPGEventFeedName(value string) bool {
@@ -933,6 +996,7 @@ func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCo
 	result := epgRunResult{Source: EvidenceSourceRecord{
 		ID: sourceID, Label: "Gracenote weekday EPG confirmation", Status: StatusComplete,
 	}}
+	preserveRoots := failedEPGProviderRoots(scans)
 	stations, pairs := buildEPGCandidates(scans, blocks[0].ID)
 	if len(pairs) == 0 {
 		if err := ctx.Err(); err != nil {
@@ -943,7 +1007,7 @@ func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCo
 		// A completed primary scan with no independent candidates is a
 		// successful negative reconciliation. This retires prior EPG facts,
 		// including facts whose only bridge was a now station-bound identity.
-		aliases, categories, matched, err := s.replaceEPGFacts(sourceID, nil)
+		aliases, categories, matched, err := s.replaceEPGFactsForRun(sourceID, nil, preserveRoots)
 		result.Aliases, result.Categories, result.MatchedStations = aliases, categories, matched
 		result.Source.Message = "No cross-station candidates had independent identity evidence; no schedule-only aliases were created."
 		return result, err
@@ -1002,7 +1066,7 @@ func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCo
 		}
 	}
 	result.Facts = buildEPGDerivedFacts(stations, finalResults, sourceID, timezone)
-	aliases, categories, matched, err := s.replaceEPGFacts(sourceID, result.Facts)
+	aliases, categories, matched, err := s.replaceEPGFactsForRun(sourceID, result.Facts, preserveRoots)
 	if err != nil {
 		result.Source.Status = StatusError
 		result.Source.Message = "Confirmed EPG evidence could not be saved: " + err.Error()
@@ -1035,7 +1099,7 @@ func (s *Service) rewriteEPGLineupSnapshots(scans []*postalLineupScan, facts []e
 			stationIDs[strings.TrimSpace(channel.ChannelID)] = true
 		}
 		evidence := ProviderEvidenceResult{
-			Facts: append([]ProviderFact(nil), scan.Facts...), Sources: append([]EvidenceSourceRecord(nil), scan.Sources...),
+			Facts: append([]ProviderFact(nil), scan.Facts...), CategoryRelations: append([]ProviderCategoryRelation(nil), scan.Relations...), Sources: append([]EvidenceSourceRecord(nil), scan.Sources...),
 		}
 		derivedCount := 0
 		for _, fact := range facts {
@@ -1107,6 +1171,35 @@ func (s *Service) extendEPGJob(requests int) {
 }
 
 func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int, int, int, error) {
+	return s.replaceEPGFactsForRun(sourceID, facts, nil)
+}
+
+func failedEPGProviderRoots(scans []*postalLineupScan) map[string]bool {
+	result := make(map[string]bool)
+	// Provider roots are preserved by default. Only an explicit complete
+	// source record for the exact root and lineup is authoritative replacement;
+	// omitted scans, skipped local providers, and unscanned lineups retain the
+	// last-known-good EPG evidence.
+	result["*"] = true
+	for _, scan := range scans {
+		lineupKey := strings.TrimSpace(scan.Lineup.Key)
+		if lineupKey == "" {
+			continue
+		}
+		for _, source := range scan.Sources {
+			if strings.EqualFold(strings.TrimSpace(source.Status), StatusError) && strings.TrimSpace(source.ID) != "" {
+				result[strings.TrimSpace(source.ID)+"\x00"+lineupKey] = true
+			}
+			status := strings.ToLower(strings.TrimSpace(source.Status))
+			if status == StatusComplete || status == "no-matches" || status == "limited" {
+				result["!"+strings.TrimSpace(source.ID)+"\x00"+lineupKey] = true
+			}
+		}
+	}
+	return result
+}
+
+func (s *Service) replaceEPGFactsForRun(sourceID string, facts []epgDerivedFact, preserveRoots map[string]bool) (int, int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	prior := make(map[string]bool)
@@ -1115,13 +1208,13 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 			if fact.SourceID != sourceID {
 				continue
 			}
-			prior[stationID+"\x00"+fact.Kind+"\x00"+fact.Normalized] = true
+			prior[epgFactProvenanceKey(stationID, fact)] = true
 		}
 	}
 	for _, station := range s.index.Stations {
 		retained := station.Facts[:0]
 		for _, fact := range station.Facts {
-			if fact.SourceID != sourceID {
+			if fact.SourceID != sourceID || epgFactPreserved(fact, preserveRoots) {
 				retained = append(retained, fact)
 			}
 		}
@@ -1150,7 +1243,7 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 		if ignoredName(normalized) {
 			continue
 		}
-		factKey := stationID + "\x00" + fact.Kind + "\x00" + normalized
+		factKey := epgFactProvenanceKey(stationID, StationFact{Kind: fact.Kind, Normalized: normalized, SourceID: sourceID, SourceRowID: fact.SourceRowID, RootSourceID: fact.RootSourceID, RootSourceLineupKey: fact.RootSourceLineupKey, RootSourceStationID: fact.RootSourceStationID})
 		if retained[factKey] {
 			continue
 		}
@@ -1158,7 +1251,9 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 		station.Facts = append(station.Facts, StationFact{
 			Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: strings.TrimSpace(fact.Method),
-			LineupKeys: append([]string(nil), derived.LineupKeys...),
+			LineupKeys: append([]string(nil), derived.LineupKeys...), SourceRevision: strings.TrimSpace(fact.SourceRevision), SourceRowID: strings.TrimSpace(fact.SourceRowID),
+			RootSourceID: providerFactRootSourceID(fact), RootSourceLabel: providerFactRootSourceLabel(fact), RootSourceURL: providerFactRootSourceURL(fact),
+			RootSourceLineupKey: fact.RootSourceLineupKey, RootSourceStationID: fact.RootSourceStationID,
 		})
 		matchedStations[stationID] = true
 		if !prior[factKey] {
@@ -1185,4 +1280,47 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 		return 0, 0, 0, err
 	}
 	return aliases, categories, len(matchedStations), nil
+}
+
+func epgFactPreserved(fact StationFact, preserveRoots map[string]bool) bool {
+	if len(preserveRoots) == 0 {
+		return false
+	}
+	root := strings.TrimSpace(fact.RootSourceID)
+	if root == "" {
+		return false
+	}
+	// The EPG source itself is the derived evidence being replaced, never a
+	// provider root that should be retained by an omitted-provider wildcard.
+	if strings.HasPrefix(root, "gracenote-weekday-epg-") {
+		return false
+	}
+	lineup := strings.TrimSpace(fact.RootSourceLineupKey)
+	if lineup != "" {
+		if preserveRoots["!"+root+"\x00"+lineup] {
+			return false
+		}
+		return preserveRoots[root+"\x00"+lineup] || preserveRoots["*"]
+	}
+	if len(fact.LineupKeys) == 0 {
+		return preserveRoots["*"]
+	}
+	for _, factLineup := range fact.LineupKeys {
+		if !preserveRoots["!"+root+"\x00"+strings.TrimSpace(factLineup)] {
+			return preserveRoots["*"]
+		}
+	}
+	return false
+}
+
+func epgFactProvenanceKey(stationID string, fact StationFact) string {
+	root := strings.TrimSpace(fact.RootSourceID)
+	if root == "" {
+		root = strings.TrimSpace(fact.SourceID)
+	}
+	row := strings.TrimSpace(fact.SourceRowID)
+	if row == "" {
+		row = root
+	}
+	return stationID + "\x00" + fact.Kind + "\x00" + fact.Normalized + "\x00" + root + "\x00" + row + "\x00" + strings.TrimSpace(fact.RootSourceLineupKey) + "\x00" + strings.TrimSpace(fact.RootSourceStationID)
 }

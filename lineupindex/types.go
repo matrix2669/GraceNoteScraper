@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	CurrentIndexVersion = 3
+	CurrentIndexVersion = 4
 	DefaultBatchSize    = 25
 	MaxBatchSize        = 25
 )
@@ -44,7 +44,12 @@ type Index struct {
 	PostalScans   map[string]*PostalScanRecord `json:"postalScans,omitempty"`
 	Lineups       map[string]*LineupRecord     `json:"lineups"`
 	Stations      map[string]*Station          `json:"stations"`
-	Batches       []BatchReport                `json:"batches"`
+	// CategoryRelations are source-row relationships retained separately from
+	// accepted station facts. They are eligible only after an existing alias /
+	// identity binding or a confirmed weekday EPG bridge.
+	CategoryRelations                []ProviderCategoryRelation `json:"categoryRelations,omitempty"`
+	CategoryRelationsRefreshRequired bool                       `json:"categoryRelationsRefreshRequired,omitempty"`
+	Batches                          []BatchReport              `json:"batches"`
 }
 
 // PostalScanRecord describes an on-demand scan of every unique Gracenote
@@ -136,19 +141,25 @@ const (
 // StationFact is official evidence joined to a provider's Gracenote grid and
 // therefore to a provider-independent Gracenote station ID.
 type StationFact struct {
-	Kind            string   `json:"kind"`
-	Value           string   `json:"value"`
-	Normalized      string   `json:"normalized"`
-	RawValue        string   `json:"rawValue,omitempty"`
-	MatchMethod     string   `json:"matchMethod,omitempty"`
-	MatchConfidence float64  `json:"matchConfidence,omitempty"`
-	SourceID        string   `json:"sourceId"`
-	SourceLabel     string   `json:"sourceLabel"`
-	SourceURL       string   `json:"sourceUrl,omitempty"`
-	Method          string   `json:"method"`
-	LineupKeys      []string `json:"lineupKeys"`
-	StationBound    bool     `json:"stationBound,omitempty"`
-	SourceRevision  string   `json:"sourceRevision,omitempty"`
+	Kind                string   `json:"kind"`
+	Value               string   `json:"value"`
+	Normalized          string   `json:"normalized"`
+	RawValue            string   `json:"rawValue,omitempty"`
+	MatchMethod         string   `json:"matchMethod,omitempty"`
+	MatchConfidence     float64  `json:"matchConfidence,omitempty"`
+	SourceID            string   `json:"sourceId"`
+	SourceLabel         string   `json:"sourceLabel"`
+	SourceURL           string   `json:"sourceUrl,omitempty"`
+	Method              string   `json:"method"`
+	LineupKeys          []string `json:"lineupKeys"`
+	StationBound        bool     `json:"stationBound,omitempty"`
+	SourceRevision      string   `json:"sourceRevision,omitempty"`
+	SourceRowID         string   `json:"sourceRowId,omitempty"`
+	RootSourceLineupKey string   `json:"rootSourceLineupKey,omitempty"`
+	RootSourceStationID string   `json:"rootSourceStationId,omitempty"`
+	RootSourceID        string   `json:"rootSourceId,omitempty"`
+	RootSourceLabel     string   `json:"rootSourceLabel,omitempty"`
+	RootSourceURL       string   `json:"rootSourceUrl,omitempty"`
 }
 
 // ProviderEvidenceFetcher converts an official provider listing and its
@@ -186,6 +197,10 @@ type ProviderAddress struct {
 
 type ProviderEvidenceResult struct {
 	Facts []ProviderFact
+	// CategoryRelations retain provider-row category relationships even when a
+	// row was joined by the aligned provider-number alias policy and therefore
+	// cannot immediately produce an accepted category fact.
+	CategoryRelations []ProviderCategoryRelation
 	// IdentityFacts are exact provider identities that may be shared by more
 	// than one Gracenote station ID. They are used only to form pair-level EPG
 	// candidates and are never persisted or applied to a lineup on their own.
@@ -199,18 +214,46 @@ type ProviderEvidenceResult struct {
 }
 
 type ProviderFact struct {
-	StationID       string
-	Kind            string
-	Value           string
-	RawValue        string
-	MatchMethod     string
-	MatchConfidence float64
-	SourceID        string
-	SourceLabel     string
-	SourceURL       string
-	Method          string
-	StationBound    bool
-	SourceRevision  string
+	StationID           string
+	Kind                string
+	Value               string
+	RawValue            string
+	MatchMethod         string
+	MatchConfidence     float64
+	SourceID            string
+	SourceLabel         string
+	SourceURL           string
+	Method              string
+	StationBound        bool
+	SourceRevision      string
+	SourceRowID         string
+	RootSourceLineupKey string
+	RootSourceStationID string
+	// RootSourceID preserves the official provider source through a later EPG
+	// copy. Direct provider facts leave it empty and use SourceID as root.
+	RootSourceID    string
+	RootSourceLabel string
+	RootSourceURL   string
+}
+
+// ProviderCategoryRelation is one provider-specific alias/category row. It is
+// deliberately separate from StationFact: a category joined by provider
+// number is reviewable evidence, not an accepted category or identity proof.
+type ProviderCategoryRelation struct {
+	StationID       string   `json:"stationId"`
+	AliasValue      string   `json:"aliasValue"`
+	AliasNormalized string   `json:"aliasNormalized"`
+	Category        string   `json:"category"`
+	RawCategory     string   `json:"rawCategory,omitempty"`
+	SourceID        string   `json:"sourceId"`
+	SourceLabel     string   `json:"sourceLabel"`
+	SourceURL       string   `json:"sourceUrl,omitempty"`
+	SourceRevision  string   `json:"sourceRevision,omitempty"`
+	SourceRowID     string   `json:"sourceRowId"`
+	LineupKeys      []string `json:"lineupKeys"`
+	SourceLineupKey string   `json:"sourceLineupKey,omitempty"`
+	Method          string   `json:"method"`
+	StationBound    bool     `json:"stationBound,omitempty"`
 }
 
 type EvidenceSourceRecord struct {
@@ -357,10 +400,11 @@ type MarketView struct {
 }
 
 type Snapshot struct {
-	Catalog    CatalogView       `json:"catalog"`
-	Summary    IndexSummary      `json:"summary"`
-	Job        JobView           `json:"job"`
-	Markets    []MarketView      `json:"markets"`
-	Batches    []BatchReport     `json:"batches"`
-	PostalScan *PostalScanRecord `json:"postalScan,omitempty"`
+	Catalog                          CatalogView       `json:"catalog"`
+	Summary                          IndexSummary      `json:"summary"`
+	Job                              JobView           `json:"job"`
+	Markets                          []MarketView      `json:"markets"`
+	Batches                          []BatchReport     `json:"batches"`
+	PostalScan                       *PostalScanRecord `json:"postalScan,omitempty"`
+	CategoryRelationsRefreshRequired bool              `json:"categoryRelationsRefreshRequired,omitempty"`
 }

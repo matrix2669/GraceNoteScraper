@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
@@ -50,18 +51,77 @@ func tmdbGenreFilters(p guide.Program) []string {
 	return result
 }
 
+func independentProgrammeFilters(p guide.Program) []string {
+	filters := append([]string(nil), p.RawFilters...)
+	filters = append(filters, tmdbGenreFilters(p)...)
+	seen := make(map[string]bool, len(filters))
+	result := make([]string, 0, len(filters))
+	for _, filter := range filters {
+		filter = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(filter)), "filter-")
+		if filter == "" || seen[filter] {
+			continue
+		}
+		seen[filter] = true
+		result = append(result, filter)
+	}
+	return result
+}
+
+func independentTargetShare(a channelcategory.ScheduleAssessment) float64 {
+	switch a.Category {
+	case channelcategory.Movies:
+		return a.Shares["movie"]
+	case channelcategory.Sports:
+		return a.Shares["sports"]
+	case channelcategory.NewsWeather:
+		return a.Shares["news"]
+	case channelcategory.KidsFamily:
+		return a.Shares["family"]
+	case channelcategory.Entertainment:
+		return a.Shares["entertainment"]
+	default:
+		return 0
+	}
+}
+
+func containsCategory(categories []string, wanted string) bool {
+	for _, category := range categories {
+		if strings.EqualFold(strings.TrimSpace(category), strings.TrimSpace(wanted)) {
+			return true
+		}
+	}
+	return false
+}
+
 func tmdbGuideRevision(g *guide.TVGuide) (string, int) {
 	h := sha256.New()
 	n := 0
 	for _, p := range g.Programs {
-		if !p.TMDBGenresCaptured && strings.TrimSpace(p.OrigLanguage) == "" {
-			continue
+		if p.TMDBGenresCaptured || strings.TrimSpace(p.OrigLanguage) != "" {
+			n++
 		}
-		n++
-		// Include schedule boundaries so a new guide invalidates the scan too.
-		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.TMDBMediaType, p.TMDBGenreIDs, p.TMDBGenreNames, p.OrigLanguage})
+		// Unclassified intervals still affect coverage, window selection and
+		// overlap rejection. Evidence availability is part of the revision too.
+		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.RawFilters, p.TMDBGenresCaptured, p.TMDBMediaType, p.TMDBGenreIDs, p.TMDBGenreNames, p.OrigLanguage})
 	}
 	return hex.EncodeToString(h.Sum(nil)), n
+}
+
+// A scan records the effective timezone verified during assessment. Discovery
+// can establish it before any lineup record is retained; in that case the
+// source-scoped scan remains last-known provenance, without a draft-time fetch.
+// A later known conflicting timezone invalidates confirmation, as does legacy
+// scan data that never recorded its assessment timezone.
+func (s *lineuparrServer) tmdbScanTimezoneCurrent(c appconfig.Config, scan lineuparrbuilder.TMDBCategoryScan) bool {
+	if strings.TrimSpace(scan.Timezone) == "" {
+		return false
+	}
+	if s.marketIndex != nil {
+		if current := s.marketIndex.LineupTimezone(c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device); current != nil {
+			return current.String() == scan.Timezone
+		}
+	}
+	return true
 }
 
 // Adapt older published guides without mutating them or triggering a scrape.
@@ -148,9 +208,9 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 		case count == 0:
 			status = "waiting-for-evidence"
 			message = "No usable TMDB genre or original-language evidence is linked to this guide yet. Existing cached genre names are reused when their TMDB identity matches; otherwise normal enrichment must capture the missing evidence. Do not clear your guide or saved lineup choices."
-		case revision != previous.Revision:
+		case revision != previous.Revision || !s.tmdbScanTimezoneCurrent(c, previous):
 			status = "ready"
-			message = "New TMDB programme evidence is available. Scan the cached data to propose categories; this does not request TMDB lookups."
+			message = "Programme evidence or its lineup timezone needs a category scan. Scan the cached data to propose categories; this does not request TMDB lookups."
 		default:
 			status = "current"
 			message = "The available TMDB programme evidence has been scanned."
@@ -178,6 +238,7 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			return
 		}
 		rows := map[string][]channelcategory.ScheduleEvent{}
+		independentRows := map[string][]channelcategory.ScheduleEvent{}
 		languageRows := map[string][]channelcategory.LanguageEvent{}
 		var first time.Time
 		for _, p := range g.Programs {
@@ -193,14 +254,20 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 				first = a
 			}
 			rows[p.Channel] = append(rows[p.Channel], channelcategory.ScheduleEvent{Start: a, Stop: b, Title: p.Title, Filters: tmdbGenreFilters(p)})
+			independentRows[p.Channel] = append(independentRows[p.Channel], channelcategory.ScheduleEvent{Start: a, Stop: b, Title: p.Title, Filters: independentProgrammeFilters(p)})
 			languageRows[p.Channel] = append(languageRows[p.Channel], channelcategory.LanguageEvent{Start: a, Stop: b, Title: p.Title, OriginalLanguage: p.OrigLanguage})
 		}
 		if first.IsZero() {
 			http.Error(w, "No valid programme intervals available", 409)
 			return
 		}
-		scan := lineuparrbuilder.TMDBCategoryScan{Revision: revision, ScannedAt: time.Now().UTC(), Categories: map[string]lineuparrbuilder.AttributedCategory{}}
+		scan := lineuparrbuilder.TMDBCategoryScan{Revision: revision, Timezone: loc.String(), ScannedAt: time.Now().UTC(), Categories: map[string]lineuparrbuilder.AttributedCategory{}, IndependentCategories: map[string][]string{}}
 		for id, events := range rows {
+			independent := channelcategory.AssessSchedule(independentRows[id], first, loc)
+			independentCategories := independentCategoryNames(independent)
+			if len(independentCategories) > 0 {
+				scan.IndependentCategories[id] = independentCategories
+			}
 			language := channelcategory.AssessLanguage(languageRows[id], first, loc)
 			if language.Category != "" {
 				scan.Categories[id] = lineuparrbuilder.AttributedCategory{
@@ -213,7 +280,12 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			if a.Category == "" {
 				continue
 			}
-			scan.Categories[id] = lineuparrbuilder.AttributedCategory{Value: a.Category, Source: "tmdb-schedule", Label: "TMDB programme genres", Priority: 4, Method: fmt.Sprintf("priority-4; optional TMDB search-result genres; 14-day weekday airtime, %.1f%% usable coverage; mean %.1f minutes; category-quality-v1; requires review", a.Coverage*100, a.AverageMinutes)}
+			method := fmt.Sprintf("priority-4; optional TMDB search-result genres; 14-day weekday airtime, %.1f%% usable coverage; mean %.1f minutes; category-quality-v1; requires review", a.Coverage*100, a.AverageMinutes)
+			confirmed := containsCategory(independentCategories, a.Category)
+			if confirmed {
+				method += fmt.Sprintf("; independent schedule confirmation: %s with >=80%% usable weekday coverage", strings.Join(independentCategories, ", "))
+			}
+			scan.Categories[id] = lineuparrbuilder.AttributedCategory{Value: a.Category, Source: "tmdb-schedule", Label: "TMDB programme genres", Priority: 4, IndependentConfirmation: confirmed, IndependentCategories: independentCategories, Method: method}
 		}
 		current, err := s.store.WhileCurrent(c.Fingerprint(), func() error { return s.builder.SaveTMDBCategoryScan(c.Fingerprint(), scan) })
 		if err != nil {

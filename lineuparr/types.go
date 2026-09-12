@@ -29,7 +29,14 @@ type InputChannel struct {
 	PreferredName    *AttributedAlias
 	CategoryHint     *AttributedCategory
 	CategoryConflict bool
-	ExternalAliases  []AttributedAlias
+	// Independent schedule support is kept separate from CategoryHint. A
+	// provider category may be the selected proposal while the guide schedule
+	// independently confirms it (or disagrees and keeps review open).
+	IndependentCategory          string
+	IndependentCategories        []string
+	IndependentScheduleConfirmed bool
+	CategoryEvidenceMethod       string
+	ExternalAliases              []AttributedAlias
 }
 
 type AttributedAlias struct {
@@ -39,11 +46,13 @@ type AttributedAlias struct {
 }
 
 type AttributedCategory struct {
-	Priority int
-	Value    string
-	Source   string
-	Label    string
-	Method   string
+	Priority                int
+	Value                   string
+	Source                  string
+	Label                   string
+	Method                  string
+	IndependentConfirmation bool     `json:"independentConfirmation,omitempty"`
+	IndependentCategories   []string `json:"independentCategories,omitempty"`
 }
 
 type AliasEvidence struct {

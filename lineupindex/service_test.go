@@ -686,7 +686,7 @@ func TestCompleteProviderSnapshotReconcilesOnlyItsStationBoundFacts(t *testing.T
 	}
 }
 
-func TestCategoriesForStationsRejectsConflictingOfficialSources(t *testing.T) {
+func TestCategoriesForStationsRetainsReviewableConflictingOfficialSources(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
 		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
@@ -702,12 +702,12 @@ func TestCategoriesForStationsRejectsConflictingOfficialSources(t *testing.T) {
 		{Kind: FactCategory, Value: "News", Normalized: "NEWS", SourceID: "two"},
 	}}
 	service.mu.Unlock()
-	if _, ok := service.CategoriesForStations([]string{"S1"})["S1"]; ok {
-		t.Fatal("conflicting categories were applied automatically")
+	if category, ok := service.CategoriesForStations([]string{"S1"})["S1"]; !ok || category.Value != "News & Weather" || !strings.Contains(strings.Join(category.Methods, " "), "provider disagreement") {
+		t.Fatalf("conflict must retain a deterministic reviewable proposal: %+v", category)
 	}
 }
 
-func TestCategoriesForStationsPrefersSelectedOfficialSource(t *testing.T) {
+func TestCategoriesForStationsIgnoresSelectedProviderPreference(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
 		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
@@ -731,8 +731,8 @@ func TestCategoriesForStationsPrefersSelectedOfficialSource(t *testing.T) {
 	if len(category.SourceIDs) != 1 || category.SourceIDs[0] != "optimum-official-lineup" {
 		t.Fatalf("preferred category sources = %v", category.SourceIDs)
 	}
-	if _, ok := service.CategoriesForStations([]string{"S1"})["S1"]; ok {
-		t.Fatal("legacy all-source lookup stopped rejecting the conflict")
+	if other := service.CategoriesForStationsWithPreferredSource([]string{"S1"}, "verizon-fios-official-lineup")["S1"]; other.Value != category.Value || !strings.Contains(strings.Join(other.Methods, " "), "provider disagreement") {
+		t.Fatalf("selected provider must not change the reviewable tie: %+v", other)
 	}
 }
 
@@ -770,7 +770,7 @@ func TestCategoriesForStationsReevaluatesBroadProviderGroupsFromRawEvidence(t *t
 	}
 }
 
-func TestCategoriesForStationsRejectsPreferredSourceConflict(t *testing.T) {
+func TestCategoriesForStationsWithholdsSelfConflictingProviderVote(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
 		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
@@ -788,12 +788,12 @@ func TestCategoriesForStationsRejectsPreferredSourceConflict(t *testing.T) {
 	}}
 	service.mu.Unlock()
 
-	if _, ok := service.CategoriesForStationsWithPreferredSource([]string{"S1"}, "optimum-official-lineup")["S1"]; ok {
-		t.Fatal("conflicting categories within the preferred source were applied")
+	if category := service.CategoriesForStationsWithPreferredSource([]string{"S1"}, "optimum-official-lineup")["S1"]; category.Value != "Entertainment" || !strings.Contains(strings.Join(category.Methods, " "), "abstained") {
+		t.Fatalf("self-conflict must abstain while retaining a reviewable supported choice: %+v", category)
 	}
 }
 
-func TestCategoriesForStationsRequiresAgreementWithoutPreferredEvidence(t *testing.T) {
+func TestCategoriesForStationsDistinguishesAgreementAndReviewableFallback(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market_index.json"),
 		Catalog:   testCatalog(MarketSeed{Rank: 1, Name: "New York", Country: "USA", PostalCode: "10001"}),
@@ -818,8 +818,8 @@ func TestCategoriesForStationsRequiresAgreementWithoutPreferredEvidence(t *testi
 	if category, ok := categories["S1"]; !ok || category.Value != "Sports" || len(category.SourceIDs) != 2 {
 		t.Fatalf("agreed fallback category = %+v, %v", category, ok)
 	}
-	if _, ok := categories["S2"]; ok {
-		t.Fatal("conflicting fallback categories were applied")
+	if category := categories["S2"]; category.Value != "News & Weather" || !strings.Contains(strings.Join(category.Methods, " "), "provider disagreement") {
+		t.Fatalf("conflicting fallback must retain supported reviewable category: %+v", category)
 	}
 }
 

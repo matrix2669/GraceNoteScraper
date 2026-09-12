@@ -39,6 +39,14 @@ func loadIndex(path string, catalog SeedCatalog, now time.Time) (Index, error) {
 		if err := writeIndex(path, index); err != nil {
 			return Index{}, fmt.Errorf("saving migrated market index: %w", err)
 		}
+	} else if index.SchemaVersion == 3 {
+		if err := writeIndex(path+".schema-3.bak", index); err != nil {
+			return Index{}, fmt.Errorf("backing up market index before category-relation migration: %w", err)
+		}
+		migrateIndexV3(&index, now)
+		if err := writeIndex(path, index); err != nil {
+			return Index{}, fmt.Errorf("saving migrated market index: %w", err)
+		}
 	} else if index.SchemaVersion != CurrentIndexVersion {
 		return Index{}, fmt.Errorf("unsupported market index schema %d", index.SchemaVersion)
 	}
@@ -95,6 +103,7 @@ func migrateIndexV1(index *Index, now time.Time) {
 func migrateIndexV2(index *Index, now time.Time) {
 	index.SchemaVersion = CurrentIndexVersion
 	index.UpdatedAt = now.UTC().Format(time.RFC3339)
+	index.CategoryRelationsRefreshRequired = true
 	if index.PostalScans == nil {
 		index.PostalScans = make(map[string]*PostalScanRecord)
 	}
@@ -105,19 +114,30 @@ func migrateIndexV2(index *Index, now time.Time) {
 	}
 }
 
+func migrateIndexV3(index *Index, now time.Time) {
+	index.SchemaVersion = CurrentIndexVersion
+	index.UpdatedAt = now.UTC().Format(time.RFC3339)
+	index.CategoryRelations = nil
+	// Existing accepted facts remain usable under their historical guards, but
+	// no relation can be reconstructed from legacy data. Keep scan completion
+	// and audit history intact while exposing an additive refresh warning.
+	index.CategoryRelationsRefreshRequired = true
+}
+
 func newIndex(catalog SeedCatalog, now time.Time) Index {
 	timestamp := now.UTC().Format(time.RFC3339)
 	return Index{
-		SchemaVersion: CurrentIndexVersion,
-		SeedDigest:    catalog.Digest,
-		SeedAsOf:      catalog.AsOf,
-		CreatedAt:     timestamp,
-		UpdatedAt:     timestamp,
-		Markets:       make(map[string]*MarketRecord),
-		PostalScans:   make(map[string]*PostalScanRecord),
-		Lineups:       make(map[string]*LineupRecord),
-		Stations:      make(map[string]*Station),
-		Batches:       []BatchReport{},
+		SchemaVersion:     CurrentIndexVersion,
+		SeedDigest:        catalog.Digest,
+		SeedAsOf:          catalog.AsOf,
+		CreatedAt:         timestamp,
+		UpdatedAt:         timestamp,
+		Markets:           make(map[string]*MarketRecord),
+		PostalScans:       make(map[string]*PostalScanRecord),
+		Lineups:           make(map[string]*LineupRecord),
+		Stations:          make(map[string]*Station),
+		CategoryRelations: []ProviderCategoryRelation{},
+		Batches:           []BatchReport{},
 	}
 }
 
@@ -133,6 +153,9 @@ func initializeIndexMaps(index *Index) {
 	}
 	if index.Stations == nil {
 		index.Stations = make(map[string]*Station)
+	}
+	if index.CategoryRelations == nil {
+		index.CategoryRelations = []ProviderCategoryRelation{}
 	}
 	if index.Batches == nil {
 		index.Batches = []BatchReport{}

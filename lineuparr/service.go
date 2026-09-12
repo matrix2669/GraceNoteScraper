@@ -73,7 +73,11 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			input.Key = fmt.Sprintf("%s-%d", baseKey, count+1)
 		}
 		seenKeys[baseKey]++
-		channels = append(channels, newChannelWork(input))
+		work := newChannelWork(input)
+		if input.CategoryConflict && strings.TrimSpace(input.CategoryEvidenceMethod) != "" {
+			work.draft.CategoryMethod = appendCategoryMethod(work.draft.CategoryMethod, "provider review evidence: "+input.CategoryEvidenceMethod)
+		}
+		channels = append(channels, work)
 	}
 
 	statuses := []SourceStatus{{
@@ -222,7 +226,17 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		if channel.draft.Category != uncategorized && channel.draft.CategoryPriority == 0 {
 			channel.draft.CategoryPriority = 2
 		}
-		channel.draft.NeedsCategoryReview = channel.draft.Category != uncategorized && channel.draft.CategoryPriority >= 3
+		// Provider disagreement is reviewable even when a maintained priority-1
+		// identity supplies the selected category. Manual choices are applied
+		// below and remain unconditional overrides.
+		channel.draft.NeedsCategoryReview = channel.draft.Category != uncategorized && (channel.draft.CategoryPriority >= 3 || channel.input.CategoryConflict)
+		independentlyConfirmed := channel.input.IndependentScheduleConfirmed && (containsFold(channel.input.IndependentCategories, channel.draft.Category) || strings.EqualFold(strings.TrimSpace(channel.draft.Category), strings.TrimSpace(channel.input.IndependentCategory)))
+		if channel.draft.NeedsCategoryReview && independentlyConfirmed {
+			// Independent schedule confirmation clears review only when it
+			// supports the final selected category. A disagreement (for example
+			// provider News versus movie-heavy schedule) stays reviewable.
+			channel.draft.NeedsCategoryReview = false
+		}
 		if override, ok := overrides[channel.draft.ID]; ok {
 			if override.Included != nil {
 				channel.draft.Included = *override.Included
@@ -291,6 +305,18 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		return nil, fmt.Errorf("signing Lineuparr draft: %w", err)
 	}
 	return draft, nil
+}
+
+func appendCategoryMethod(existing, addition string) string {
+	existing = strings.TrimSpace(existing)
+	addition = strings.TrimSpace(addition)
+	if existing == "" {
+		return addition
+	}
+	if addition == "" || strings.Contains(existing, addition) {
+		return existing
+	}
+	return existing + "; " + addition
 }
 
 func consolidateSourceStatuses(statuses []SourceStatus) []SourceStatus {
@@ -1640,6 +1666,15 @@ func cleanCategory(value string) string {
 		return ""
 	}
 	return match.Category
+}
+
+func containsFold(values []string, wanted string) bool {
+	for _, value := range values {
+		if strings.EqualFold(strings.TrimSpace(value), strings.TrimSpace(wanted)) {
+			return true
+		}
+	}
+	return false
 }
 
 func cleanText(value string) string {
