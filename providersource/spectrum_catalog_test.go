@@ -57,11 +57,12 @@ func TestSpectrumCategoryFactRetainsRawProviderCategory(t *testing.T) {
 		{ChannelID: "103890", CallSign: "FLIX"},
 	}}}, catalogSource{
 		ID: "spectrum-official-lineup", Label: "Spectrum national channel catalog", URL: spectrumGuideURL,
+		StationBound: true, SourceRevision: catalog.ContentHash,
 		Entries: spectrumCatalogEntries(catalog.Entries),
 	})
 	for _, fact := range result.Facts {
 		if fact.Kind == lineupindex.FactCategory && fact.StationID == "103890" {
-			if fact.Value != channelcategory.Movies || fact.RawValue != "Premiums" {
+			if fact.Value != channelcategory.Movies || fact.RawValue != "Premiums" || !fact.StationBound || fact.SourceRevision != catalog.ContentHash {
 				t.Fatalf("Spectrum category fact = %+v", fact)
 			}
 			return
@@ -107,6 +108,65 @@ func TestSpectrumCatalogJoinsEveryProviderOnlyByStationID(t *testing.T) {
 	}
 	if len(result.Sources) != 1 || result.Sources[0].Matched != 1 {
 		t.Fatalf("sources = %+v", result.Sources)
+	}
+}
+
+func TestSpectrumSnapshotMetadataIncludesUnmatchedCatalogRows(t *testing.T) {
+	service := newServiceWithOptions(nil, Options{Now: func() time.Time {
+		return time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)
+	}})
+	result, err := service.FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		Provider: web.Provider{Name: "Unknown Cable"},
+		Grid:     &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "not-in-spectrum"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertCompleteSpectrumSnapshot(t, result)
+}
+
+func assertCompleteSpectrumSnapshot(t *testing.T, result lineupindex.ProviderEvidenceResult) {
+	t.Helper()
+	if !result.SnapshotComplete || result.SnapshotSourceID != "spectrum-official-lineup" || result.SnapshotRevision == "" {
+		t.Fatalf("incomplete Spectrum snapshot metadata: complete=%v source=%q revision=%q", result.SnapshotComplete, result.SnapshotSourceID, result.SnapshotRevision)
+	}
+	if len(result.SnapshotStationIDs) != 378 || len(result.SnapshotFacts) != 756 {
+		t.Fatalf("Spectrum snapshot sizes: stations=%d facts=%d", len(result.SnapshotStationIDs), len(result.SnapshotFacts))
+	}
+	foundPremium := false
+	for _, fact := range result.SnapshotFacts {
+		if !fact.StationBound || fact.SourceRevision != result.SnapshotRevision || fact.SourceID != result.SnapshotSourceID {
+			t.Fatalf("invalid Spectrum snapshot fact: %+v", fact)
+		}
+		if fact.StationID == "103890" && fact.Kind == lineupindex.FactCategory && fact.Value == channelcategory.Movies && fact.RawValue == "Premiums" {
+			foundPremium = true
+		}
+	}
+	if !foundPremium {
+		t.Fatal("snapshot omitted the canonical/raw Premiums category fact")
+	}
+}
+
+func TestNationalOnlySkipsProviderLocalAndEmbeddedAdapters(t *testing.T) {
+	calls := 0
+	service := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		return nil, errors.New("provider-local adapter must not run")
+	})}, Options{UseEmbeddedCatalogs: true, Now: func() time.Time {
+		return time.Date(2026, 9, 12, 12, 0, 0, 0, time.UTC)
+	}})
+	result, err := service.FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		NationalOnly: true, Provider: web.Provider{Name: "DISH Satellite"},
+		Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "32645"}}},
+	})
+	if err != nil || calls != 0 || len(result.Facts) == 0 {
+		t.Fatalf("national-only result=%+v calls=%d err=%v", result, calls, err)
+	}
+	assertCompleteSpectrumSnapshot(t, result)
+	for _, source := range result.Sources {
+		if source.ID != "spectrum-official-lineup" {
+			t.Fatalf("national-only included non-Spectrum source: %+v", result.Sources)
+		}
 	}
 }
 
@@ -193,33 +253,132 @@ func TestSpectrumRefreshFailureKeepsLastGoodAndThrottlesRetries(t *testing.T) {
 	}
 }
 
-func TestSpectrumRefreshRejectsSuspiciousCatalogShrink(t *testing.T) {
+func TestSpectrumRefreshReservationFailureSkipsHTTP(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "spectrum.json")
 	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
 	calls := 0
-	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	service := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		calls++
-		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(spectrumPayload(300))), Request: request}, nil
-	})}
-	service := newServiceWithOptions(client, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now }})
-	request := lineupindex.ProviderEvidenceRequest{
-		Provider: web.Provider{Name: "Unknown Cable"},
-		Grid:     &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "32645"}, {ChannelID: "900000"}}},
+		return nil, errors.New("HTTP must not be called when reservation fails")
+	})}, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now }})
+	service.spectrumCacheWriter = func(string, spectrumCatalogFile) error { return errors.New("cache is read-only") }
+	result, err := service.FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		Provider: web.Provider{Name: "Unknown Cable"}, Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "32645"}}},
+	})
+	if err != nil || calls != 0 || len(result.Facts) == 0 {
+		t.Fatalf("reservation failure result=%+v calls=%d err=%v", result, calls, err)
 	}
+}
+
+func TestSpectrumSuccessfulRefreshIsNotActivatedWhenCacheWriteFails(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spectrum.json")
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	calls, writes := 0, 0
+	service := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(spectrumPayload(400))), Request: request}, nil
+	})}, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now }})
+	service.spectrumCacheWriter = func(_ string, file spectrumCatalogFile) error {
+		writes++
+		if writes == 1 {
+			return writeSpectrumCatalog(path, file)
+		}
+		return errors.New("disk full")
+	}
+	request := lineupindex.ProviderEvidenceRequest{Provider: web.Provider{Name: "Unknown Cable"}, Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "900000"}}}}
 	result, err := service.FetchProviderEvidence(context.Background(), request)
-	if err != nil || calls != 1 {
-		t.Fatalf("refresh result=%+v calls=%d err=%v", result, calls, err)
+	if err != nil || calls != 1 || writes != 2 {
+		t.Fatalf("persistence failure result=%+v calls=%d writes=%d err=%v", result, calls, writes, err)
 	}
-	if len(result.Sources) != 1 || result.Sources[0].Matched != 1 {
-		t.Fatalf("suspicious refresh replaced bundled catalog: %+v", result)
+	if len(result.Facts) != 0 {
+		t.Fatalf("unpersisted catalog became active: %+v", result)
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
+	if service.spectrum.origin != "bundled" || len(service.spectrum.file.Entries) != 378 {
+		t.Fatalf("active catalog changed after persistence failure: origin=%q entries=%d", service.spectrum.origin, len(service.spectrum.file.Entries))
+	}
+	restartCalls := 0
+	restarted := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		restartCalls++
+		return nil, errors.New("reservation should throttle restart")
+	})}, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now.Add(24 * time.Hour) }})
+	if _, err := restarted.FetchProviderEvidence(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	var cached spectrumCatalogFile
-	if json.Unmarshal(data, &cached) != nil || len(cached.Entries) != 378 || !strings.Contains(cached.LastRefreshError, "shrank") {
-		t.Fatalf("retained cache = %+v", cached)
+	if restartCalls != 0 {
+		t.Fatalf("unpersisted successful refresh retried after restart: %d", restartCalls)
+	}
+}
+
+func TestSpectrumRefreshReservationSurvivesInterruptedRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "spectrum.json")
+	now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+	first := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return nil, context.Canceled
+	})}, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now }})
+	request := lineupindex.ProviderEvidenceRequest{Provider: web.Provider{Name: "Unknown Cable"}, Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "32645"}}}}
+	if _, err := first.FetchProviderEvidence(context.Background(), request); err != nil {
+		t.Fatal("interrupted refresh should retain fallback:", err)
+	}
+	restartCalls := 0
+	restarted := newServiceWithOptions(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		restartCalls++
+		return nil, errors.New("reservation should throttle restart")
+	})}, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now.Add(24 * time.Hour) }})
+	if _, err := restarted.FetchProviderEvidence(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if restartCalls != 0 {
+		t.Fatalf("interrupted refresh retried after restart: %d", restartCalls)
+	}
+}
+
+func TestSpectrumRefreshRejectsSuspiciousCatalogShrink(t *testing.T) {
+	for _, test := range []struct {
+		count       int
+		wantNewJoin bool
+	}{
+		{count: 302, wantNewJoin: false},
+		{count: 303, wantNewJoin: true},
+	} {
+		t.Run(fmt.Sprintf("%d entries", test.count), func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "spectrum.json")
+			now := time.Date(2026, 9, 20, 12, 0, 0, 0, time.UTC)
+			calls := 0
+			client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(spectrumPayload(test.count))), Request: request}, nil
+			})}
+			service := newServiceWithOptions(client, Options{SpectrumCatalogPath: path, Now: func() time.Time { return now }})
+			request := lineupindex.ProviderEvidenceRequest{Provider: web.Provider{Name: "Unknown Cable"}, Grid: &web.GridResponse{Channels: []web.JSONChannel{{ChannelID: "32645"}, {ChannelID: "900000"}}}}
+			result, err := service.FetchProviderEvidence(context.Background(), request)
+			if err != nil || calls != 1 {
+				t.Fatalf("refresh result=%+v calls=%d err=%v", result, calls, err)
+			}
+			joinedNew := false
+			for _, fact := range result.Facts {
+				if fact.StationID == "900000" {
+					joinedNew = true
+				}
+			}
+			if joinedNew != test.wantNewJoin {
+				t.Fatalf("new catalog active=%v, want %v; result=%+v", joinedNew, test.wantNewJoin, result)
+			}
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var cached spectrumCatalogFile
+			if json.Unmarshal(data, &cached) != nil {
+				t.Fatal("invalid cache")
+			}
+			if test.wantNewJoin {
+				if len(cached.Entries) != test.count {
+					t.Fatalf("persisted entry count = %d, want %d", len(cached.Entries), test.count)
+				}
+			} else if len(cached.Entries) != 378 || !strings.Contains(cached.LastRefreshError, "shrank") {
+				t.Fatalf("retained cache = %+v", cached)
+			}
+		})
 	}
 }
 
@@ -257,6 +416,51 @@ func TestSpectrumRefreshTokenForcesOneEarlyAttempt(t *testing.T) {
 	newCalls := 0
 	if _, err := newServiceForToken("manual-2", &newCalls).FetchProviderEvidence(context.Background(), request); err != nil || newCalls != 1 {
 		t.Fatalf("new token calls=%d err=%v", newCalls, err)
+	}
+}
+
+func TestParseSpectrumAPIRejectsMalformedRows(t *testing.T) {
+	tests := []struct {
+		name    string
+		channel map[string]any
+		want    string
+	}{
+		{"missing TMSID", map[string]any{"ChannelName": "A", "Genre": []string{"Entertainment"}}, "missing or invalid TMSID"},
+		{"non numeric TMSID", map[string]any{"TMSID": "not-a-number", "ChannelName": "A", "Genre": []string{"Entertainment"}}, "non-numeric TMSID"},
+		{"empty name", map[string]any{"TMSID": "123", "ChannelName": " ", "Genre": []string{"Entertainment"}}, "empty name"},
+		{"unsupported category", map[string]any{"TMSID": "123", "ChannelName": "A", "Genre": []string{"Mystery"}}, "unsupported genre category"},
+		{"mixed category", map[string]any{"TMSID": "123", "ChannelName": "A", "Genre": []string{"Entertainment", "Sports"}}, "mixed genre categories"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			data, _ := json.Marshal(map[string]any{"CluInfo": map[string]any{"CLU": map[string]any{"Channels": []map[string]any{test.channel}}}})
+			_, err := parseSpectrumAPI(data)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("parse error=%v, want containing %q", err, test.want)
+			}
+		})
+	}
+}
+
+func TestParseSpectrumAPIRejectsAnyMalformedRowInResponse(t *testing.T) {
+	channels := []map[string]any{
+		{"TMSID": "123", "ChannelName": "A", "Genre": []string{"Entertainment"}},
+		{"TMSID": "456", "ChannelName": " ", "Genre": []string{"Entertainment"}},
+	}
+	data, _ := json.Marshal(map[string]any{"CluInfo": map[string]any{"CLU": map[string]any{"Channels": channels}}})
+	if _, err := parseSpectrumAPI(data); err == nil || !strings.Contains(err.Error(), "channel 2") {
+		t.Fatalf("malformed row was not fatal: %v", err)
+	}
+}
+
+func TestParseSpectrumAPIRejectsConflictingDuplicateStationID(t *testing.T) {
+	channels := []map[string]any{
+		{"TMSID": "123", "ChannelName": "A", "Genre": []string{"Entertainment"}},
+		{"TMSID": "123", "ChannelName": "B", "Genre": []string{"Sports"}},
+	}
+	data, _ := json.Marshal(map[string]any{"CluInfo": map[string]any{"CLU": map[string]any{"Channels": channels}}})
+	if _, err := parseSpectrumAPI(data); err == nil || !strings.Contains(err.Error(), "conflicting duplicate station ID") {
+		t.Fatalf("conflicting duplicate was not fatal: %v", err)
 	}
 }
 

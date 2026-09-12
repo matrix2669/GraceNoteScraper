@@ -65,8 +65,19 @@ func TestOneMarketAddressSkipsAndCounterfactual(t *testing.T) {
 		t.Fatalf("report %+v", record)
 	}
 	evidence.mu.Lock()
-	if len(evidence.calls) != 1 || !evidence.calls[0].AllowChannelNumbers || evidence.calls[0].Grid.Channels[0].ChannelID != "S1" || evidence.calls[0].ServiceAddress.FormattedAddress != "" {
+	if len(evidence.calls) != 2 {
 		t.Fatal(evidence.calls)
+	}
+	for _, call := range evidence.calls {
+		if !call.AllowChannelNumbers || call.ServiceAddress.FormattedAddress != "" {
+			t.Fatalf("evidence request = %+v", call)
+		}
+		if call.Provider.LineupID == "L1" && call.NationalOnly {
+			t.Fatalf("public provider was incorrectly restricted to national evidence: %+v", call)
+		}
+		if call.Provider.LineupID == "L2" && !call.NationalOnly {
+			t.Fatalf("unapproved address-gated provider was allowed local evidence: %+v", call)
+		}
 	}
 	evidence.mu.Unlock()
 	if record.ProviderAudit[1].Access != "address-required" {
@@ -185,7 +196,7 @@ func TestChicagoReferenceAddressIsXfinityOnlyAndEphemeral(t *testing.T) {
 	evidence.mu.Lock()
 	calls := append([]ProviderEvidenceRequest(nil), evidence.calls...)
 	evidence.mu.Unlock()
-	if len(calls) != 2 {
+	if len(calls) != 3 {
 		t.Fatalf("evidence calls = %+v", calls)
 	}
 	addresses := map[string]ProviderAddress{}
@@ -198,8 +209,20 @@ func TestChicagoReferenceAddressIsXfinityOnlyAndEphemeral(t *testing.T) {
 	if addresses["L2"].FormattedAddress != "" {
 		t.Fatalf("public DISH received reference address: %+v", addresses["L2"])
 	}
-	if _, called := addresses["L3"]; called {
-		t.Fatal("Spectrum used the Xfinity-only reference address")
+	if addresses["L3"].FormattedAddress != "" {
+		t.Fatalf("Spectrum used the Xfinity-only reference address: %+v", addresses["L3"])
+	}
+	for _, call := range calls {
+		switch call.Provider.LineupID {
+		case "L1", "L2":
+			if call.NationalOnly {
+				t.Fatalf("eligible provider was incorrectly restricted to national evidence: %+v", call)
+			}
+		case "L3":
+			if !call.NationalOnly {
+				t.Fatalf("unapproved Spectrum provider was allowed local evidence: %+v", call)
+			}
+		}
 	}
 
 	viewJSON, err := json.Marshal(view)

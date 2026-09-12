@@ -14,10 +14,12 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 const (
@@ -120,7 +122,9 @@ func parseBundledSpectrumCatalog(data []byte) (spectrumCatalogFile, error) {
 	if err := scanner.Err(); err != nil {
 		return spectrumCatalogFile{}, fmt.Errorf("reading bundled Spectrum catalog: %w", err)
 	}
-	normalizeSpectrumEntries(&result.Entries)
+	if err := normalizeSpectrumEntries(&result.Entries); err != nil {
+		return spectrumCatalogFile{}, fmt.Errorf("validating bundled Spectrum catalog: %w", err)
+	}
 	result.ContentHash = spectrumContentHash(result.Entries)
 	if err := validateSpectrumCatalog(result); err != nil {
 		return spectrumCatalogFile{}, err
@@ -134,18 +138,32 @@ func parseSpectrumAPI(data []byte) (spectrumCatalogFile, error) {
 		return spectrumCatalogFile{}, fmt.Errorf("decoding Spectrum national catalog: %w", err)
 	}
 	result := spectrumCatalogFile{SchemaVersion: spectrumCatalogSchema, SourceURL: spectrumGuideURL}
-	for _, channel := range payload.CluInfo.CLU.Channels {
+	if len(payload.CluInfo.CLU.Channels) == 0 {
+		return spectrumCatalogFile{}, errors.New("Spectrum national catalog contains no channels")
+	}
+	for index, channel := range payload.CluInfo.CLU.Channels {
 		stationID := rawSpectrumStationID(channel.TMSID)
 		name := cleanText(channel.ChannelName)
-		category := firstSpectrumGenre(channel.Genres)
-		if stationID == "" || name == "" || category == "" {
-			continue
+		category, err := firstSpectrumGenre(channel.Genres)
+		if err != nil {
+			return spectrumCatalogFile{}, fmt.Errorf("Spectrum national catalog channel %d: %w", index+1, err)
+		}
+		if stationID == "" {
+			return spectrumCatalogFile{}, fmt.Errorf("Spectrum national catalog channel %d has a missing or invalid TMSID", index+1)
+		}
+		if !isNumericStationID(stationID) {
+			return spectrumCatalogFile{}, fmt.Errorf("Spectrum national catalog channel %d has a non-numeric TMSID %q", index+1, stationID)
+		}
+		if name == "" {
+			return spectrumCatalogFile{}, fmt.Errorf("Spectrum national catalog channel %d has an empty name", index+1)
 		}
 		result.Entries = append(result.Entries, spectrumCatalogEntry{
 			StationID: stationID, Name: name, Category: category, Packages: cleanSpectrumValues(channel.Packages),
 		})
 	}
-	normalizeSpectrumEntries(&result.Entries)
+	if err := normalizeSpectrumEntries(&result.Entries); err != nil {
+		return spectrumCatalogFile{}, fmt.Errorf("validating Spectrum national catalog response: %w", err)
+	}
 	result.ContentHash = spectrumContentHash(result.Entries)
 	if err := validateSpectrumCatalog(result); err != nil {
 		return spectrumCatalogFile{}, err
@@ -165,21 +183,25 @@ func rawSpectrumStationID(raw json.RawMessage) string {
 	return ""
 }
 
-func firstSpectrumGenre(values []string) string {
+func firstSpectrumGenre(values []string) (string, error) {
+	cleaned := cleanSpectrumValues(values)
+	if len(cleaned) == 0 {
+		return "", errors.New("missing genre category")
+	}
 	var selected string
 	var selectedMaster string
-	for _, value := range cleanSpectrumValues(values) {
+	for _, value := range cleaned {
 		master, ok := mapSpectrumCategory(value)
 		if !ok {
-			continue
+			return "", fmt.Errorf("unsupported genre category %q", value)
 		}
 		if selectedMaster != "" && master != selectedMaster {
-			return ""
+			return "", fmt.Errorf("mixed genre categories %q and %q", selected, value)
 		}
 		selected = value
 		selectedMaster = master
 	}
-	return selected
+	return selected, nil
 }
 
 func mapSpectrumCategory(value string) (string, bool) {
@@ -222,31 +244,46 @@ func spectrumCatalogEntries(records []spectrumCatalogEntry) []catalogEntry {
 	return entries
 }
 
-func normalizeSpectrumEntries(entries *[]spectrumCatalogEntry) {
+func normalizeSpectrumEntries(entries *[]spectrumCatalogEntry) error {
 	byID := make(map[string]spectrumCatalogEntry)
-	conflicts := make(map[string]bool)
 	for _, entry := range *entries {
 		entry.StationID = strings.TrimSpace(entry.StationID)
 		entry.Name = cleanText(entry.Name)
 		entry.Category = strings.TrimSpace(entry.Category)
 		entry.Packages = cleanSpectrumValues(entry.Packages)
 		if entry.StationID == "" || entry.Name == "" || entry.Category == "" {
-			continue
+			return errors.New("catalog contains an incomplete channel")
 		}
-		if current, ok := byID[entry.StationID]; ok && (current.Name != entry.Name || current.Category != entry.Category) {
-			conflicts[entry.StationID] = true
-			continue
+		if !isNumericStationID(entry.StationID) {
+			return fmt.Errorf("catalog contains invalid station ID %q", entry.StationID)
+		}
+		if current, ok := byID[entry.StationID]; ok {
+			if current.Name != entry.Name || current.Category != entry.Category || !sameSpectrumValues(current.Packages, entry.Packages) {
+				return fmt.Errorf("catalog contains conflicting duplicate station ID %q", entry.StationID)
+			}
+			return fmt.Errorf("catalog contains duplicate station ID %q", entry.StationID)
 		}
 		byID[entry.StationID] = entry
 	}
 	result := make([]spectrumCatalogEntry, 0, len(byID))
-	for stationID, entry := range byID {
-		if !conflicts[stationID] {
-			result = append(result, entry)
-		}
+	for _, entry := range byID {
+		result = append(result, entry)
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].StationID < result[j].StationID })
 	*entries = result
+	return nil
+}
+
+func sameSpectrumValues(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func cleanSpectrumValues(values []string) []string {
@@ -274,15 +311,18 @@ func validateSpectrumCatalog(file spectrumCatalogFile) error {
 	if len(file.Entries) < minimumSpectrumEntries {
 		return fmt.Errorf("Spectrum catalog has only %d usable channels", len(file.Entries))
 	}
+	seen := make(map[string]bool, len(file.Entries))
 	for _, entry := range file.Entries {
 		if entry.StationID == "" || entry.Name == "" {
 			return errors.New("Spectrum catalog contains an incomplete channel")
 		}
-		for _, character := range entry.StationID {
-			if character < '0' || character > '9' {
-				return fmt.Errorf("Spectrum catalog contains invalid station ID %q", entry.StationID)
-			}
+		if !isNumericStationID(entry.StationID) {
+			return fmt.Errorf("Spectrum catalog contains invalid station ID %q", entry.StationID)
 		}
+		if seen[entry.StationID] {
+			return fmt.Errorf("Spectrum catalog contains duplicate station ID %q", entry.StationID)
+		}
+		seen[entry.StationID] = true
 		if _, ok := mapSpectrumCategory(entry.Category); !ok {
 			return fmt.Errorf("Spectrum catalog contains unsupported category %q", entry.Category)
 		}
@@ -291,6 +331,18 @@ func validateSpectrumCatalog(file spectrumCatalogFile) error {
 		return errors.New("Spectrum catalog content hash does not match")
 	}
 	return nil
+}
+
+func isNumericStationID(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func spectrumContentHash(entries []spectrumCatalogEntry) string {
@@ -321,38 +373,61 @@ func (s *Service) fetchSpectrumCatalog(ctx context.Context) providerResult {
 	}
 	refreshDue := force || checkedAt.IsZero() || !now.Before(checkedAt.Add(spectrumRefreshInterval))
 	if refreshDue {
-		refreshed, err := s.retrieveSpectrumCatalog(ctx)
-		state.file.CheckedAt = now.Format(time.RFC3339)
-		state.file.RefreshToken = s.spectrumForceToken
-		if err == nil {
-			minimumSafeEntries := len(state.file.Entries) * 4 / 5
-			if len(refreshed.Entries) < minimumSafeEntries {
+		reservation := state.file
+		reservation.CheckedAt = now.Format(time.RFC3339)
+		reservation.RefreshToken = s.spectrumForceToken
+		writer := s.spectrumCacheWriter
+		if writer == nil {
+			writer = writeSpectrumCatalog
+		}
+		if strings.TrimSpace(s.spectrumCachePath) == "" {
+			state.file.LastRefreshError = "refresh reservation cannot be persisted without a Spectrum catalog cache path"
+			state.file.CheckedAt = reservation.CheckedAt
+			state.file.RefreshToken = reservation.RefreshToken
+			s.spectrum = state
+		} else if err := writer(s.spectrumCachePath, reservation); err != nil {
+			state.file.LastRefreshError = fmt.Sprintf("refresh reservation could not be persisted: %v", err)
+			state.file.CheckedAt = reservation.CheckedAt
+			state.file.RefreshToken = reservation.RefreshToken
+			s.spectrum = state
+		} else {
+			// The durable reservation is written before the network call. This
+			// prevents retries after a crash and consumes a force token once.
+			state.file.CheckedAt = reservation.CheckedAt
+			state.file.RefreshToken = reservation.RefreshToken
+			s.spectrum = state
+			refreshed, err := s.retrieveSpectrumCatalog(ctx)
+			if err == nil && len(state.file.Entries) > 0 && len(refreshed.Entries)*5 < len(state.file.Entries)*4 {
 				err = fmt.Errorf("Spectrum national catalog shrank from %d to %d channels; retaining the last-known-good catalog", len(state.file.Entries), len(refreshed.Entries))
 			}
-		}
-		if err == nil {
-			refreshed.CapturedAt = now.Format(time.RFC3339)
-			refreshed.RefreshedAt = now.Format(time.RFC3339)
-			refreshed.CheckedAt = now.Format(time.RFC3339)
-			refreshed.RefreshToken = s.spectrumForceToken
-			state = spectrumCatalogState{file: refreshed, origin: "refreshed"}
-		} else {
-			state.file.LastRefreshError = err.Error()
-		}
-		if saveErr := writeSpectrumCatalog(s.spectrumCachePath, state.file); saveErr != nil {
-			if state.file.LastRefreshError == "" {
-				state.file.LastRefreshError = saveErr.Error()
+			if err == nil {
+				refreshed.CapturedAt = now.Format(time.RFC3339)
+				refreshed.RefreshedAt = now.Format(time.RFC3339)
+				refreshed.CheckedAt = reservation.CheckedAt
+				refreshed.RefreshToken = reservation.RefreshToken
+				if saveErr := writer(s.spectrumCachePath, refreshed); saveErr != nil {
+					// Do not activate a catalog that could not be persisted. The
+					// reservation remains active and throttles the next attempt.
+					state.file.LastRefreshError = fmt.Sprintf("refreshed Spectrum catalog could not be persisted: %v", saveErr)
+				} else {
+					state = spectrumCatalogState{file: refreshed, origin: "refreshed"}
+				}
 			} else {
-				state.file.LastRefreshError += "; " + saveErr.Error()
+				state.file.LastRefreshError = err.Error()
+				// Persist failure metadata when possible, retaining the already
+				// durable reservation if this write itself fails.
+				if saveErr := writer(s.spectrumCachePath, state.file); saveErr != nil {
+					state.file.LastRefreshError += "; " + saveErr.Error()
+				}
 			}
+			s.spectrum = state
 		}
-		s.spectrum = state
 	}
 
 	source := catalogSource{
 		ID: "spectrum-official-lineup", Label: "Spectrum national channel catalog", URL: spectrumGuideURL,
 		Method: "exact Gracenote station ID from Spectrum TMSID; national catalog does not assert local availability or channel number",
-		Status: "complete", Entries: spectrumCatalogEntries(state.file.Entries),
+		Status: "complete", StationBound: true, SourceRevision: state.file.ContentHash, Entries: spectrumCatalogEntries(state.file.Entries),
 	}
 	message := fmt.Sprintf("Using %s Spectrum catalog with %d exact station-ID records", state.origin, len(source.Entries))
 	if state.file.LastRefreshError != "" {
@@ -363,6 +438,66 @@ func (s *Service) fetchSpectrumCatalog(ctx context.Context) providerResult {
 		return sourceFailure(source, errors.New("no valid bundled or cached Spectrum catalog is available"))
 	}
 	return providerResult{source: source}
+}
+
+// spectrumEvidenceResult keeps the grid-specific joins in Facts while also
+// returning the complete authoritative catalog snapshot. The latter is
+// required for consumers to retire a Spectrum fact that disappeared from a
+// later catalog even when that station is absent from the current grid.
+func spectrumEvidenceResult(request lineupindex.ProviderEvidenceRequest, spectrum providerResult) lineupindex.ProviderEvidenceResult {
+	matched := matchCatalog(request, spectrum.source)
+	if !spectrum.source.StationBound || strings.TrimSpace(spectrum.source.SourceRevision) == "" || len(spectrum.source.Entries) == 0 {
+		return matched
+	}
+	matched.SnapshotComplete = true
+	matched.SnapshotSourceID = spectrum.source.ID
+	matched.SnapshotRevision = spectrum.source.SourceRevision
+	matched.SnapshotStationIDs = make([]string, 0, len(spectrum.source.Entries))
+	matched.SnapshotFacts = make([]lineupindex.ProviderFact, 0, len(spectrum.source.Entries)*2)
+	for _, entry := range spectrum.source.Entries {
+		for _, stationID := range entry.StationIDs {
+			stationID = strings.TrimSpace(stationID)
+			if stationID == "" {
+				continue
+			}
+			matched.SnapshotStationIDs = append(matched.SnapshotStationIDs, stationID)
+			aliases := append([]string{entry.Name}, entry.Aliases...)
+			aliases = append(aliases, entry.CallSigns...)
+			for _, alias := range aliases {
+				alias = strings.TrimSpace(alias)
+				if alias == "" {
+					continue
+				}
+				matched.SnapshotFacts = append(matched.SnapshotFacts, spectrumSnapshotFact(spectrum.source, stationID, lineupindex.FactAlias, alias, ""))
+			}
+			category := strings.TrimSpace(entry.Category)
+			if category == "" {
+				continue
+			}
+			rawCategory := strings.TrimSpace(entry.RawCategory)
+			if rawCategory == "" {
+				rawCategory = category
+			}
+			matched.SnapshotFacts = append(matched.SnapshotFacts, spectrumSnapshotFact(spectrum.source, stationID, lineupindex.FactCategory, category, rawCategory))
+		}
+	}
+	sort.Strings(matched.SnapshotStationIDs)
+	return matched
+}
+
+func spectrumSnapshotFact(source catalogSource, stationID, kind, value, rawValue string) lineupindex.ProviderFact {
+	fact := lineupindex.ProviderFact{
+		StationID: stationID, Kind: kind, Value: value, RawValue: rawValue,
+		SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
+		Method:       source.Method + "; authoritative Spectrum catalog snapshot",
+		StationBound: true, SourceRevision: source.SourceRevision,
+	}
+	if kind == lineupindex.FactCategory {
+		fact.MatchMethod = "exact master category"
+		fact.MatchConfidence = 1
+		fact.Method += "; provider category " + strconv.Quote(rawValue)
+	}
+	return fact
 }
 
 func (s *Service) retrieveSpectrumCatalog(ctx context.Context) (spectrumCatalogFile, error) {

@@ -26,15 +26,16 @@ const dishURL = "https://webapps.dish.com/api/clu/cludataservice.asmx/getdata?so
 var officialCatalogData []byte
 
 type Service struct {
-	httpClient         *http.Client
-	catalog            catalog
-	runMu              sync.Mutex
-	spectrumRunSource  map[string]providerResult
-	spectrumMu         sync.Mutex
-	spectrum           spectrumCatalogState
-	spectrumCachePath  string
-	spectrumForceToken string
-	now                func() time.Time
+	httpClient          *http.Client
+	catalog             catalog
+	runMu               sync.Mutex
+	spectrumRunSource   map[string]providerResult
+	spectrumMu          sync.Mutex
+	spectrum            spectrumCatalogState
+	spectrumCachePath   string
+	spectrumForceToken  string
+	spectrumCacheWriter func(string, spectrumCatalogFile) error
+	now                 func() time.Time
 }
 
 type Options struct {
@@ -50,15 +51,17 @@ type catalog struct {
 }
 
 type catalogSource struct {
-	ID          string         `json:"id"`
-	Label       string         `json:"label"`
-	URL         string         `json:"url"`
-	Providers   []string       `json:"providers"`
-	PostalCodes []string       `json:"postalCodes,omitempty"`
-	Method      string         `json:"method"`
-	Status      string         `json:"status,omitempty"`
-	Message     string         `json:"message,omitempty"`
-	Entries     []catalogEntry `json:"entries"`
+	ID             string         `json:"id"`
+	Label          string         `json:"label"`
+	URL            string         `json:"url"`
+	Providers      []string       `json:"providers"`
+	PostalCodes    []string       `json:"postalCodes,omitempty"`
+	Method         string         `json:"method"`
+	Status         string         `json:"status,omitempty"`
+	Message        string         `json:"message,omitempty"`
+	StationBound   bool           `json:"-"`
+	SourceRevision string         `json:"-"`
+	Entries        []catalogEntry `json:"entries"`
 }
 
 type catalogEntry struct {
@@ -159,6 +162,11 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	if providerName == "" || request.Grid == nil || lineupindex.ExcludedEnrichmentProvider(providerName) {
 		return lineupindex.ProviderEvidenceResult{}, nil
 	}
+	if request.NationalOnly {
+		spectrum := s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
+		matched := spectrumEvidenceResult(request, spectrum)
+		return matched, spectrum.err
+	}
 	var live providerResult
 	hasLiveSource := true
 	switch {
@@ -203,8 +211,15 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
 	spectrum := s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
-	spectrumMatched := matchCatalog(request, spectrum.source)
+	spectrumMatched := spectrumEvidenceResult(request, spectrum)
 	result.Facts = append(result.Facts, spectrumMatched.Facts...)
+	if spectrumMatched.SnapshotComplete {
+		result.SnapshotComplete = true
+		result.SnapshotSourceID = spectrumMatched.SnapshotSourceID
+		result.SnapshotRevision = spectrumMatched.SnapshotRevision
+		result.SnapshotStationIDs = spectrumMatched.SnapshotStationIDs
+		result.SnapshotFacts = spectrumMatched.SnapshotFacts
+	}
 	isSpectrumProvider := strings.Contains(providerName, "spectrum") || strings.Contains(providerName, "charter") || strings.Contains(providerName, "time warner")
 	if isSpectrumProvider || (len(spectrumMatched.Sources) > 0 && spectrumMatched.Sources[0].Matched > 0) {
 		result.Sources = append(result.Sources, spectrumMatched.Sources...)
@@ -416,10 +431,15 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 				continue
 			}
 			seenFacts[factKey] = true
-			result.Facts = append(result.Facts, lineupindex.ProviderFact{
+			fact := lineupindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod,
-			})
+			}
+			if source.StationBound {
+				fact.StationBound = true
+				fact.SourceRevision = source.SourceRevision
+			}
+			result.Facts = append(result.Facts, fact)
 		}
 		categoryIdentities := append([]string{entry.Name}, entry.Aliases...)
 		categoryIdentities = append(categoryIdentities, entry.CallSigns...)
@@ -441,12 +461,17 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			if rawCategory == "" {
 				rawCategory = strings.TrimSpace(entry.Category)
 			}
-			result.Facts = append(result.Facts, lineupindex.ProviderFact{
+			fact := lineupindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
 				RawValue: rawCategory, MatchMethod: category.Method, MatchConfidence: category.Confidence,
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 				Method: factMethod + "; provider category " + strconv.Quote(rawCategory) + " mapped by " + categoryMethod,
-			})
+			}
+			if source.StationBound {
+				fact.StationBound = true
+				fact.SourceRevision = source.SourceRevision
+			}
+			result.Facts = append(result.Facts, fact)
 		}
 	}
 	aliases := 0

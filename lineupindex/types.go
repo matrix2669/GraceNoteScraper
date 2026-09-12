@@ -143,6 +143,11 @@ type StationFact struct {
 	SourceURL       string   `json:"sourceUrl,omitempty"`
 	Method          string   `json:"method"`
 	LineupKeys      []string `json:"lineupKeys"`
+	// StationBound facts came from a national catalog row joined by the exact
+	// Gracenote station ID. They are safe for the station itself, but must never
+	// seed EPG identity transfer to another station ID.
+	StationBound   bool   `json:"stationBound,omitempty"`
+	SourceRevision string `json:"sourceRevision,omitempty"`
 }
 
 // ProviderEvidenceFetcher converts an official provider listing and its
@@ -153,6 +158,10 @@ type ProviderEvidenceFetcher interface {
 
 type ProviderEvidenceRequest struct {
 	AllowChannelNumbers bool
+	// NationalOnly asks a provider adapter to use only provider-independent
+	// national evidence. It is set even when the scanned provider has no local
+	// adapter, is address-gated, or has no approved address.
+	NationalOnly bool
 	// EvidenceRunID scopes provider-source download reuse to one explicit scan.
 	// It is transient and must never be serialized or logged.
 	EvidenceRunID string `json:"-"`
@@ -180,6 +189,18 @@ type ProviderAddress struct {
 type ProviderEvidenceResult struct {
 	Facts   []ProviderFact
 	Sources []EvidenceSourceRecord
+	// A complete snapshot is authoritative for the source/revision and includes
+	// station IDs that did not match this particular Gracenote grid. Consumers
+	// may reconcile only when all fields are present and validated by the source.
+	SnapshotComplete   bool
+	SnapshotSourceID   string
+	SnapshotRevision   string
+	SnapshotStationIDs []string
+	// SnapshotFacts is the authoritative fact set for SnapshotSourceID. Facts
+	// are optional for adapters that only expose row presence; when provided,
+	// consumers can retire aliases/categories that disappeared from an existing
+	// station without treating a partial lineup join as a deletion.
+	SnapshotFacts []ProviderFact
 }
 
 type ProviderFact struct {
@@ -193,6 +214,8 @@ type ProviderFact struct {
 	SourceLabel     string
 	SourceURL       string
 	Method          string
+	StationBound    bool
+	SourceRevision  string
 }
 
 type EvidenceSourceRecord struct {

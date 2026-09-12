@@ -492,19 +492,153 @@ func TestReplaceEPGFactsReplacesPriorPostalEvidence(t *testing.T) {
 	service.index.Stations["S1"] = &Station{StationID: "S1"}
 	service.mu.Unlock()
 	sourceID := weekdayEPGSourceID("USA", "11743")
-	if _, _, _, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
+	if aliases, categories, matched, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
 		ProviderFact: ProviderFact{StationID: "S1", Kind: FactAlias, Value: "OLD", SourceID: sourceID}, LineupKeys: []string{"L1"},
-	}}); err != nil {
+	}}); err != nil || aliases != 1 || categories != 0 || matched != 1 {
 		t.Fatal(err)
 	}
-	if _, _, _, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
+	if aliases, categories, matched, err := service.replaceEPGFacts(sourceID, []epgDerivedFact{{
 		ProviderFact: ProviderFact{StationID: "S1", Kind: FactAlias, Value: "NEW", SourceID: sourceID}, LineupKeys: []string{"L2"},
-	}}); err != nil {
+	}}); err != nil || aliases != 1 || categories != 0 || matched != 1 {
 		t.Fatal(err)
 	}
 	aliases := service.AliasesForStations([]string{"S1"})["S1"]
 	if len(aliases) != 1 || aliases[0].Value != "NEW" || len(aliases[0].LineupKeys) != 1 || aliases[0].LineupKeys[0] != "L2" {
 		t.Fatalf("replacement aliases = %+v", aliases)
+	}
+}
+
+func TestReplaceEPGFactsCountsOnlyNewFactsOnRepeat(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["S1"] = &Station{StationID: "S1"}
+	service.mu.Unlock()
+	sourceID := weekdayEPGSourceID("USA", "11743")
+	facts := []epgDerivedFact{
+		{ProviderFact: ProviderFact{StationID: "S1", Kind: FactAlias, Value: "REPEAT", SourceID: sourceID}, LineupKeys: []string{"L1"}},
+		{ProviderFact: ProviderFact{StationID: "S1", Kind: FactCategory, Value: "Sports", SourceID: sourceID}, LineupKeys: []string{"L1"}},
+	}
+	if aliases, categories, _, err := service.replaceEPGFacts(sourceID, facts); err != nil || aliases != 1 || categories != 1 {
+		t.Fatalf("first replacement = aliases %d categories %d err %v", aliases, categories, err)
+	}
+	if aliases, categories, _, err := service.replaceEPGFacts(sourceID, facts); err != nil || aliases != 0 || categories != 0 {
+		t.Fatalf("repeat replacement counted retained facts = aliases %d categories %d err %v", aliases, categories, err)
+	}
+	if got := service.AliasesForStations([]string{"S1"})["S1"]; len(got) != 1 || got[0].Value != "REPEAT" {
+		t.Fatalf("repeat replacement removed existing alias: %+v", got)
+	}
+}
+
+func TestEPGZeroCandidateRescanRetiresFactsFromStationBoundBridge(t *testing.T) {
+	blocks := testEPGBlocks()
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID := weekdayEPGSourceID("USA", "11743")
+	service.mu.Lock()
+	service.index.Stations["A"] = &Station{StationID: "A", Facts: []StationFact{
+		{Kind: FactAlias, Value: "SHARED NETWORK", Normalized: "SHAREDNETWORK", SourceID: sourceID},
+		{Kind: FactCategory, Value: "Sports", Normalized: "SPORTS", SourceID: sourceID},
+	}}
+	service.mu.Unlock()
+	scans := []*postalLineupScan{
+		testEPGScan("L1", "Spectrum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{{ChannelID: "A", CallSign: "LOCAL-A"}}}}),
+	}
+	scans[0].Facts = []ProviderFact{{StationID: "A", Kind: FactAlias, Value: "SHARED NETWORK", StationBound: true}}
+	lastGridRequest := time.Time{}
+	result, err := service.runPostalEPG(context.Background(), "USA:11743", "USA", "11743", "America/New_York", scans, blocks, &lastGridRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Aliases != 0 || result.Categories != 0 {
+		t.Fatalf("zero-candidate rescan retained new facts: %+v", result)
+	}
+	if got := service.index.Stations["A"].Facts; len(got) != 0 {
+		t.Fatalf("stale EPG facts survived station-bound filtering: %+v", got)
+	}
+}
+
+func TestCanceledEPGZeroCandidatePassRetainsPriorFacts(t *testing.T) {
+	blocks := testEPGBlocks()
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceID := weekdayEPGSourceID("USA", "11743")
+	service.mu.Lock()
+	service.index.Stations["A"] = &Station{StationID: "A", Facts: []StationFact{
+		{Kind: FactAlias, Value: "STALE ALIAS", Normalized: "STALEALIAS", SourceID: sourceID},
+		{Kind: FactCategory, Value: "Sports", Normalized: "SPORTS", SourceID: sourceID},
+	}}
+	service.mu.Unlock()
+	scans := []*postalLineupScan{
+		testEPGScan("L1", "Spectrum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{{ChannelID: "A", CallSign: "LOCAL-A"}}}}),
+	}
+	scans[0].Facts = []ProviderFact{{StationID: "A", Kind: FactAlias, Value: "STALE ALIAS", StationBound: true}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	lastGridRequest := time.Time{}
+	if _, err := service.runPostalEPG(ctx, "USA:11743", "USA", "11743", "America/New_York", scans, blocks, &lastGridRequest); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled zero-candidate pass error = %v", err)
+	}
+	if got := service.index.Stations["A"].Facts; len(got) != 2 {
+		t.Fatalf("canceled pass removed prior EPG facts: %+v", got)
+	}
+}
+
+func TestCompleteProviderSnapshotReconcilesOnlyItsStationBoundFacts(t *testing.T) {
+	service, err := NewService(ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
+		Grids:     &fakeGrids{responses: map[string]*web.GridResponse{}, failures: map[string]int{}, calls: map[string]int{}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mu.Lock()
+	service.index.Stations["A"] = &Station{StationID: "A", Facts: []StationFact{
+		{Kind: FactAlias, Value: "OLD NAME", Normalized: "OLDNAME", SourceID: "spectrum-official-lineup", StationBound: true, SourceRevision: "r1"},
+		{Kind: FactAlias, Value: "KEEP MANUAL", Normalized: "KEEPMANUAL", SourceID: "manual"},
+	}}
+	service.index.Stations["B"] = &Station{StationID: "B", Facts: []StationFact{
+		{Kind: FactCategory, Value: "Sports", Normalized: "SPORTS", SourceID: "spectrum-official-lineup", StationBound: true, SourceRevision: "r1"},
+	}}
+	service.mu.Unlock()
+	evidence := ProviderEvidenceResult{
+		SnapshotComplete: true, SnapshotSourceID: "spectrum-official-lineup", SnapshotRevision: "r2", SnapshotStationIDs: []string{"A"},
+		SnapshotFacts: []ProviderFact{{StationID: "A", Kind: FactAlias, Value: "NEW NAME", SourceID: "spectrum-official-lineup", StationBound: true, SourceRevision: "r2"}},
+		Facts:         []ProviderFact{{StationID: "A", Kind: FactAlias, Value: "NEW NAME", SourceID: "spectrum-official-lineup", StationBound: true}},
+	}
+	if aliases, categories, err := service.ingestProviderEvidence("L1", evidence); err != nil || aliases != 1 || categories != 0 {
+		t.Fatalf("snapshot ingestion = aliases %d categories %d err %v", aliases, categories, err)
+	}
+	stationA := service.index.Stations["A"]
+	if len(stationA.Facts) != 2 {
+		t.Fatalf("unrelated or current facts were removed: %+v", stationA.Facts)
+	}
+	for _, fact := range stationA.Facts {
+		if fact.SourceID == "spectrum-official-lineup" && (fact.Value != "NEW NAME" || fact.SourceRevision != "r2") {
+			t.Fatalf("stale Spectrum fact remained: %+v", fact)
+		}
+	}
+	if len(service.index.Stations["B"].Facts) != 0 {
+		t.Fatalf("row absent from complete snapshot remained: %+v", service.index.Stations["B"].Facts)
 	}
 }
 

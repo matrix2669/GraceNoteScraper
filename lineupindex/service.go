@@ -297,12 +297,16 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		evidence := ProviderEvidenceResult{}
 		serviceAddress, addressAllowed := approvedProviderAddress(request, provider)
 		evidenceEligible := access == "public" || (access == "address-required" && addressAllowed)
-		if s.evidence != nil && evidenceEligible {
+		evidenceRequested := s.evidence != nil
+		// Every successfully fetched grid receives an evidence request. Public or
+		// approved-address lineups may use their normal local source; all other
+		// lineups are explicitly restricted to provider-independent national data.
+		if evidenceRequested {
 			var evidenceErr error
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				// This is the scanned provider's own grid, never the selected
 				// comparison lineup. The adapter still requires matching identity.
-				AllowChannelNumbers: true, EvidenceRunID: request.evidenceRunID,
+				AllowChannelNumbers: true, NationalOnly: !evidenceEligible, EvidenceRunID: request.evidenceRunID,
 				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
 			})
@@ -317,7 +321,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				// preserves the attributable failure without invalidating Gracenote
 				// lineup data or successful evidence from other providers.
 			}
-			aliases, categories, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
+			aliases, categories, ingestErr := s.ingestProviderEvidence(lineup.Key, evidence)
 			if ingestErr != nil {
 				runErr = ingestErr
 				break
@@ -330,8 +334,10 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		}
 		if request.marketRank > 0 {
 			audit := MarketProviderAudit{Provider: provider.Name, Family: providerFamilyKey(provider.Name), LineupKey: lineup.Key, Access: access, GridStatus: StatusComplete, RepeatedFamily: request.priorFamilies[providerFamilyKey(provider.Name)]}
-			if evidenceEligible {
-				audit.Access = "empty"
+			if evidenceRequested && evidenceEligible {
+				if access == "public" {
+					audit.Access = "empty"
+				}
 				if len(evidence.Facts) > 0 {
 					audit.Access = "enriched"
 				}
@@ -834,11 +840,21 @@ func (s *Service) ingestGrid(marketRank int, lineupKey string, grid *web.GridRes
 }
 
 func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (int, int, error) {
+	return s.ingestProviderEvidence(lineupKey, ProviderEvidenceResult{Facts: facts})
+}
+
+func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvidenceResult) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if evidence.SnapshotComplete {
+		s.reconcileProviderSnapshotLocked(evidence)
+	}
 	aliases := 0
 	categories := 0
-	for _, fact := range facts {
+	for _, fact := range evidence.Facts {
+		if fact.StationBound && strings.TrimSpace(fact.SourceRevision) == "" && strings.TrimSpace(evidence.SnapshotSourceID) != "" && strings.TrimSpace(fact.SourceID) == strings.TrimSpace(evidence.SnapshotSourceID) {
+			fact.SourceRevision = strings.TrimSpace(evidence.SnapshotRevision)
+		}
 		fact.Method = appendMethod(fact.Method, "identity-policy-v2")
 		stationID := strings.TrimSpace(fact.StationID)
 		value := strings.TrimSpace(fact.Value)
@@ -878,6 +894,8 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			current.RawValue = fact.RawValue
 			current.MatchMethod = fact.MatchMethod
 			current.MatchConfidence = fact.MatchConfidence
+			current.StationBound = fact.StationBound
+			current.SourceRevision = strings.TrimSpace(fact.SourceRevision)
 			sort.Strings(current.LineupKeys)
 			found = true
 			break
@@ -890,7 +908,8 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
 			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
-			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey},
+			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey}, StationBound: fact.StationBound,
+			SourceRevision: strings.TrimSpace(fact.SourceRevision),
 		})
 		if kind == FactAlias {
 			aliases++
@@ -903,6 +922,53 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		return 0, 0, err
 	}
 	return aliases, categories, nil
+}
+
+// reconcileProviderSnapshotLocked removes only facts owned by a complete,
+// validated provider snapshot. A snapshot's station list describes the whole
+// source, not merely the stations present in this lineup, so an absent row can
+// be retired without removing facts from other sources or manual choices.
+func (s *Service) reconcileProviderSnapshotLocked(evidence ProviderEvidenceResult) {
+	sourceID := strings.TrimSpace(evidence.SnapshotSourceID)
+	revision := strings.TrimSpace(evidence.SnapshotRevision)
+	if sourceID == "" || revision == "" || len(evidence.SnapshotStationIDs) == 0 {
+		return
+	}
+	stationIDs := make(map[string]bool, len(evidence.SnapshotStationIDs))
+	for _, stationID := range evidence.SnapshotStationIDs {
+		if stationID = strings.TrimSpace(stationID); stationID != "" {
+			stationIDs[stationID] = true
+		}
+	}
+	if len(stationIDs) == 0 {
+		return
+	}
+	authoritativeFacts := make(map[string]bool)
+	for _, fact := range evidence.SnapshotFacts {
+		if strings.TrimSpace(fact.StationID) == "" || strings.TrimSpace(fact.SourceID) != sourceID {
+			continue
+		}
+		kind := strings.TrimSpace(fact.Kind)
+		value := normalizeName(fact.Value)
+		if value == "" || (kind != FactAlias && kind != FactCategory) {
+			continue
+		}
+		authoritativeFacts[strings.TrimSpace(fact.StationID)+"\x00"+kind+"\x00"+value] = true
+	}
+	hasAuthoritativeFacts := len(authoritativeFacts) > 0
+	for stationID, station := range s.index.Stations {
+		retained := station.Facts[:0]
+		for _, fact := range station.Facts {
+			if fact.SourceID == sourceID {
+				key := stationID + "\x00" + fact.Kind + "\x00" + fact.Normalized
+				if !stationIDs[stationID] || (hasAuthoritativeFacts && !authoritativeFacts[key]) {
+					continue
+				}
+			}
+			retained = append(retained, fact)
+		}
+		station.Facts = retained
+	}
 }
 
 func appendMethod(existing, addition string) string {
