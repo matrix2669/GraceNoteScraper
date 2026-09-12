@@ -2564,9 +2564,9 @@
         "charter",
         "time warner cable"
       ],
-      "method": "official address-based Spectrum lineup; adapter requires ephemeral selected address",
-      "status": "address-required",
-      "message": "The public source needs a selected service address; no subscriber login will be automated.",
+      "method": "historical placeholder superseded by the active bundled and cached Spectrum national TMS-ID catalog",
+      "status": "superseded",
+      "message": "The active source joins Spectrum's national catalog to every scanned grid by exact Gracenote station ID.",
       "entries": []
     },
     {

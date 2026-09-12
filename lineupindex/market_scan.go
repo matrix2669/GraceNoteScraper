@@ -12,6 +12,27 @@ import (
 //go:embed market_zips.json
 var marketSeeds []byte
 
+//go:embed market_reference_addresses.json
+var marketReferenceAddresses []byte
+
+type marketReferenceAddressCatalog struct {
+	SchemaVersion int                      `json:"schemaVersion"`
+	Addresses     []marketReferenceAddress `json:"addresses"`
+}
+
+// marketReferenceAddress is intentionally not part of MarketScanView. The
+// address is a deliberately validated public reference used only in memory for
+// its named provider family; it must not enter index, snapshot, log, or API data.
+type marketReferenceAddress struct {
+	MarketRank     int             `json:"marketRank"`
+	ProviderFamily string          `json:"providerFamily"`
+	Label          string          `json:"label"`
+	Provenance     string          `json:"provenance"`
+	ValidatedAt    string          `json:"validatedAt"`
+	Validation     string          `json:"validation"`
+	Address        ProviderAddress `json:"address"`
+}
+
 type MarketProviderAudit struct {
 	GridStatus     string      `json:"gridStatus"`
 	Provider       string      `json:"provider"`
@@ -44,6 +65,22 @@ func marketCatalog() SeedCatalog {
 	var catalog SeedCatalog
 	_ = json.Unmarshal(marketSeeds, &catalog)
 	return catalog
+}
+
+func marketReferenceAddressForRank(rank int, postalCode string) (marketReferenceAddress, bool) {
+	var catalog marketReferenceAddressCatalog
+	if err := json.Unmarshal(marketReferenceAddresses, &catalog); err != nil {
+		return marketReferenceAddress{}, false
+	}
+	for _, reference := range catalog.Addresses {
+		if reference.MarketRank == rank &&
+			strings.EqualFold(strings.TrimSpace(reference.Address.PostalCode), strings.TrimSpace(postalCode)) &&
+			strings.TrimSpace(reference.ProviderFamily) != "" &&
+			strings.TrimSpace(reference.Address.FormattedAddress) != "" {
+			return reference, true
+		}
+	}
+	return marketReferenceAddress{}, false
 }
 func (s *Service) MarketView() MarketScanView {
 	s.mu.RLock()
@@ -97,6 +134,10 @@ func (s *Service) StartMarket(rank int, comparison *LineupRecord) (JobView, erro
 		return JobView{}, errors.New("market provider access classifier is required")
 	}
 	request := RunRequest{Action: "postal", Country: selected.Country, PostalCode: selected.PostalCode, Language: "en-us", marketRank: selected.Rank, priorFamilies: map[string]bool{}, priorFacts: map[string]bool{}}
+	if reference, ok := marketReferenceAddressForRank(selected.Rank, selected.PostalCode); ok {
+		request.ProviderAddress = reference.Address
+		request.AddressProviders = []string{reference.ProviderFamily}
+	}
 	if comparison != nil {
 		copy := *comparison
 		request.comparison = &copy

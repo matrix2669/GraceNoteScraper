@@ -42,6 +42,8 @@ func TestResolveUsesCanonicalAliasesAndConservativeFuzzyMatching(t *testing.T) {
 		{value: "Information and education", want: Entertainment, method: MethodAlias, matched: true},
 		{value: "Networks", matched: false},
 		{value: "Premiums", want: Movies, method: MethodAlias, matched: true},
+		{value: "Inspiration", want: Faith, method: MethodAlias, matched: true},
+		{value: "Broadcasters", want: LocalPublic, method: MethodAlias, matched: true},
 		{value: "PPV and subscription events", want: PPVEvents, method: MethodAlias, matched: true},
 		{value: "International Sports", matched: false},
 		{value: "unknown package", matched: false},
