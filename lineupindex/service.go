@@ -173,6 +173,7 @@ func (s *Service) startPostal(request RunRequest) (JobView, error) {
 	request.Country = country
 	request.PostalCode = postalCode
 	request.Language = language
+	request.evidenceRunID = record.Key + ":" + startedAt
 	go s.runPostal(ctx, request)
 	return job, nil
 }
@@ -188,6 +189,9 @@ func (s *Service) Stop() bool {
 }
 
 func (s *Service) runPostal(ctx context.Context, request RunRequest) {
+	if lifecycle, ok := s.evidence.(interface{ EndProviderEvidenceRun(string) }); ok && request.evidenceRunID != "" {
+		defer lifecycle.EndProviderEvidenceRun(request.evidenceRunID)
+	}
 	country := request.Country
 	postalCode := request.PostalCode
 	language := request.Language
@@ -291,22 +295,17 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 			break
 		}
 		evidence := ProviderEvidenceResult{}
-		if s.evidence != nil && access == "public" {
+		serviceAddress, addressAllowed := approvedProviderAddress(request, provider)
+		evidenceEligible := access == "public" || (access == "address-required" && addressAllowed)
+		evidenceRequested := s.evidence != nil
+		if evidenceRequested {
 			var evidenceErr error
-			serviceAddress := ProviderAddress{}
-			addressAllowed := sameProviderFamily(provider.Name, request.AddressProvider)
-			for _, approved := range request.AddressProviders {
-				addressAllowed = addressAllowed || sameProviderFamily(provider.Name, approved)
-			}
-			if addressAllowed {
-				serviceAddress = request.ProviderAddress
-			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
 				// This is the scanned provider's own grid, never the selected
 				// comparison lineup. Only a unique same-grid position may bypass
 				// identity, and then only to recover aliases.
-				AllowChannelNumbers: true,
-				Provider:            provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
+				AllowChannelNumbers: true, NationalOnly: !evidenceEligible, EvidenceRunID: request.evidenceRunID,
+				Provider: provider, LineupKey: lineup.Key, Country: country, PostalCode: postalCode,
 				ServiceAddress: serviceAddress, Grid: grid,
 			})
 			if evidenceErr != nil {
@@ -320,25 +319,20 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				// preserves the attributable failure without invalidating Gracenote
 				// lineup data or successful evidence from other providers.
 			}
-			_, _, ingestErr := s.ingestProviderFacts(lineup.Key, evidence.Facts)
+			aliases, categories, ingestErr := s.ingestProviderEvidence(lineup.Key, evidence)
 			if ingestErr != nil {
 				runErr = ingestErr
 				break
 			}
 			s.updatePostalJob(key, func(record *PostalScanRecord) {
-				for _, fact := range evidence.Facts {
-					if fact.Kind == FactAlias {
-						record.Aliases++
-					} else if fact.Kind == FactCategory {
-						record.Categories++
-					}
-				}
+				record.Aliases += aliases
+				record.Categories += categories
 				record.Sources = mergeEvidenceSources(record.Sources, evidence.Sources)
 			})
 		}
 		if request.marketRank > 0 {
 			audit := MarketProviderAudit{Provider: provider.Name, Family: providerFamilyKey(provider.Name), LineupKey: lineup.Key, Access: access, GridStatus: StatusComplete, RepeatedFamily: request.priorFamilies[providerFamilyKey(provider.Name)]}
-			if access == "public" {
+			if evidenceRequested && evidenceEligible {
 				audit.Access = "empty"
 				if len(evidence.Facts) > 0 {
 					audit.Access = "enriched"
@@ -394,10 +388,22 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 				err = errors.New("comparison grid returned no data")
 			} else {
 				_, err = s.ingestGrid(0, lineup.Key, grid, current, owners)
-				postalScans = append(postalScans, &postalLineupScan{Comparison: true, Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{blocks[0].ID: grid}})
+				if err == nil {
+					err = s.completeLineup(lineup.Key, len(grid.Channels))
+				}
+				if err == nil {
+					postalScans = append(postalScans, &postalLineupScan{Comparison: true, Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{blocks[0].ID: grid}})
+				}
 			}
 		}
 		if err != nil {
+			if lineup != nil {
+				if errors.Is(err, context.Canceled) {
+					_ = s.pendingLineup(lineup.Key)
+				} else {
+					_ = s.failLineup(lineup.Key, err)
+				}
+			}
 			runErr = fmt.Errorf("selected-lineup EPG comparison: %w", err)
 		}
 	}
@@ -474,6 +480,20 @@ func epgIdentityFacts(evidence ProviderEvidenceResult) []ProviderFact {
 		}
 	}
 	return facts
+}
+
+func approvedProviderAddress(request RunRequest, provider web.Provider) (ProviderAddress, bool) {
+	if strings.TrimSpace(request.ProviderAddress.FormattedAddress) == "" || !strings.EqualFold(strings.TrimSpace(request.ProviderAddress.PostalCode), strings.TrimSpace(request.PostalCode)) {
+		return ProviderAddress{}, false
+	}
+	allowed := sameProviderFamily(provider.Name, request.AddressProvider)
+	for _, approved := range request.AddressProviders {
+		allowed = allowed || sameProviderFamily(provider.Name, approved)
+	}
+	if !allowed {
+		return ProviderAddress{}, false
+	}
+	return request.ProviderAddress, true
 }
 
 func sameProviderFamily(left, right string) bool {
@@ -825,11 +845,21 @@ func (s *Service) ingestGrid(marketRank int, lineupKey string, grid *web.GridRes
 }
 
 func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (int, int, error) {
+	return s.ingestProviderEvidence(lineupKey, ProviderEvidenceResult{Facts: facts})
+}
+
+func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvidenceResult) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if evidence.SnapshotComplete {
+		s.reconcileProviderSnapshotLocked(evidence)
+	}
 	aliases := 0
 	categories := 0
-	for _, fact := range facts {
+	for _, fact := range evidence.Facts {
+		if fact.StationBound && strings.TrimSpace(fact.SourceRevision) == "" && strings.TrimSpace(fact.SourceID) == strings.TrimSpace(evidence.SnapshotSourceID) {
+			fact.SourceRevision = strings.TrimSpace(evidence.SnapshotRevision)
+		}
 		if !strings.Contains(fact.Method, "number-policy-provider-alias-v3") {
 			fact.Method = appendMethod(fact.Method, "identity-policy-v2")
 		}
@@ -871,6 +901,8 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			current.RawValue = fact.RawValue
 			current.MatchMethod = fact.MatchMethod
 			current.MatchConfidence = fact.MatchConfidence
+			current.StationBound = fact.StationBound
+			current.SourceRevision = strings.TrimSpace(fact.SourceRevision)
 			sort.Strings(current.LineupKeys)
 			found = true
 			break
@@ -883,7 +915,7 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
 			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
-			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey},
+			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey}, StationBound: fact.StationBound, SourceRevision: strings.TrimSpace(fact.SourceRevision),
 		})
 		if kind == FactAlias {
 			aliases++
@@ -896,6 +928,42 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 		return 0, 0, err
 	}
 	return aliases, categories, nil
+}
+
+func (s *Service) reconcileProviderSnapshotLocked(evidence ProviderEvidenceResult) {
+	sourceID, revision := strings.TrimSpace(evidence.SnapshotSourceID), strings.TrimSpace(evidence.SnapshotRevision)
+	if sourceID == "" || revision == "" || len(evidence.SnapshotStationIDs) == 0 {
+		return
+	}
+	stationIDs := map[string]bool{}
+	for _, stationID := range evidence.SnapshotStationIDs {
+		if stationID = strings.TrimSpace(stationID); stationID != "" {
+			stationIDs[stationID] = true
+		}
+	}
+	if len(stationIDs) == 0 {
+		return
+	}
+	authoritative := map[string]bool{}
+	for _, fact := range evidence.SnapshotFacts {
+		if strings.TrimSpace(fact.StationID) == "" || strings.TrimSpace(fact.SourceID) != sourceID {
+			continue
+		}
+		kind, value := strings.TrimSpace(fact.Kind), normalizeName(fact.Value)
+		if value != "" && (kind == FactAlias || kind == FactCategory) {
+			authoritative[strings.TrimSpace(fact.StationID)+"\x00"+kind+"\x00"+value] = true
+		}
+	}
+	for stationID, station := range s.index.Stations {
+		retained := station.Facts[:0]
+		for _, fact := range station.Facts {
+			if fact.SourceID == sourceID && (!stationIDs[stationID] || (len(authoritative) > 0 && !authoritative[stationID+"\x00"+fact.Kind+"\x00"+fact.Normalized])) {
+				continue
+			}
+			retained = append(retained, fact)
+		}
+		station.Facts = retained
+	}
 }
 
 func appendMethod(existing, addition string) string {

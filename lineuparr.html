@@ -526,7 +526,7 @@
         </div>
       </div>
       <div id="major-market-reports"></div>
-      <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new candidate facts, not guaranteed applied categories. The selected lineup remains available as an EPG comparison reference.</p>
+      <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new evidence facts, not resolved channels: existing, conflicting, or lower-priority category evidence can leave the Uncategorized total unchanged. The selected lineup remains available as an EPG comparison reference.</p>
       </div>
     </details>
     <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
@@ -2624,7 +2624,8 @@
           const summary = document.createElement('summary');
           const rows = scan.providerAudit || [];
           const count = status => rows.filter(row => row.access === status).length;
-          summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${count('error')} source failures, ${count('empty')} no source matches`;
+          const sourceFailures = (scan.sources || []).filter(source => source.status === 'error').length;
+          summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${sourceFailures} distinct source failures, ${count('empty')} no source matches`;
           section.append(summary);
           const rescan = document.createElement('button');
           rescan.type = 'button'; rescan.className = 'secondary';
@@ -2637,7 +2638,7 @@
             } catch (error) { marketStatus.textContent = error.message; rescan.disabled = false; marketStart.disabled = false; }
           });
           section.append(rescan);
-          const yieldText = value => `${value.aliases} aliases, ${value.categories} categories, ${value.currentStations} current station IDs`;
+          const yieldText = value => `${value.aliases} new alias facts, ${value.categories} new category-evidence facts, touching ${value.currentStations} current station IDs`;
           const totals = document.createElement('p');totals.textContent = `All providers: ${yieldText(scan.allProviderYield)}. New families only: ${yieldText(scan.newFamilyYield)}.`;section.append(totals);
           for (const row of rows) {
             const p = document.createElement('p');p.style.overflowWrap='anywhere';
