@@ -5,6 +5,7 @@ config.json
 tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
+grid_cache/
 image_cache/
 demo.gif
 
