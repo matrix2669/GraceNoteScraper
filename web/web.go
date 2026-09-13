@@ -171,7 +171,7 @@ func NewClient() *Client {
 	}
 	client := &Client{
 		Client: &http.Client{Jar: jar, Timeout: 15 * time.Second, Transport: &headerTransport{rt: http.DefaultTransport}},
-		pref: currentPreferences(),
+		pref:   currentPreferences(),
 	}
 	if err := pruneGridCache(client.Source(), time.Now().UTC().Add(-48*time.Hour)); err != nil {
 		log.Printf("Gracenote grid cache: prune failed: %v", err)
