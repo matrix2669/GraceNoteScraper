@@ -34,6 +34,9 @@ func (s *Service) eligibleProviderCategoryFactsLocked(stationIDs []string, prefe
 			continue
 		}
 		for _, relation := range s.index.CategoryRelations {
+			if relation.quarantineReason != "" {
+				continue
+			}
 			sourceStationID := strings.TrimSpace(relation.StationID)
 			if sourceStationID == "" || relation.StationBound && !s.allowedEnrichmentOrigins(relation.LineupKeys) {
 				continue

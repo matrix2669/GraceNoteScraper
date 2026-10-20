@@ -27,6 +27,10 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o gra
 
 Run `go test ./...` for setup, configuration, provider-client, Lineuparr builder, and Dispatcharr match-review tests.
 
+## Service identity repair
+
+The current duplicate identity and historical provider evidence policy supersedes the older quality-dependent duplicate guidance below. See [docs/service-identity-repair.md](docs/service-identity-repair.md). Identity grouping is quality-neutral, preserves all verified positions and saved choices, and applies row-level provider safeguards and non-destructive versioned evidence quarantine.
+
 ## Architecture
 
 The binary is a single Go process that scrapes GraceNote/TMS for 14 days of TV listings and serves the data as XMLTV over HTTP. Runtime orchestration lives in `main.go`; setup handlers live in `setup.go` and persisted configuration lives in `appconfig/`.

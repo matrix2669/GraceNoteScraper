@@ -80,6 +80,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	ApplyEvidenceQuarantine(&index)
 	snapshotDir := strings.TrimSpace(config.SnapshotDir)
 	if snapshotDir == "" {
 		snapshotDir = filepath.Join(filepath.Dir(config.Path), "lineup_snapshots")
@@ -508,7 +509,7 @@ func providerFamilyKey(value string) string {
 		"xfinity":   {"xfinity", "comcast"},
 		"optimum":   {"optimum", "cablevision"},
 		"spectrum":  {"spectrum", "charter", "time warner"},
-		"fios":      {"verizon", "fios"},
+		"fios":      {"verizon"},
 		"uverse":    {"u-verse", "uverse"},
 		"directv":   {"directv"},
 		"dish":      {"dish"},
@@ -909,6 +910,9 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			}
 			current.LineupKeys = appendUniqueString(current.LineupKeys, lineupKey)
 			current.Method = fact.Method
+			current.EvidencePolicy = fact.EvidencePolicy
+			current.PeerStationID = fact.PeerStationID
+			current.quarantineReason = ""
 			current.RawValue = fact.RawValue
 			current.MatchMethod = fact.MatchMethod
 			current.MatchConfidence = fact.MatchConfidence
@@ -928,7 +932,7 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			continue
 		}
 		station.Facts = append(station.Facts, StationFact{
-			Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
 			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
@@ -943,6 +947,7 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 		}
 	}
 	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
+	ApplyEvidenceQuarantine(&s.index)
 	if err := writeIndex(s.path, s.index); err != nil {
 		return 0, 0, err
 	}

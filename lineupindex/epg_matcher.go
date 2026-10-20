@@ -277,7 +277,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			// National station-ID facts describe this Gracenote station only.
 			// They cannot be used as identity evidence for joining it to another
 			// GNID; only independent callsign/name evidence may seed EPG peers.
-			if fact.StationBound {
+			if fact.StationBound || originScopeUnsafe(&Index{Lineups: map[string]*LineupRecord{scan.Lineup.Key: scan.Lineup}}, fact.SourceID, []string{scan.Lineup.Key}, fact.Method) != "" {
 				continue
 			}
 			unsafeNumber := false
@@ -307,7 +307,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 		for _, relation := range scan.Relations {
 			// A station-bound national catalog fact is tied to this GNID and
 			// must never become cross-lineup identity/category evidence.
-			if relation.StationBound || strings.TrimSpace(relation.StationID) == "" {
+			if relation.StationBound || strings.TrimSpace(relation.StationID) == "" || originScopeUnsafe(&Index{Lineups: map[string]*LineupRecord{scan.Lineup.Key: scan.Lineup}}, relation.SourceID, []string{scan.Lineup.Key}, relation.Method) != "" {
 				continue
 			}
 			station := stations[strings.TrimSpace(relation.StationID)]
@@ -315,7 +315,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 				continue
 			}
 			station.Categories = append(station.Categories, ProviderFact{
-				StationID: relation.StationID, Kind: FactCategory, Value: relation.Category,
+				EvidencePolicy: relation.EvidencePolicy, StationID: relation.StationID, Kind: FactCategory, Value: relation.Category,
 				RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel,
 				SourceURL: relation.SourceURL, Method: strings.Trim(strings.ReplaceAll(relation.Method, "number-policy-provider-alias-v3", ""), "; ") + "; provider-category-relation", SourceRevision: relation.SourceRevision,
 				SourceRowID: relation.SourceRowID, RootSourceLineupKey: relation.SourceLineupKey, RootSourceStationID: relation.StationID,
@@ -856,7 +856,7 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 			rowID := strings.TrimSpace(providerFact.SourceRowID)
 			key := target.StationID + "\x00" + FactAlias + "\x00" + normalized + "\x00" + rootID + "\x00" + rowID + "\x00" + providerFact.RootSourceLineupKey + "\x00" + providerFact.RootSourceStationID
 			byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
-				StationID: target.StationID, Kind: FactAlias, Value: value,
+				EvidencePolicy: providerFact.EvidencePolicy, PeerStationID: peer.StationID, StationID: target.StationID, Kind: FactAlias, Value: value,
 				SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: method,
 				SourceRevision: providerFact.SourceRevision, SourceRowID: rowID,
 				RootSourceID: rootID, RootSourceLabel: providerFactRootSourceLabel(providerFact), RootSourceURL: providerFactRootSourceURL(providerFact),
@@ -879,7 +879,7 @@ func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdenti
 			categoryMethod += "; identity-policy-v2"
 		}
 		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
-			StationID: target.StationID, Kind: FactCategory, Value: category.Value, RawValue: category.RawValue,
+			EvidencePolicy: category.EvidencePolicy, PeerStationID: peer.StationID, StationID: target.StationID, Kind: FactCategory, Value: category.Value, RawValue: category.RawValue,
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation",
 			Method: categoryMethod, SourceRevision: category.SourceRevision, SourceRowID: category.SourceRowID,
 			RootSourceID: providerFactRootSourceID(category), RootSourceLabel: providerFactRootSourceLabel(category), RootSourceURL: providerFactRootSourceURL(category),
@@ -1249,7 +1249,7 @@ func (s *Service) replaceEPGFactsForRun(sourceID string, facts []epgDerivedFact,
 		}
 		retained[factKey] = true
 		station.Facts = append(station.Facts, StationFact{
-			Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: strings.TrimSpace(fact.Method),
 			LineupKeys: append([]string(nil), derived.LineupKeys...), SourceRevision: strings.TrimSpace(fact.SourceRevision), SourceRowID: strings.TrimSpace(fact.SourceRowID),
 			RootSourceID: providerFactRootSourceID(fact), RootSourceLabel: providerFactRootSourceLabel(fact), RootSourceURL: providerFactRootSourceURL(fact),
@@ -1276,6 +1276,7 @@ func (s *Service) replaceEPGFactsForRun(sourceID string, facts []epgDerivedFact,
 		})
 	}
 	s.index.UpdatedAt = s.now().UTC().Format(time.RFC3339)
+	ApplyEvidenceQuarantine(&s.index)
 	if err := writeIndex(s.path, s.index); err != nil {
 		return 0, 0, 0, err
 	}

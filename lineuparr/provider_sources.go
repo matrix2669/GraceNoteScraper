@@ -67,6 +67,9 @@ func ProviderGuideSourceFor(providerName string) (ProviderGuideSource, bool) {
 // label, not a subscriber address.
 func ProviderGuideSourceForLineup(providerName, location, postalCode string) (ProviderGuideSource, bool) {
 	providerName = strings.ToLower(strings.TrimSpace(providerName))
+	if strings.Contains(providerName, "frontier") {
+		return ProviderGuideSource{}, false
+	}
 	if providerName == "" {
 		return ProviderGuideSource{}, false
 	}

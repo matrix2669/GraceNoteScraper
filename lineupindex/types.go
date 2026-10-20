@@ -141,6 +141,11 @@ const (
 // StationFact is official evidence joined to a provider's Gracenote grid and
 // therefore to a provider-independent Gracenote station ID.
 type StationFact struct {
+	EvidencePolicy    string `json:"evidencePolicy,omitempty"`
+	PeerStationID     string `json:"peerStationId,omitempty"`
+	quarantineReason  string
+	viewPeerStationID string
+
 	Kind                string   `json:"kind"`
 	Value               string   `json:"value"`
 	Normalized          string   `json:"normalized"`
@@ -214,6 +219,9 @@ type ProviderEvidenceResult struct {
 }
 
 type ProviderFact struct {
+	EvidencePolicy string
+	PeerStationID  string
+
 	StationID           string
 	Kind                string
 	Value               string
@@ -240,6 +248,9 @@ type ProviderFact struct {
 // deliberately separate from StationFact: a category joined by provider
 // number is reviewable evidence, not an accepted category or identity proof.
 type ProviderCategoryRelation struct {
+	EvidencePolicy   string `json:"evidencePolicy,omitempty"`
+	quarantineReason string
+
 	StationID       string   `json:"stationId"`
 	AliasValue      string   `json:"aliasValue"`
 	AliasNormalized string   `json:"aliasNormalized"`
@@ -284,6 +295,14 @@ type StationName struct {
 }
 
 type AliasCandidate struct {
+	EvidencePolicy      string `json:"evidencePolicy,omitempty"`
+	PeerStationID       string `json:"peerStationId,omitempty"`
+	SourceRowID         string `json:"sourceRowId,omitempty"`
+	RootSourceID        string `json:"rootSourceId,omitempty"`
+	RootSourceStationID string `json:"rootSourceStationId,omitempty"`
+	RootSourceLineupKey string `json:"rootSourceLineupKey,omitempty"`
+	StationBound        bool   `json:"stationBound,omitempty"`
+
 	StationID   string   `json:"stationId"`
 	Value       string   `json:"value"`
 	Kind        string   `json:"kind"`

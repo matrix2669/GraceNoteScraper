@@ -47,6 +47,8 @@ type LineupSnapshotChannel struct {
 }
 
 type LineupSnapshotFact struct {
+	EvidencePolicy      string  `json:"evidencePolicy,omitempty"`
+	PeerStationID       string  `json:"peerStationId,omitempty"`
 	Value               string  `json:"value"`
 	RawValue            string  `json:"rawValue,omitempty"`
 	SourceID            string  `json:"sourceId"`
@@ -127,7 +129,7 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 		categories := make(map[string]bool)
 		for _, fact := range factsByStation[stationID] {
 			snapshotFact := LineupSnapshotFact{
-				Value: strings.TrimSpace(fact.Value), RawValue: strings.TrimSpace(fact.RawValue),
+				EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Value: strings.TrimSpace(fact.Value), RawValue: strings.TrimSpace(fact.RawValue),
 				SourceID: strings.TrimSpace(fact.SourceID), SourceLabel: strings.TrimSpace(fact.SourceLabel),
 				SourceURL: strings.TrimSpace(fact.SourceURL), Method: strings.TrimSpace(fact.Method),
 				MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,

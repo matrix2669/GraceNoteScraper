@@ -192,7 +192,7 @@ func parseGlorystar(data []byte) []catalogEntry {
 
 func (s *Service) fetchXfinity(ctx context.Context, request lineupindex.ProviderEvidenceRequest) providerResult {
 	source := catalogSource{
-		ID: "xfinity-official-lineup", Label: "Xfinity official lineup", URL: xfinityGuideURL,
+		ID: "xfinity-official-lineup", Label: "Xfinity official lineup", URL: xfinityGuideURL, IdentityOnly: true,
 		Method: "exact Xfinity channel number from the public address-qualified lineup service",
 	}
 	address := strings.TrimSpace(request.ServiceAddress.FormattedAddress)
