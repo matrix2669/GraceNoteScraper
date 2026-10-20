@@ -240,6 +240,8 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		if override, ok := overrides[channel.draft.ID]; ok {
 			if override.Included != nil {
 				channel.draft.Included = *override.Included
+				choice := *override.Included
+				channel.draft.InclusionChoice = &choice
 			}
 			if category := cleanCategory(override.Category); category != "" {
 				channel.draft.Category = category
@@ -902,6 +904,11 @@ func newChannelWork(input InputChannel) *channelWork {
 	}
 	for _, alias := range input.ExternalAliases {
 		channel.addAlias(alias.Value, alias.Source, alias.Method)
+		if alias.Identity != nil {
+			proof := *alias.Identity
+			proof.Value = alias.Value
+			channel.draft.ServiceEvidence = append(channel.draft.ServiceEvidence, proof)
+		}
 	}
 	if input.PreferredName != nil {
 		channel.draft.Name = input.PreferredName.Value
@@ -1218,223 +1225,10 @@ func addScores(scores map[int]int, candidates []int, score int) {
 }
 
 func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
-	nameGroups := make(map[string][]int)
-	for index, channel := range channels {
-		if channel.NameSource == "gracenote" {
-			continue
-		}
-		key := identityKey(channel.Name)
-		if key != "" {
-			nameGroups[key] = append(nameGroups[key], index)
-		}
-	}
-	suggestionByRemoveID := make(map[string]DuplicateSuggestion)
-	for _, indexes := range nameGroups {
-		if len(indexes) < 2 {
-			continue
-		}
-		bestRank := -1
-		keepIndexes := make([]int, 0, 1)
-		for _, index := range indexes {
-			rank := qualityRank(channels[index])
-			if rank > bestRank {
-				bestRank = rank
-				keepIndexes = []int{index}
-			} else if rank == bestRank {
-				keepIndexes = append(keepIndexes, index)
-			}
-		}
-		keepIndexes = sameStationKeepPosition(channels, keepIndexes)
-		if len(keepIndexes) != 1 || bestRank <= 1 {
-			continue
-		}
-		keep := channels[keepIndexes[0]]
-		for _, index := range indexes {
-			remove := channels[index]
-			if remove.ID == keep.ID || qualityRank(remove) >= bestRank || !sharesAttributableSource(remove, keep) {
-				continue
-			}
-			reason := fmt.Sprintf("Exact source identity maps both positions to %s; %s carries the stronger HD/digital marker", keep.Name, keep.CallSign)
-			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
-				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
-				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-			}
-		}
-	}
-
-	suffixGroups := make(map[string][]int)
-	groupsWithSuffix := make(map[string]bool)
-	for index, channel := range channels {
-		base, hasSuffix := qualitySuffixBase(channel.CallSign)
-		if base == "" {
-			continue
-		}
-		suffixGroups[base] = append(suffixGroups[base], index)
-		groupsWithSuffix[base] = groupsWithSuffix[base] || hasSuffix
-	}
-	for base, indexes := range suffixGroups {
-		if len(indexes) < 2 || !groupsWithSuffix[base] {
-			continue
-		}
-		bestRank := -1
-		keepIndexes := make([]int, 0, 1)
-		for _, index := range indexes {
-			rank := qualityRank(channels[index])
-			if rank > bestRank {
-				bestRank = rank
-				keepIndexes = []int{index}
-			} else if rank == bestRank {
-				keepIndexes = append(keepIndexes, index)
-			}
-		}
-		keepIndexes = sameStationKeepPosition(channels, keepIndexes)
-		if len(keepIndexes) != 1 || bestRank <= 1 {
-			continue
-		}
-		keep := channels[keepIndexes[0]]
-		for _, index := range indexes {
-			remove := channels[index]
-			if remove.ID == keep.ID || qualityRank(remove) >= bestRank {
-				continue
-			}
-			if _, exists := suggestionByRemoveID[remove.ID]; exists {
-				continue
-			}
-			reason := fmt.Sprintf("Callsigns differ only by an HD/SD/DT quality suffix; %s carries the stronger HD/digital marker", keep.CallSign)
-			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
-				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
-				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-			}
-		}
-	}
-
-	aliasGroups := make(map[string]*duplicateAliasGroup)
-	for index, channel := range channels {
-		for _, evidence := range channel.AliasEvidence {
-			aliasKey := identityKey(evidence.Value)
-			if aliasKey == "" || isDigits(aliasKey) {
-				continue
-			}
-			for _, source := range evidence.Sources {
-				sourceKey := strings.ToLower(cleanText(source))
-				if sourceKey == "" || sourceKey == "gracenote" {
-					continue
-				}
-				group := aliasGroups[aliasKey]
-				if group == nil {
-					group = &duplicateAliasGroup{
-						alias:                   evidence.Value,
-						sources:                 make(map[string]bool),
-						sourceMembers:           make(map[string]map[int]bool),
-						providerPositionBridges: make(map[int]map[string]bool),
-						seen:                    make(map[int]bool),
-					}
-					aliasGroups[aliasKey] = group
-				}
-				group.sources[source] = true
-				if group.sourceMembers[sourceKey] == nil {
-					group.sourceMembers[sourceKey] = make(map[int]bool)
-				}
-				group.sourceMembers[sourceKey][index] = true
-				for _, method := range evidence.Methods {
-					if number := providerPositionNumber(method); number != "" {
-						if group.providerPositionBridges[index] == nil {
-							group.providerPositionBridges[index] = make(map[string]bool)
-						}
-						group.providerPositionBridges[index][number] = true
-					}
-				}
-				if !group.seen[index] {
-					group.indexes = append(group.indexes, index)
-					group.seen[index] = true
-				}
-			}
-		}
-	}
-	aliasCandidates := make(map[string]map[string]DuplicateSuggestion)
-	for _, group := range aliasGroups {
-		if len(group.indexes) != 2 {
-			continue
-		}
-		left := channels[group.indexes[0]]
-		right := channels[group.indexes[1]]
-		if looksLikeNumberedDigitalSubchannel(left.CallSign) || looksLikeNumberedDigitalSubchannel(right.CallSign) {
-			continue
-		}
-		leftRank := qualityRank(left)
-		rightRank := qualityRank(right)
-		if leftRank == rightRank || (!hasExplicitQualityMarker(left) && !hasExplicitQualityMarker(right)) {
-			continue
-		}
-		remove, keep := left, right
-		if rightRank < leftRank {
-			remove, keep = right, left
-		}
-		if hasExplicitSDMarker(remove) {
-			if !group.hasSharedSource() {
-				continue
-			}
-		} else if !group.hasSharedNonScheduleSource() && !group.hasProviderPositionBridge(group.indexes[0], left, group.indexes[1], right) {
-			continue
-		}
-		sources := strings.Join(mapKeys(group.sources), ", ")
-		reason := fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s has the unique stronger quality rank", group.alias, sources, keep.CallSign)
-		if hasExplicitSDMarker(remove) && !hasExplicitQualityMarker(keep) {
-			reason = fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s is explicitly SD and %s is the unique non-SD counterpart", group.alias, sources, remove.CallSign, keep.CallSign)
-		}
-		suggestion := DuplicateSuggestion{
-			RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
-			KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-		}
-		if aliasCandidates[remove.ID] == nil {
-			aliasCandidates[remove.ID] = make(map[string]DuplicateSuggestion)
-		}
-		aliasCandidates[remove.ID][keep.ID] = suggestion
-	}
-	for removeID, candidates := range aliasCandidates {
-		if _, exists := suggestionByRemoveID[removeID]; exists || len(candidates) != 1 {
-			continue
-		}
-		for _, suggestion := range candidates {
-			suggestionByRemoveID[removeID] = suggestion
-		}
-	}
-
-	// Repeated positions require both the exact station and callsign. Shared
-	// generic guide IDs alone must not combine differently named services.
-	exactGroups := make(map[string][]int)
-	for i, channel := range channels {
-		if channel.StationID != "" && identityKey(channel.CallSign) != "" {
-			key := channel.StationID + "\x00" + identityKey(channel.CallSign)
-			exactGroups[key] = append(exactGroups[key], i)
-		}
-	}
-	for _, indexes := range exactGroups {
-		if len(indexes) < 2 {
-			continue
-		}
-		keep := channels[sameStationKeepPosition(channels, indexes)[0]]
-		for _, i := range indexes {
-			remove := channels[i]
-			if remove.ID == keep.ID {
-				continue
-			}
-			if _, exists := suggestionByRemoveID[remove.ID]; exists {
-				continue
-			}
-			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{Exact: true, RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name, KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: "Exact same Gracenote station and callsign at multiple lineup positions"}
-		}
-	}
-	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
-	for _, suggestion := range suggestionByRemoveID {
-		suggestions = append(suggestions, suggestion)
-	}
+	suggestions := verifiedServiceSuggestions(channels)
 	sort.SliceStable(suggestions, func(i, j int) bool {
-		if numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber) {
-			return true
-		}
-		if numberLess(suggestions[j].RemoveNumber, suggestions[i].RemoveNumber) {
-			return false
+		if suggestions[i].RemoveNumber != suggestions[j].RemoveNumber {
+			return numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber)
 		}
 		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
