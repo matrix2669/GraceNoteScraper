@@ -24,7 +24,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    (0,eval)(code+'\nwindow.resetBuilder=resetBuilder;window.refreshResetRecovery=refreshResetRecovery;');
   },code);
   await page.evaluate(()=>refreshResetRecovery());
-  assert.equal(await page.locator('#builder-reset-undo').isHidden(),false);
+  assert.equal(await page.locator('#builder-reset-undo').evaluate(button=>button.hidden),false);
   await page.evaluate(()=>resetBuilder());assert.equal(await page.evaluate(()=>posts.length),0);
   await page.evaluate(()=>{approve=true;failure=true;return resetBuilder(true)});
   assert.match(await page.evaluate(()=>message),/choices changed/);
