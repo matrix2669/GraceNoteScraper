@@ -125,6 +125,9 @@ func TestSnapshotRejectsConcurrentRefresh(t *testing.T) {
 		done <- w
 	}()
 	<-entered
+	if review := snapshotReview(t, s, false); review.ReviewStatus != "refreshing" {
+		t.Errorf("concurrent read status %s", review.ReviewStatus)
+	}
 	w := httptest.NewRecorder()
 	s.handleReview(w, httptest.NewRequest("GET", "/api/lineuparr/dispatcharr/review?refresh=true", nil))
 	if w.Code != 409 {
