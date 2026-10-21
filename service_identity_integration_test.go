@@ -13,14 +13,14 @@ import (
 
 // Exercise the real historical index -> typed candidate -> server bridge ->
 // builder path. No prebuilt Draft proof is injected and no scan is started.
-func TestHistoricalServiceEvidenceReachesBuilderWithoutRescan(t *testing.T) {
+func TestReusableExactIDServiceEvidenceReachesBuilderWithoutRescan(t *testing.T) {
 	for _, c := range [][3]string{{"FREEFRM", "FREFMHD", "Freeform"}, {"YES", "YESHDNY", "YES Network"}, {"FX", "FXHD", "FX"}, {"SEC", "SECH", "SEC Network"}, {"BIG10V", "BIG10VH", "Big Ten Network"}, {"MLBN", "MLBHD", "MLB Network"}, {"ID", "IDHD", "Investigation Discovery"}, {"OXYGEN", "OXYGNHD", "Oxygen True Crime"}, {"WE", "WEHD", "WE TV"}, {"HGTV", "HGTVD", "HGTV"}, {"COMEDY", "CCHD", "Comedy Central"}, {"E", "EHD", "E!"}, {"UP", "UPHD", "UP"}, {"TVLAND", "TVLNDHD", "TV Land"}, {"NFLNRZ", "NFLNRZD", "NFL RedZone"}} {
 		t.Run(c[2], func(t *testing.T) {
 			s := newLineuparrTestServer(t, true)
 			idx := lineupindex.Index{SchemaVersion: 4, Stations: map[string]*lineupindex.Station{}, Lineups: map[string]*lineupindex.LineupRecord{"own": {Key: "own", ProviderName: "Fixture Provider"}}}
 			inputs := []builder.InputChannel{}
 			for i, id := range []string{"A", "B"} {
-				idx.Stations[id] = &lineupindex.Station{StationID: id, Names: []lineupindex.StationName{{Value: c[i], Kind: lineupindex.NameCallSign}}, Facts: []lineupindex.StationFact{{Kind: lineupindex.FactAlias, Value: c[2], SourceID: "optimum-official-lineup", SourceRowID: "same-row", RootSourceStationID: id, RootSourceLineupKey: "own", LineupKeys: []string{"own"}, Method: "number-policy-provider-alias-v3; provider-source-alignment-v1"}}}
+				idx.Stations[id] = &lineupindex.Station{StationID: id, Names: []lineupindex.StationName{{Value: c[i], Kind: lineupindex.NameCallSign}}, Facts: []lineupindex.StationFact{{Kind: lineupindex.FactAlias, Value: c[2], SourceID: "spectrum-official-lineup", StationBound: true, SourceRevision: "catalog-revision", SourceRowID: "same-row", RootSourceStationID: id, RootSourceLineupKey: "own", LineupKeys: []string{"own"}, Method: "exact Gracenote station ID from Spectrum TMSID"}}}
 				inputs = append(inputs, builder.InputChannel{Key: id, StationID: id, Number: id, CallSign: c[i]})
 			}
 			inputs = append(inputs, builder.InputChannel{Key: "repeat", StationID: "A", Number: "repeat", CallSign: c[0]})

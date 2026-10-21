@@ -16,7 +16,7 @@ func TestEPGRejectsUnverifiedNumberOnlyProviderEvidence(t *testing.T) {
 		},
 	}}, "primary")
 	station := stations["USA"]
-	if len(station.Categories) != 0 || len(station.ProviderNames) != 1 {
+	if len(station.Categories) != 0 || len(station.ProviderNames) != 0 {
 		t.Fatalf("unverified facts reached EPG comparison: %+v", station)
 	}
 }

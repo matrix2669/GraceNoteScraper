@@ -2,6 +2,7 @@ package lineupindex
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -92,7 +93,7 @@ func TestEPGMatchingRequiresPairLevelIdentityAndConfirmsSemanticSchedules(t *tes
 		testEPGScan("L1", "Optimum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{leftPrime}}, blocks[1].ID: {Channels: []web.JSONChannel{leftSecondary}}}),
 		testEPGScan("L2", "DIRECTV", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{rightPrime}}, blocks[1].ID: {Channels: []web.JSONChannel{rightSecondary}}}),
 	}
-	stations, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	stations, pairs := buildEPGCandidates(bindScanFixture(scans), blocks[0].ID)
 	if len(pairs) != 1 {
 		t.Fatalf("candidate pairs = %+v", pairs)
 	}
@@ -101,7 +102,7 @@ func TestEPGMatchingRequiresPairLevelIdentityAndConfirmsSemanticSchedules(t *tes
 		t.Fatalf("results = %+v", results)
 	}
 	facts := buildEPGDerivedFacts(stations, results, "test-epg", "America/New_York")
-	if !hasEPGAlias(facts, "LEFT", "WCBSHD") || !hasEPGAlias(facts, "LEFT", "WCBS") || !hasEPGAlias(facts, "RIGHT", "WCBSDT") {
+	if !hasEPGAlias(facts, "LEFT", "WCBSHD") || !hasEPGAlias(facts, "RIGHT", "WCBSDT") {
 		t.Fatalf("derived facts = %+v", facts)
 	}
 
@@ -130,7 +131,7 @@ func TestEPGMatchingRequiresPairLevelIdentityAndConfirmsSemanticSchedules(t *tes
 		testEPGScan("L2", "DIRECTV", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{{ChannelID: "GRID", CallSign: "WCBSHD"}}}}),
 	}
 	providerNameBridge[0].Facts = []ProviderFact{{StationID: "PROVIDER", Kind: FactAlias, Value: "WCBS"}}
-	_, providerNamePairs := buildEPGCandidates(providerNameBridge, blocks[0].ID)
+	_, providerNamePairs := buildEPGCandidates(bindScanFixture(providerNameBridge), blocks[0].ID)
 	if len(providerNamePairs) != 1 || providerNamePairs[0].Evidence[0] != "identity-name:WCBS" {
 		t.Fatalf("provider-name bridge = %+v", providerNamePairs)
 	}
@@ -146,7 +147,7 @@ func TestEPGMatchingRejectsAffiliateOnlyIdentity(t *testing.T) {
 			testEPGChannel("IOND", "IONDHD", "ION: INDEPENDENT TELEVISION", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "IOND"),
 		}}}),
 	}
-	_, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	_, pairs := buildEPGCandidates(bindScanFixture(scans), blocks[0].ID)
 	if len(pairs) != 0 {
 		t.Fatalf("affiliate-only identity created candidate pairs: %+v", pairs)
 	}
@@ -169,7 +170,7 @@ func TestSharedProviderIdentityBecomesCrossGNIDCandidateWithoutPersistence(t *te
 	if len(scan.Facts) != 3 {
 		t.Fatalf("only persisted facts and transient aliases should enter EPG matching: %+v", scan.Facts)
 	}
-	stations, pairs := buildEPGCandidates([]*postalLineupScan{scan}, blocks[0].ID)
+	stations, pairs := buildEPGCandidates(bindScanFixture([]*postalLineupScan{scan}), blocks[0].ID)
 	if len(pairs) != 1 || len(pairs[0].Evidence) != 1 || pairs[0].Evidence[0] != "identity-name:FREEFORM" {
 		t.Fatalf("Freeform pair = %+v", pairs)
 	}
@@ -179,14 +180,14 @@ func TestSharedProviderIdentityBecomesCrossGNIDCandidateWithoutPersistence(t *te
 	derived := buildEPGDerivedFacts(stations, []epgPairResult{{
 		Pair: pairs[0], Status: "confirmed", Occurrences: 12, MatchedMinutes: 720,
 	}}, "test-epg", "America/New_York")
-	if !hasEPGAlias(derived, "10093", "Freeform") || !hasEPGAlias(derived, "10093", "FREFMHD") || !hasEPGAlias(derived, "59615", "FREEFRM") {
+	if !hasEPGAlias(derived, "10093", "FREFMHD") || !hasEPGAlias(derived, "59615", "FREEFRM") {
 		t.Fatalf("confirmed Freeform aliases = %+v", derived)
 	}
 }
 
 func TestExactProviderAliasAcrossLineupsConfirmsFreeformCrossGNID(t *testing.T) {
 	blocks := testEPGBlocks()
-	xfinity := testEPGScan("XFINITY", "Xfinity", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
+	xfinity := testEPGScan("DIRECTV", "DIRECTV", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{
 		testEPGChannel("10093", "FREEFRM", "", blocks[0], []string{"One", "Two", "Three", "Four", "Five", "Six"}, "SD"),
 	}}})
 	xfinity.Facts = []ProviderFact{{
@@ -201,7 +202,7 @@ func TestExactProviderAliasAcrossLineupsConfirmsFreeformCrossGNID(t *testing.T) 
 		Method: "unique provider-local channel number; number-policy-provider-alias-v3",
 	}}
 
-	stations, pairs := buildEPGCandidates([]*postalLineupScan{xfinity, optimum}, blocks[0].ID)
+	stations, pairs := buildEPGCandidates(bindScanFixture([]*postalLineupScan{xfinity, optimum}), blocks[0].ID)
 	if len(pairs) != 1 || len(pairs[0].Evidence) != 1 || pairs[0].Evidence[0] != "identity-name:FREEFORM" {
 		t.Fatalf("cross-lineup Freeform pair = %+v", pairs)
 	}
@@ -232,8 +233,8 @@ func TestEPGDerivedFactsExcludeTemporaryEventAliases(t *testing.T) {
 	if hasEPGAlias(facts, "WPXN", "WNBA on ION 1") {
 		t.Fatalf("temporary event alias was transferred: %+v", facts)
 	}
-	if !hasEPGAlias(facts, "WPXN", "ION") {
-		t.Fatalf("permanent alias was not transferred: %+v", facts)
+	if hasEPGAlias(facts, "WPXN", "ION") {
+		t.Fatalf("provider alias must not be transferred: %+v", facts)
 	}
 }
 
@@ -250,7 +251,7 @@ func TestEPGMatchingRejectsPlaceholderGuides(t *testing.T) {
 		testEPGScan("L1", "One", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{placeholder("A", blocks[0])}}, blocks[1].ID: {Channels: []web.JSONChannel{placeholder("A", blocks[1])}}}),
 		testEPGScan("L2", "Two", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{placeholder("B", blocks[0])}}, blocks[1].ID: {Channels: []web.JSONChannel{placeholder("B", blocks[1])}}}),
 	}
-	_, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	_, pairs := buildEPGCandidates(bindScanFixture(scans), blocks[0].ID)
 	results := evaluateEPGPairs(scans, pairs, blocks)
 	if len(results) != 1 || results[0].Status != "rejected" || results[0].Reason != "placeholder-only" {
 		t.Fatalf("results = %+v", results)
@@ -280,7 +281,7 @@ func TestEPGMatchingAcceptsLongFormCoverageAndUsesFallback(t *testing.T) {
 			}
 		}
 	}
-	_, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	_, pairs := buildEPGCandidates(bindScanFixture(scans), blocks[0].ID)
 	results := evaluateEPGPairs(scans, pairs, blocks)
 	if len(results) != 1 || results[0].Status != "confirmed" || results[0].Reason != "long-form-coverage" || results[0].MatchedMinutes != 720 {
 		t.Fatalf("results = %+v", results)
@@ -304,7 +305,7 @@ func TestEPGMatchingDoesNotReplaceStrongDivergentPrimaryWithFallback(t *testing.
 			blocks[2].ID: {Channels: []web.JSONChannel{testEPGChannel("B", "MATCHHD", "", blocks[2], fallback, "B")}},
 		}),
 	}
-	_, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	_, pairs := buildEPGCandidates(bindScanFixture(scans), blocks[0].ID)
 	results := evaluateEPGPairs(scans, pairs, blocks)
 	if len(results) != 1 || results[0].Status != "rejected" || results[0].Reason != "weekday-schedules-diverged" {
 		t.Fatalf("results = %+v", results)
@@ -323,7 +324,7 @@ func testEPGBlocks() []epgBlock {
 
 func testEPGScan(lineupID, provider string, grids map[string]*web.GridResponse) *postalLineupScan {
 	return &postalLineupScan{
-		Lineup: &LineupRecord{Key: lineupID, LineupID: lineupID}, Provider: web.Provider{Name: provider, LineupID: lineupID}, Grids: grids,
+		Lineup: &LineupRecord{Key: lineupID, LineupID: lineupID, ProviderName: provider}, Provider: web.Provider{Name: provider, LineupID: lineupID}, Grids: grids,
 	}
 }
 
@@ -348,4 +349,29 @@ func hasEPGAlias(facts []epgDerivedFact, stationID, value string) bool {
 		}
 	}
 	return false
+}
+
+// Explicit source-row preconditions for tests whose subject is schedule matching.
+func bindScanFixture(scans []*postalLineupScan) []*postalLineupScan {
+	for _, scan := range scans {
+		for i := range scan.Facts {
+			f := &scan.Facts[i]
+			f.EvidencePolicy = ProviderIdentityPolicy
+			if strings.Contains(f.Method, "number-policy-provider-alias-v3") && !strings.Contains(f.Method, ProviderSourceAlignmentV1) {
+				f.Method += "; " + ProviderSourceAlignmentV1
+			}
+			f.SourceRowID = "row-" + f.StationID
+			f.RootSourceLineupKey = scan.Lineup.Key
+			f.RootSourceStationID = f.StationID
+			if f.SourceID == "" {
+				f.SourceID = map[string]string{"optimum": "optimum-official-lineup", "directv": "directv-official-lineup", "dish": "dish-official-lineup", "fios": "verizon-fios-official-lineup", "xfinity": "xfinity-official-lineup"}[providerFamilyKey(scan.Lineup.ProviderName)]
+			}
+		}
+		for i := range scan.Relations {
+			r := &scan.Relations[i]
+			r.EvidencePolicy = ProviderIdentityPolicy
+			r.SourceLineupKey = scan.Lineup.Key
+		}
+	}
+	return scans
 }

@@ -47,23 +47,24 @@ type LineupSnapshotChannel struct {
 }
 
 type LineupSnapshotFact struct {
-	EvidencePolicy      string  `json:"evidencePolicy,omitempty"`
-	PeerStationID       string  `json:"peerStationId,omitempty"`
-	Value               string  `json:"value"`
-	RawValue            string  `json:"rawValue,omitempty"`
-	SourceID            string  `json:"sourceId"`
-	SourceLabel         string  `json:"sourceLabel"`
-	SourceURL           string  `json:"sourceUrl,omitempty"`
-	Method              string  `json:"method"`
-	MatchMethod         string  `json:"matchMethod,omitempty"`
-	MatchConfidence     float64 `json:"matchConfidence,omitempty"`
-	SourceRevision      string  `json:"sourceRevision,omitempty"`
-	SourceRowID         string  `json:"sourceRowId,omitempty"`
-	RootSourceID        string  `json:"rootSourceId,omitempty"`
-	RootSourceLabel     string  `json:"rootSourceLabel,omitempty"`
-	RootSourceURL       string  `json:"rootSourceUrl,omitempty"`
-	RootSourceLineupKey string  `json:"rootSourceLineupKey,omitempty"`
-	RootSourceStationID string  `json:"rootSourceStationId,omitempty"`
+	PairProof           *StationPairProof `json:"pairProof,omitempty"`
+	EvidencePolicy      string            `json:"evidencePolicy,omitempty"`
+	PeerStationID       string            `json:"peerStationId,omitempty"`
+	Value               string            `json:"value"`
+	RawValue            string            `json:"rawValue,omitempty"`
+	SourceID            string            `json:"sourceId"`
+	SourceLabel         string            `json:"sourceLabel"`
+	SourceURL           string            `json:"sourceUrl,omitempty"`
+	Method              string            `json:"method"`
+	MatchMethod         string            `json:"matchMethod,omitempty"`
+	MatchConfidence     float64           `json:"matchConfidence,omitempty"`
+	SourceRevision      string            `json:"sourceRevision,omitempty"`
+	SourceRowID         string            `json:"sourceRowId,omitempty"`
+	RootSourceID        string            `json:"rootSourceId,omitempty"`
+	RootSourceLabel     string            `json:"rootSourceLabel,omitempty"`
+	RootSourceURL       string            `json:"rootSourceUrl,omitempty"`
+	RootSourceLineupKey string            `json:"rootSourceLineupKey,omitempty"`
+	RootSourceStationID string            `json:"rootSourceStationId,omitempty"`
 }
 
 type LineupSnapshotRelation struct {
@@ -129,7 +130,7 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 		categories := make(map[string]bool)
 		for _, fact := range factsByStation[stationID] {
 			snapshotFact := LineupSnapshotFact{
-				EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Value: strings.TrimSpace(fact.Value), RawValue: strings.TrimSpace(fact.RawValue),
+				PairProof: fact.PairProof, EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Value: strings.TrimSpace(fact.Value), RawValue: strings.TrimSpace(fact.RawValue),
 				SourceID: strings.TrimSpace(fact.SourceID), SourceLabel: strings.TrimSpace(fact.SourceLabel),
 				SourceURL: strings.TrimSpace(fact.SourceURL), Method: strings.TrimSpace(fact.Method),
 				MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,

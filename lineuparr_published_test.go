@@ -58,7 +58,7 @@ func TestPublishedLineuparrSnapshotSurvivesEditsAndRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The endpoint needs neither an active guide nor a builder after restarting.
-	restarted := &lineuparrServer{exportDir: server.exportDir}
+	restarted := &lineuparrServer{exportDir: server.exportDir, store: server.store}
 	unchanged := readLineuparrExport(restarted, http.MethodGet, path)
 	if unchanged.Body.String() != first.Body.String() {
 		t.Fatal("draft edits or restart changed the published export")
@@ -102,8 +102,8 @@ func TestPublishedLineuparrSnapshotSurvivesEditsAndRestart(t *testing.T) {
 	if secondPath == path {
 		t.Fatal("different source reused the previous lineup URL")
 	}
-	if got := readLineuparrExport(restarted, http.MethodGet, renamedPath); got.Body.String() != updated.Body.String() {
-		t.Fatal("changing provider replaced the previously exported lineup")
+	if got := readLineuparrExport(restarted, http.MethodGet, renamedPath); got.Code != http.StatusConflict {
+		t.Fatal("old source export remained active")
 	}
 }
 
@@ -134,7 +134,7 @@ func TestExportSummaryReadsSavedSnapshotWithoutGuide(t *testing.T) {
 	}
 }
 
-func TestExportSummaryDerivesComparisonSignaturesFromLegacyRecord(t *testing.T) {
+func TestExportSummaryRetainsButDoesNotServeLegacyPolicyRecord(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	server.exportDir = t.TempDir()
 	config, _, _ := server.store.Get()
@@ -146,9 +146,19 @@ func TestExportSummaryDerivesComparisonSignaturesFromLegacyRecord(t *testing.T) 
 	if err := savePublishedLineuparr(server.exportDir, legacy); err != nil {
 		t.Fatal(err)
 	}
+	before, _ := os.ReadFile(filepath.Join(server.exportDir, filename))
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if got := readLineuparrExport(server, method, lineuparrPublishedPrefix+filename); got.Code != http.StatusConflict {
+			t.Fatal("legacy policy export served")
+		}
+	}
+	after, _ := os.ReadFile(filepath.Join(server.exportDir, filename))
+	if string(before) != string(after) {
+		t.Fatal("read rewrote legacy export")
+	}
 	w := httptest.NewRecorder()
 	server.handleExportSummary(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/export-summary", nil))
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"included"`) || !strings.Contains(w.Body.String(), `"aliases"`) || !strings.Contains(w.Body.String(), `"categories"`) || !strings.Contains(w.Body.String(), `"rows"`) {
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"requiresRegeneration":true`) || !strings.Contains(w.Body.String(), `"retained":true`) {
 		t.Fatalf("legacy summary = %d %s", w.Code, w.Body.String())
 	}
 }
