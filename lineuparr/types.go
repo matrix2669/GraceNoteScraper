@@ -87,32 +87,33 @@ type DraftChannel struct {
 	ServiceEvidence []ServiceIdentityEvidence `json:"serviceEvidence,omitempty"`
 	InclusionChoice *bool                     `json:"inclusionChoice,omitempty"`
 
-	CategoryPriority        int                  `json:"categoryPriority"`
-	NeedsCategoryReview     bool                 `json:"needsCategoryReview"`
-	CategoryReview          *CategoryReview      `json:"categoryReview,omitempty"`
-	ID                      string               `json:"id"`
-	StationID               string               `json:"stationId,omitempty"`
-	PlacementID             string               `json:"placementId,omitempty"`
-	Number                  string               `json:"number"`
-	Name                    string               `json:"name"`
-	OriginalName            string               `json:"originalName"`
-	CallSign                string               `json:"callSign,omitempty"`
-	Affiliate               string               `json:"affiliate,omitempty"`
-	Category                string               `json:"category"`
-	Included                bool                 `json:"included"`
-	Aliases                 []string             `json:"aliases,omitempty"`
-	ExcludedAliases         []string             `json:"excludedAliases,omitempty"`
-	AliasEvidence           []AliasEvidence      `json:"aliasEvidence,omitempty"`
-	SuppressedAliasEvidence []AliasEvidence      `json:"suppressedAliasEvidence,omitempty"`
-	EPGIDs                  []string             `json:"epgIds,omitempty"`
-	EPGIDEvidence           []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
-	NameSource              string               `json:"nameSource"`
-	NameMethod              string               `json:"nameMethod"`
-	CategorySource          string               `json:"categorySource"`
-	CategoryMethod          string               `json:"categoryMethod,omitempty"`
-	MatchedSources          []string             `json:"matchedSources,omitempty"`
-	DuplicateOf             string               `json:"duplicateOf,omitempty"`
-	DuplicateReason         string               `json:"duplicateReason,omitempty"`
+	CategoryPriority         int                  `json:"categoryPriority"`
+	NeedsCategoryReview      bool                 `json:"needsCategoryReview"`
+	CategoryReview           *CategoryReview      `json:"categoryReview,omitempty"`
+	ID                       string               `json:"id"`
+	StationID                string               `json:"stationId,omitempty"`
+	PlacementID              string               `json:"placementId,omitempty"`
+	Number                   string               `json:"number"`
+	Name                     string               `json:"name"`
+	OriginalName             string               `json:"originalName"`
+	CallSign                 string               `json:"callSign,omitempty"`
+	Affiliate                string               `json:"affiliate,omitempty"`
+	Category                 string               `json:"category"`
+	Included                 bool                 `json:"included"`
+	Aliases                  []string             `json:"aliases,omitempty"`
+	AutomaticExcludedAliases []string             `json:"automaticExcludedAliases,omitempty"`
+	ExcludedAliases          []string             `json:"excludedAliases,omitempty"`
+	AliasEvidence            []AliasEvidence      `json:"aliasEvidence,omitempty"`
+	SuppressedAliasEvidence  []AliasEvidence      `json:"suppressedAliasEvidence,omitempty"`
+	EPGIDs                   []string             `json:"epgIds,omitempty"`
+	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
+	NameSource               string               `json:"nameSource"`
+	NameMethod               string               `json:"nameMethod"`
+	CategorySource           string               `json:"categorySource"`
+	CategoryMethod           string               `json:"categoryMethod,omitempty"`
+	MatchedSources           []string             `json:"matchedSources,omitempty"`
+	DuplicateOf              string               `json:"duplicateOf,omitempty"`
+	DuplicateReason          string               `json:"duplicateReason,omitempty"`
 }
 
 type DuplicateSuggestion struct {
@@ -156,27 +157,38 @@ type SourceMatch struct {
 	Methods   []string `json:"methods,omitempty"`
 }
 
+type AutomaticMatchLease struct {
+	StateToken          string
+	SnapshotToken       string
+	DispatchFingerprint string
+	GuideToken          string
+}
+
 type Draft struct {
-	SourceFingerprint      string                `json:"sourceFingerprint"`
-	GeneratedAt            time.Time             `json:"generatedAt"`
-	Package                string                `json:"package"`
-	ProviderName           string                `json:"providerName"`
-	PostalCode             string                `json:"postalCode"`
-	LineupID               string                `json:"lineupId"`
-	CountryCode            string                `json:"countryCode"`
-	Channels               []DraftChannel        `json:"channels"`
-	DuplicateSuggestions   []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups        []DuplicateGroup      `json:"duplicateGroups"`
-	Sources                []SourceStatus        `json:"sources"`
-	Categories             []string              `json:"categories"`
-	Total                  int                   `json:"total"`
-	Included               int                   `json:"included"`
-	Excluded               int                   `json:"excluded"`
-	AliasCount             int                   `json:"aliasCount"`
-	Categorized            int                   `json:"categorized"`
-	Uncategorized          int                   `json:"uncategorized"`
-	CustomizationSignature string                `json:"customizationSignature"`
-	ExportSignatures       ExportSignatures      `json:"exportSignatures"`
+	AutomaticLease           *AutomaticMatchLease  `json:"-"`
+	AutomaticMatchingStatus  string                `json:"automaticMatchingStatus,omitempty"`
+	AutomaticMatchingMessage string                `json:"automaticMatchingMessage,omitempty"`
+	AutomaticExclusionCount  int                   `json:"automaticExclusionCount"`
+	SourceFingerprint        string                `json:"sourceFingerprint"`
+	GeneratedAt              time.Time             `json:"generatedAt"`
+	Package                  string                `json:"package"`
+	ProviderName             string                `json:"providerName"`
+	PostalCode               string                `json:"postalCode"`
+	LineupID                 string                `json:"lineupId"`
+	CountryCode              string                `json:"countryCode"`
+	Channels                 []DraftChannel        `json:"channels"`
+	DuplicateSuggestions     []DuplicateSuggestion `json:"duplicateSuggestions"`
+	DuplicateGroups          []DuplicateGroup      `json:"duplicateGroups"`
+	Sources                  []SourceStatus        `json:"sources"`
+	Categories               []string              `json:"categories"`
+	Total                    int                   `json:"total"`
+	Included                 int                   `json:"included"`
+	Excluded                 int                   `json:"excluded"`
+	AliasCount               int                   `json:"aliasCount"`
+	Categorized              int                   `json:"categorized"`
+	Uncategorized            int                   `json:"uncategorized"`
+	CustomizationSignature   string                `json:"customizationSignature"`
+	ExportSignatures         ExportSignatures      `json:"exportSignatures"`
 }
 
 type ExportSignatures struct {

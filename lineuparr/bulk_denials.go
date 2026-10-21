@@ -70,3 +70,13 @@ func (s *Service) ApplyReviewedDenials(fingerprint, token string, decisions []Ma
 	}
 	return nil
 }
+
+// WhileReviewState holds the current saved choices stable during publication.
+func (s *Service) WhileReviewState(token string, action func() error) error {
+	s.store.mu.RLock()
+	defer s.store.mu.RUnlock()
+	if s.store.reviewTokenLocked() != token {
+		return ErrStaleReview
+	}
+	return action()
+}
