@@ -363,8 +363,6 @@ func (s *StateStore) saveLocked() error {
 		return fmt.Errorf("replacing Lineuparr state: %w", err)
 	}
 	removeTemp = false
-	if err := os.Chmod(s.path, 0600); err != nil {
-		return fmt.Errorf("securing Lineuparr state: %w", err)
-	}
+	// The 0600 temporary file retains its mode across atomic rename.
 	return nil
 }
