@@ -863,6 +863,9 @@
     let decisionRevision = 0;
     let matchReviewRequest = 0;
     let matchReviewLimit = 100;
+    let dispatchReviewEpoch = 0;
+    let dispatchBusyRequest = 0;
+    let dispatchConnectionError = false;
     const localExportChanges = new Set();
     let workflowProgress = {};
     let workflowRemote = {};
@@ -1074,12 +1077,24 @@
       await loadAliasIndex();
     }
 
+    function invalidateDispatchReview() {
+      ++dispatchReviewEpoch;
+      ++matchReviewRequest;
+      matchReview = null;
+      workflowRemote.dispatch = null;
+      workflowRemote.dispatchReady = false;
+    }
+
     async function loadDispatchConfig() {
+      const epoch = dispatchReviewEpoch;
       try {
-        dispatchConfig = await api('/api/lineuparr/dispatcharr/config');
+        const config = await api('/api/lineuparr/dispatcharr/config');
+        if (epoch !== dispatchReviewEpoch) return;
+        dispatchConfig = config;
         renderDispatchConfig();
         if (dispatchConfig.configured && draft && !dispatchBusy) loadMatchReview();
       } catch (error) {
+        if (epoch !== dispatchReviewEpoch) return;
         els.dispatchLoading.replaceChildren(emptyMessage(error.message));
       }
     }
@@ -1123,7 +1138,9 @@
       event.preventDefault();
       if (dispatchBusy) return;
       let saved = false;
+      invalidateDispatchReview();
       dispatchBusy = true;
+      renderGuidedWorkflow();
       setDispatchControls();
       els.dispatchLoading.replaceChildren(emptyMessage('Testing the connection…'));
       try {
@@ -1133,27 +1150,35 @@
         });
         els.dispatchPassword.value = '';
         els.dispatchAPIKey.value = '';
+        dispatchConnectionError = false;
         matchReview = null;
         renderDispatchConfig();
         els.dispatchLoading.replaceChildren();
         saved = true;
         showMessage('Dispatcharr connected. Press Refresh streams to build the match review.');
       } catch (error) {
+        dispatchConnectionError = true;
         els.dispatchLoading.replaceChildren(emptyMessage(error.message));
         showMessage(error.message, true);
       } finally {
+        invalidateDispatchReview();
+        workflowRemote.dispatchConfig = dispatchConfig;
         dispatchBusy = false;
         setDispatchControls();
+        renderGuidedWorkflow();
       }
       if (saved) await loadMatchReview();
     }
 
     async function disconnectDispatch() {
       if (dispatchBusy || !confirm('Remove the saved Dispatcharr connection? Confirmed aliases will remain until you undo or remove them.')) return;
+      invalidateDispatchReview();
       dispatchBusy = true;
+      renderGuidedWorkflow();
       setDispatchControls();
       try {
         dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {method:'DELETE'});
+        dispatchConnectionError = false;
         matchReview = null;
         els.dispatchURL.value = '';
         els.dispatchUser.value = '';
@@ -1164,6 +1189,8 @@
       } catch (error) {
         showMessage(error.message, true);
       } finally {
+        invalidateDispatchReview();
+        workflowRemote.dispatchConfig = dispatchConfig;
         dispatchBusy = false;
         setDispatchControls();
       }
@@ -1204,12 +1231,19 @@
 
     async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
       if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
-      if (force) requestedLimit = 100;
+      if (force) {
+        requestedLimit = 100;
+        ++dispatchReviewEpoch;
+        workflowRemote.dispatch = matchReview ? {...matchReview, reviewStatus:'refreshing'} : null;
+      }
       const requestNumber = ++matchReviewRequest;
       const revision = decisionRevision;
+      const epoch = dispatchReviewEpoch;
       const stopProgress = force ? startMatchProgress() : () => {};
       if (interactive) {
         dispatchBusy = true;
+        dispatchBusyRequest = requestNumber;
+        renderGuidedWorkflow();
         setDispatchControls();
         els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing and comparing active M3U streams…' : 'Loading saved match review…'));
       }
@@ -1217,21 +1251,38 @@
         const query = new URLSearchParams({limit: String(requestedLimit)});
         if (force) query.set('refresh', 'true');
         const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
-        if (requestNumber !== matchReviewRequest || revision !== decisionRevision) return;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         matchReview = review;
+        workflowRemote.dispatch = review;
+        workflowRemote.dispatchReady = true;
         matchReviewLimit = review.visibleLimit || requestedLimit;
         renderMatchReview();
         return true;
       } catch (error) {
+        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) return false;
+        if (matchReview) matchReview = {...matchReview, reviewStatus:'stale'};
+        workflowRemote.dispatch = matchReview;
         if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
         showMessage(error.message, true);
         return false;
       } finally {
         stopProgress();
+        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) {
+          if (interactive && dispatchBusyRequest === requestNumber) {
+            dispatchBusy = false;
+            setDispatchControls();
+            renderGuidedWorkflow();
+          }
+          return;
+        }
         if (interactive) {
+          ++dispatchReviewEpoch;
+          workflowRemote.dispatch = matchReview;
+          workflowRemote.dispatchReady = !!matchReview;
           dispatchBusy = false;
           setDispatchControls();
         }
+        renderGuidedWorkflow();
       }
     }
 
@@ -1324,6 +1375,7 @@
       if (!candidate) return;
       pendingDecisions.add(key);
       decisionRevision++;
+      ++dispatchReviewEpoch;
       matchReview = {
         ...matchReview,
         candidateCount: Math.max(0, matchReview.candidateCount - 1),
@@ -1358,6 +1410,11 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(key);
+        ++dispatchReviewEpoch;
+        workflowRemote.dispatch = null;
+        workflowRemote.dispatchReady = false;
+        renderGuidedWorkflow();
+        scheduleWorkflowRefresh(0);
       }
     }
 
@@ -1402,6 +1459,9 @@
     async function decideAlternative(primary, candidate, decision, card) {
       if (pendingDecisions.has(candidate.key)) return;
       pendingDecisions.add(candidate.key);
+      decisionRevision++;
+      ++dispatchReviewEpoch;
+      renderGuidedWorkflow();
       for (const button of card.querySelectorAll('button')) button.disabled = true;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
@@ -1431,6 +1491,11 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(candidate.key);
+        ++dispatchReviewEpoch;
+        workflowRemote.dispatch = null;
+        workflowRemote.dispatchReady = false;
+        renderGuidedWorkflow();
+        scheduleWorkflowRefresh(0);
       }
     }
 
@@ -1441,7 +1506,8 @@
 
     async function clearDecision(key) {
       if (dispatchBusy) return;
-      dispatchBusy = true; setDispatchControls();
+      ++dispatchReviewEpoch;
+      dispatchBusy = true; setDispatchControls(); renderGuidedWorkflow();
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
@@ -1449,7 +1515,12 @@
         await reloadDraft();
         showMessage('Match review undone.');
       } catch (error) { showMessage(error.message, true); }
-      finally { dispatchBusy = false; setDispatchControls(); }
+      finally {
+        ++dispatchReviewEpoch;
+        workflowRemote.dispatch = null;
+        workflowRemote.dispatchReady = false;
+        dispatchBusy = false; setDispatchControls(); renderGuidedWorkflow();
+      }
       await loadMatchReview();
     }
 
@@ -1511,8 +1582,13 @@
         c.id, c.name, c.number,
         (c.aliasEvidence || []).filter(e => (e.sources || []).some(s => s !== 'dispatcharr-confirmed' && s !== 'dispatcharr-denied')).map(e => e.value).sort()
       ]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
-      if (matchInputSignature !== null && signature !== matchInputSignature && matchReview) {
+      if (matchInputSignature !== null && signature !== matchInputSignature) {
+        ++dispatchReviewEpoch;
         ++matchReviewRequest;
+        workflowRemote.dispatch = null;
+        workflowRemote.dispatchReady = false;
+      }
+      if (matchInputSignature !== null && signature !== matchInputSignature && matchReview) {
         const previous = new Map(JSON.parse(matchInputSignature).map(row => [row[0], JSON.stringify(row)]));
         const current = JSON.parse(signature);
         const removedOnly = current.every(row => previous.get(row[0]) === JSON.stringify(row));
@@ -1524,7 +1600,7 @@
           matchReview = {...matchReview, candidates, candidateCount:candidates.length,
             candidateStreamCount:candidates.reduce((sum,c) => sum+c.streamCount,0)};
         } else {
-          matchReview = {...matchReview, streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
+          matchReview = {...matchReview, reviewStatus:'refresh-required', streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
             warning:'Refresh required to match streams to the included channels. Press Refresh streams.'};
         }
         closeMatchAlternatives();
@@ -2291,6 +2367,7 @@
     async function loadWorkflowStatus() {
       if (workflowRefreshing || !draft) { scheduleWorkflowRefresh(); return; }
       workflowRefreshing = true;
+      const epoch = dispatchReviewEpoch;
       try {
         const requests = [api('/api/lineuparr/workflow')];
         const positions = {progress: 0};
@@ -2304,6 +2381,7 @@
           positions[key] = requests.length; requests.push(optionalAPI(path));
         }
         const results = await Promise.all(requests);
+        if (epoch !== dispatchReviewEpoch) return;
         workflowProgress = results[positions.progress] || {};
         for (const key of ['local','major','tmdb','dispatchConfig']) if (positions[key] !== undefined && results[positions[key]]) workflowRemote[key] = results[positions[key]];
         if (workflowRemote.tmdb?.state === 'enriching') workflowRemote.setup = await optionalAPI('/api/setup/status');
@@ -2311,15 +2389,18 @@
         if (tmdbConfigured && workflowRemote.tmdb.state === 'current' && workflowProgress.tmdbDisposition !== 'complete') {
           workflowProgress = await api('/api/lineuparr/workflow', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'complete-tmdb', sourceFingerprint:draft.sourceFingerprint})});
         }
+        if (epoch !== dispatchReviewEpoch) return;
         if (workflowRemote.dispatchConfig?.configured) {
-          const currentReview = typeof matchReview !== 'undefined' ? matchReview : null;
-          workflowRemote.dispatch = currentReview || await optionalAPI('/api/lineuparr/dispatcharr/review?limit=1');
+          const review = await optionalAPI('/api/lineuparr/dispatcharr/review?limit=1');
+          if (epoch !== dispatchReviewEpoch) return;
+          workflowRemote.dispatch = review;
           workflowRemote.dispatchReady = !!workflowRemote.dispatch;
         } else if (workflowRemote.dispatchConfig) {
           workflowRemote.dispatch = null; workflowRemote.dispatchReady = true;
         }
         renderGuidedWorkflow();
       } catch (error) {
+        if (epoch !== dispatchReviewEpoch) return;
         showMessage(error.message, true);
       } finally {
         workflowRefreshing = false;
@@ -2342,7 +2423,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && workflowRemote.dispatch?.candidateCount === 0}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0}
       ].filter(state => state.panel);
     }
 
