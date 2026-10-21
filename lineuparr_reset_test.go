@@ -109,3 +109,15 @@ func TestResetInvalidatesPublishedExportWithoutDeletingIt(t *testing.T) {
 		t.Fatal("fresh generation rejected")
 	}
 }
+
+func TestRecoverySummaryAvailableDuringConcurrentStartupReads(t *testing.T) {
+	server, _ := newDispatcharrTestServer(t, true)
+	s := server.lineup
+	s.resetMu.RLock()
+	defer s.resetMu.RUnlock()
+	w := httptest.NewRecorder()
+	s.handleBuilderReset(w, httptest.NewRequest("GET", "/api/lineuparr/reset", nil))
+	if w.Code != 200 {
+		t.Fatalf("read-only startup operation hid recovery: %d %s", w.Code, w.Body.String())
+	}
+}

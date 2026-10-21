@@ -39,11 +39,18 @@ func (s *lineuparrServer) handleBuilderReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
-	if !s.resetMu.TryLock() {
-		http.Error(w, "A builder operation is in progress. Wait for it to finish and retry.", 409)
-		return
+	if r.Method == http.MethodGet {
+		// A summary is read-only and must remain discoverable while other
+		// startup reads run. The state token fences any subsequent POST.
+		s.resetMu.RLock()
+		defer s.resetMu.RUnlock()
+	} else {
+		if !s.resetMu.TryLock() {
+			http.Error(w, "A builder operation is in progress. Wait for it to finish and retry.", 409)
+			return
+		}
+		defer s.resetMu.Unlock()
 	}
-	defer s.resetMu.Unlock()
 	config, configured, _ := s.store.Get()
 	if !configured {
 		http.Error(w, "Choose a lineup first", 409)
