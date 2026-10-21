@@ -1,43 +1,33 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const html = fs.readFileSync('lineuparr.html','utf8');
-const script = html.split('<script>')[1].split('</script>')[0];
+const script = fs.readFileSync('lineuparr.html','utf8').split('<script>')[1].split('</script>')[0];
 new vm.Script(script);
-const line = script.split('\n').find(x => x.includes('const alternatives = candidate.minimumScore'));
-assert.ok(line);
-for (const decision of ['confirmed','denied']) {
-  for (const minimumScore of [94,95,98]) {
-    const context = {decision,candidate:{minimumScore,alternatives:[{key:'other'}]}};
-    vm.runInNewContext(line+'; result=alternatives.length;',context);
-    assert.equal(context.result, minimumScore < 95 ? 1 : 0);
-  }
-}
-const alternate = script.split('async function decideAlternative(')[1].split('function closeMatchAlternatives')[0];
-assert.ok(!alternate.includes('closeMatchAlternatives()'));
-assert.ok(alternate.includes('card.remove()'));
-assert.ok(!script.includes("alternativeDialog.addEventListener('click', event"));
-console.log('Alternative popup threshold and multi-confirm checks passed');
-
-(async () => {
-  for (const decision of ['confirmed','denied']) {
-    const target = {key:'b',streamCount:2};
-    const survivor = {key:'c',alternatives:[target]};
-    const primary = {alias:'Network',alternatives:[target,survivor]};
-    const context = {
-      pendingDecisions:new Set(),decisionRevision:0,dispatchReviewEpoch:0,renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},
-      matchReview:{candidates:[target,survivor],candidateCount:2,candidateStreamCount:4,confirmedCount:0,deniedCount:0,decisions:[]},
-      api:async()=>{},renderMatchReview:()=>{},reloadDraft:async()=>{},showMessage:()=>{},
-      els:{alternativeList:{querySelector:()=>true}},
-      primary,target,decision,card:{querySelectorAll:()=>[],remove:()=>{}}
-    };
-    await vm.runInNewContext('async function decideAlternative('+alternate+';decideAlternative(primary,target,decision,card)',context);
-    assert.equal(context.matchReview.candidates.length,1);
-    assert.equal(context.matchReview.candidates[0].key,'c');
-    assert.equal(context.matchReview.candidateCount,1);
-    assert.equal(context.matchReview.candidateStreamCount,2);
-    assert.equal(survivor.alternatives.length,0);
-    assert.equal(primary.alternatives.length,1);
-  }
-  console.log('One-to-many alternative decisions preserve other queued targets and pair counts');
-})().catch(error=>{console.error(error);process.exitCode=1});
+function fn(name,next) {return script.slice(script.indexOf(`    async function ${name}(`),script.indexOf(`    function ${next}(`));}
+const alternate=fn('decideAlternative','closeMatchAlternatives');
+const line=script.split('\n').find(x=>x.includes('const alternatives = candidate.minimumScore'));
+for(const minimumScore of [94,95,98]) {const c={candidate:{minimumScore,alternatives:[{}]}};vm.runInNewContext(line+';result=alternatives.length;',c);assert.equal(c.result,minimumScore<95?1:0);}
+(async()=>{
+ for(const decision of ['confirmed','denied']) for(const count of [1,2]) for(const fail of [false,true]) {
+  let release; const saving=new Promise(r=>release=r); let closed=0,refills=0,removed=0;
+  const target={key:'b',streamCount:2,reviewKind:'inclusion'}, survivor={key:'c',alternatives:[target]};
+  const primary={alias:'Network',alternatives:count===1?[target]:[target,survivor]};
+  const c={pendingDecisions:new Set(),dispatchBusy:false,decisionRevision:0,dispatchReviewEpoch:0,
+   renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},
+   matchReview:{candidates:[target,survivor],candidateCount:2,candidateStreamCount:4,confirmedCount:0,deniedCount:0,decisions:[]},
+   api:async()=>{await saving;if(fail)throw Error('save failed');},renderMatchReview(){},reloadDraft:async()=>{},showMessage(){},
+   adjustReviewKindCount(){},refillResolvedPage:async()=>{refills++;},closeMatchAlternatives(){closed++;},
+   els:{alternativeDialog:{dataset:{reviewKey:'primary'}},alternativeList:{querySelector:()=>count>1}},
+   primary,target,decision,card:{querySelectorAll:()=>[],remove:()=>{removed++;}}};
+  const pending=vm.runInNewContext(alternate+';decideAlternative(primary,target,decision,card)',c);
+  assert.equal(closed,0);assert.equal(removed,0);release();await pending;
+  assert.equal(closed,!fail&&count===1?1:0);assert.equal(removed,fail?0:1);
+  assert.equal(c.matchReview.candidateCount,fail?2:1);assert.equal(refills,fail?0:1);
+ }
+ // A response for an obsolete review cannot remove cards or close a newer popup.
+ let release;const c={pendingDecisions:new Set(),dispatchBusy:false,decisionRevision:0,dispatchReviewEpoch:0,
+ renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},api:()=>new Promise(r=>release=r),
+ els:{alternativeDialog:{dataset:{reviewKey:'old'}}},primary:{},target:{key:'b'},decision:'denied',card:{querySelectorAll:()=>[],remove(){throw Error('stale removal');}},refillResolvedPage:async()=>{}};
+ const p=vm.runInNewContext(alternate+';decideAlternative(primary,target,decision,card)',c);c.dispatchReviewEpoch++;release();await p;
+ console.log('Alternative popup: pending/failure, last item, multiple items, Confirm/Deny and stale replies pass');
+})().catch(e=>{console.error(e);process.exitCode=1;});

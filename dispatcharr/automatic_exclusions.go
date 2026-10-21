@@ -41,6 +41,18 @@ func explicitCandidateDecision(c Candidate, decisions []Decision) string {
 	return ""
 }
 
+func sameFeedFamily(stream string, target FeedIdentity) bool {
+	if stream == target.Family {
+		return true
+	}
+	for _, alias := range target.FamilyAliases {
+		if stream == alias {
+			return true
+		}
+	}
+	return false
+}
+
 func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]AffiliateTarget, feeds map[string]FeedIdentity, codes map[string]FeedIdentity, decisions []Decision) AutomaticResult {
 	result := AutomaticResult{Hidden: map[string]bool{}}
 	byKey := map[string]AutomaticExclusion{}
@@ -59,9 +71,14 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 		if target.Region == "unknown" {
 			row.PendingReview = true
 			row.Reason = "Target feed identity unresolved; manual review required (" + target.Evidence + ")"
-		} else if stream.Region != "" && stream.Family == target.Family && stream.Region != target.Region {
+		} else if stream.Region != "" && sameFeedFamily(stream.Family, target) && stream.Region != target.Region {
 			row.Reason = "Explicit " + stream.Region + " feed conflicts with attributed " + target.Region + " target (" + target.Evidence + ")"
-		} else if stream.Region == "" || stream.Family != target.Family {
+		} else if target.Region == "east" {
+			// The explicit-feed requirement applies to Pacific targets. Unknown
+			// or ambiguous labels for an East target retain normal score-based
+			// review; only the proven opposing-feed branch above excludes them.
+			continue
+		} else if stream.Region == "" || !sameFeedFamily(stream.Family, target) {
 			row.PendingReview = true
 			row.Reason = "Feed identity unresolved; " + target.Region + " target requires explicit matching feed and service-family evidence (" + target.Evidence + ")"
 		} else {

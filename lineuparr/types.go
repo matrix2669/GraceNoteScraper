@@ -167,6 +167,7 @@ type AutomaticMatchLease struct {
 }
 
 type Draft struct {
+	ResetGeneration          uint64                `json:"resetGeneration"`
 	AutomaticLease           *AutomaticMatchLease  `json:"-"`
 	AutomaticMatchingStatus  string                `json:"automaticMatchingStatus,omitempty"`
 	AutomaticMatchingMessage string                `json:"automaticMatchingMessage,omitempty"`
@@ -220,6 +221,7 @@ type ChannelOverride struct {
 }
 
 type MatchDecision struct {
+	ReviewKind             string    `json:"reviewKind,omitempty"`
 	MatcherVersion         string    `json:"matcherVersion,omitempty"`
 	Key                    string    `json:"key"`
 	Decision               string    `json:"decision"`
@@ -241,6 +243,7 @@ type MatchDecision struct {
 }
 
 type State struct {
+	ResetGeneration   uint64                     `json:"resetGeneration,omitempty"`
 	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
 	Version           int                        `json:"version"`
 	SourceFingerprint string                     `json:"sourceFingerprint"`

@@ -263,11 +263,11 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 			normalized = NormalizeAliasName(candidate.StreamName)
 		}
 		normalized = ReviewIdentity(candidate.StreamName, normalized)
-		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration, candidate.ChannelID, normalized)
+		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration+"\x00"+candidate.ReviewKind, candidate.ChannelID, normalized)
 		group := groups[key]
 		if group == nil {
 			group = &CandidateGroup{
-				Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
+				ReviewKind: candidate.ReviewKind, Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
 				Alias: strings.TrimSpace(candidate.StreamName), NormalizedAlias: normalized,
 				MinimumScore: candidate.Score, MaximumScore: candidate.Score, Tier: candidateTier(candidate),
 			}

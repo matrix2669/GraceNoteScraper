@@ -130,9 +130,10 @@ func TestRetainedDryRunReplay(t *testing.T) {
 			}
 		}
 		// Current raw affiliation is independent selected-guide identity. No method
-		// string is parsed into a reusable descriptor; optional catalogs stay off.
+		// string is parsed into a reusable descriptor; legacy snapshots stay off.
 		inputs = append(inputs, input)
 	}
+	svc.ApplyEmbeddedCatalogs(inputs)
 	out, err := svc.Build(context.Background(), builder.LineupContext{SourceFingerprint: in.Draft.SourceFingerprint, Country: "US", ProviderName: header.ProviderName, LineupID: header.LineupID, PostalCode: header.PostalCode}, inputs)
 	if err != nil {
 		t.Fatal(err)

@@ -129,6 +129,8 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	RequiredCount        int                          `json:"requiredCount"`
+	QualifiedCount       int                          `json:"qualifiedCount"`
 	Coverage             dispatcharrCoverage          `json:"coverage"`
 	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
@@ -298,7 +300,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		alias := dispatcharr.ReviewIdentity(existing.StreamName, existing.NormalizedAlias)
 		keys := make([]string, 0)
 		for key, decision := range stored {
-			if decision.Decision == existing.Decision && decision.ChannelID == existing.ChannelID && dispatcharr.ReviewIdentity(decision.StreamName, decision.NormalizedAlias) == alias {
+			if decision.Decision == existing.Decision && decision.ChannelID == existing.ChannelID && decision.ReviewKind == existing.ReviewKind && dispatcharr.ReviewIdentity(decision.StreamName, decision.NormalizedAlias) == alias {
 				keys = append(keys, key)
 			}
 		}
@@ -356,8 +358,8 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			decisionKey = body.Key
 		}
 		decisions = append(decisions, lineuparrbuilder.MatchDecision{
-			MatcherVersion: candidate.MatcherVersion,
-			Key:            decisionKey, Decision: body.Decision,
+			ReviewKind: candidate.ReviewKind, MatcherVersion: candidate.MatcherVersion,
+			Key: decisionKey, Decision: body.Decision,
 			DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
 			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
 			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
@@ -511,7 +513,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			continue
 		}
 		matcherDecisions[key] = dispatcharr.Decision{
-			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
+			ReviewKind: decision.ReviewKind, Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
 			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID, StreamName: decision.StreamName,
 			NormalizedAlias: decision.NormalizedAlias,
 		}
@@ -525,14 +527,17 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 
 	matches := dispatcharr.CandidateSet{}
-	if validSnapshot {
-		matches.All = dispatcharr.FilterSnapshotCandidates(snapshot.candidates, includedTargets, matcherDecisions)
-	}
-
 	automatic := automaticMatchView{Rows: []automaticMatchRow{}}
+	var derived dispatcharr.AutomaticResult
 	if s.lineup.automaticProjection != nil {
-		var derived dispatcharr.AutomaticResult
 		automatic, derived = s.automaticView(draft, lineupConfig, snapshot)
+	}
+	if validSnapshot {
+		classified := append([]dispatcharr.Candidate(nil), snapshot.candidates...)
+		classifyReviewCandidates(classified, automatic)
+		matches.All = dispatcharr.FilterSnapshotCandidates(classified, includedTargets, matcherDecisions)
+	}
+	if s.lineup.automaticProjection != nil {
 		// Legacy group decisions use a lossy normalized alias. An unresolved
 		// new raw constituent must still be available for an explicit decision.
 		present := map[string]bool{}
@@ -541,7 +546,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		}
 		for _, row := range derived.Rows {
 			if row.PendingReview && !row.Conflict && row.ManualDecision == "" && !present[row.Candidate.Key] {
-				matches.All = append(matches.All, row.Candidate)
+				c := row.Candidate
+				c.ReviewKind = "feed-review"
+				matches.All = append(matches.All, c)
 				present[row.Candidate.Key] = true
 			}
 		}
@@ -564,6 +571,15 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
+	required, qualified := 0, 0
+	for _, g := range groups {
+		if g.ReviewKind == "qualified" {
+			qualified++
+		} else {
+			required++
+		}
+	}
+	sort.SliceStable(groups, func(i, j int) bool { return groups[i].ReviewKind != "qualified" && groups[j].ReviewKind == "qualified" })
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
 	visible := groups
 	if len(visible) > visibleLimit {
@@ -587,7 +603,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
+			RequiredCount: required, QualifiedCount: qualified, Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
@@ -639,7 +655,7 @@ func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]d
 			normalized = dispatcharr.NormalizeAliasName(decision.StreamName)
 		}
 		normalized = dispatcharr.ReviewIdentity(decision.StreamName, normalized)
-		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized}, "\x00")
+		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized, decision.ReviewKind}, "\x00")
 		group := groups[key]
 		if group == nil {
 			group = &dispatcharrReviewDecision{

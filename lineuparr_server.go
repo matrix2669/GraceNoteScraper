@@ -31,6 +31,9 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
+	resetMu           sync.RWMutex
+	afterBuilderReset func()
+
 	automaticProjection func(*lineuparrbuilder.Draft, appconfig.Config)
 	commitDraft         func(*lineuparrbuilder.Draft, func() error) (bool, error)
 	tmdbConfigured      bool
@@ -651,6 +654,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		return nil, appconfig.Config{}, nil, false
 	}
 	draft.SourceFingerprint = config.Fingerprint()
+	draft.ResetGeneration = s.builder.ResetGeneration()
 	if s.automaticProjection != nil {
 		if originalGuide != s.state.GetForSource(config.Fingerprint()) || originalState != s.builder.ReviewStateToken() {
 			http.Error(w, "Matching inputs changed while building; reload the draft", 409)

@@ -316,6 +316,7 @@ func (s *StateStore) ensureSourceLocked(fingerprint string) {
 		return
 	}
 	s.state = State{
+		ResetGeneration:   s.state.ResetGeneration,
 		Version:           CurrentStateVersion,
 		SourceFingerprint: fingerprint,
 		Channels:          make(map[string]ChannelOverride),

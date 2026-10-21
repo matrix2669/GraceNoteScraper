@@ -682,7 +682,11 @@ func groupMatchDecisions(decisions map[string]MatchDecision) []matchDecisionGrou
 		if normalized == "" {
 			normalized = strings.ToLower(alias)
 		}
-		key := decision.Decision + "\x00" + decision.ChannelID + "\x00" + normalized
+		scoreClass := "qualified"
+		if decisionNameScore(decision) < lineuparrExactMatchMinimum {
+			scoreClass = "inclusion"
+		}
+		key := decision.Decision + "\x00" + decision.ChannelID + "\x00" + normalized + "\x00" + scoreClass
 		group := grouped[key]
 		if group == nil {
 			group = &matchDecisionGroup{Decision: decision.Decision, ChannelID: decision.ChannelID, Alias: alias}

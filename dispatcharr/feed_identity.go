@@ -8,9 +8,10 @@ import (
 // FeedIdentity is station-bound evidence, not a suffix guessed from a brand.
 // Family retains every network/subbrand token; quality is not a feed region.
 type FeedIdentity struct {
-	Family   string
-	Region   string
-	Evidence string
+	FamilyAliases []string // Independently attributed aliases of the same exact station/source row.
+	Family        string
+	Region        string
+	Evidence      string
 }
 
 var feedQuality = regexp.MustCompile(`(?i)(?:[\s_-]+(?:HD|SD|FHD|UHD|4K|8K|RAW))+$`)

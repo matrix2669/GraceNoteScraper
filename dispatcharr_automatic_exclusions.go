@@ -92,6 +92,30 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 			if previous, ok := feeds[channel.ID]; ok && (previous.Family != feed.Family || previous.Region != feed.Region) {
 				ambiguous[channel.ID] = true
 			}
+			// Equivalent family labels must come from the very same typed source
+			// row/revision, never flattened aliases or provider positions.
+			for _, related := range channel.ServiceEvidence {
+				if related.RootStationID != fact.RootStationID || related.SourceID != fact.SourceID || related.SourceRowID != fact.SourceRowID || related.SourceRevision != fact.SourceRevision {
+					continue
+				}
+				activeRelated := false
+				for _, a := range channel.AliasEvidence {
+					if a.Value == related.Value {
+						for _, src := range a.Sources {
+							if src == related.SourceID {
+								activeRelated = true
+							}
+						}
+					}
+				}
+				if !activeRelated {
+					continue
+				}
+				family := dispatcharr.StreamFeed(related.Value, nil)
+				if family.Region == "" && family.Family != "" {
+					feed.FamilyAliases = append(feed.FamilyAliases, family.Family)
+				}
+			}
 			feeds[channel.ID] = feed
 		}
 	}

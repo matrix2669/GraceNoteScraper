@@ -718,6 +718,8 @@
           <button type="button" id="batch-toggle" class="batch-button" aria-pressed="false">Batch categorize</button>
           <button type="button" id="remove-duplicates" class="duplicate-button">Remove suggested SD</button>
           <button type="button" id="restore-all">Restore all</button>
+          <button type="button" id="builder-reset">Start builder fresh</button>
+          <button type="button" id="builder-reset-undo" hidden>Restore pre-reset choices</button>
           <button type="button" class="export-button" id="export-open">Generate Lineup File</button>
         </div>
       </div>
@@ -888,10 +890,53 @@
     }
 
     async function api(path, options = {}) {
+      if (path.startsWith('/api/lineuparr/')) {
+        const headers = new Headers(options.headers || {});
+        headers.set('X-Builder-Generation', String(draft?.resetGeneration || 0));
+        options = {...options, headers};
+      }
       const response = await fetch(path, options);
       if (!response.ok) throw new Error((await response.text()).trim() || `Request failed (${response.status})`);
       const type = response.headers.get('content-type') || '';
       return type.includes('application/json') ? response.json() : null;
+    }
+
+    let builderResetBackup = null;
+    async function refreshResetRecovery() {
+      const source = draft?.sourceFingerprint;
+      try {
+        const summary = await api('/api/lineuparr/reset');
+        if (source !== draft?.sourceFingerprint || summary.sourceFingerprint !== source) return;
+        builderResetBackup = summary.recovery?.id || null;
+        document.getElementById('builder-reset-undo').hidden = !builderResetBackup;
+      } catch (_) { /* A busy builder leaves recovery available on the next reload. */ }
+    }
+
+    async function resetBuilder(restore = false) {
+      if (dispatchBusy || saving || pendingDecisions.size || !draft) return;
+      const button = document.getElementById(restore ? 'builder-reset-undo' : 'builder-reset');
+      button.disabled = true;
+      try {
+        const summary = await api('/api/lineuparr/reset');
+        if (restore) {
+          builderResetBackup = summary.recovery?.id || null;
+          if (!builderResetBackup) throw new Error('No recovery backup is available for this lineup.');
+        }
+        const message = restore
+          ? 'Restore the most recent saved builder choices from before a reset or restore? Current builder choices will also be backed up. Streams must be refreshed and JSON regenerated. Guide and TMDB data remain unchanged.'
+          : `Start this builder fresh?\n\nClear:\n${summary.clears.join('\n')}\n\nKeep:\n${summary.preserves.join('\n')}\n\nA private builder-only recovery backup will be retained. Dispatcharr itself is not changed. Previously imported JSON in Dispatcharr is not removed. Continue?`;
+        if (!confirm(message)) return;
+        dispatchBusy = true;
+        invalidateDispatchReview(); closeMatchAlternatives(); setDispatchControls();
+        const result = await api('/api/lineuparr/reset', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,...(restore ? {restore:builderResetBackup} : {})})});
+        builderResetBackup = result.backup;
+        matchReview = null; matchReviewLimit = 100; matchInputSignature = null;
+        document.getElementById('builder-reset-undo').hidden = result.restoreAvailable === false;
+        await reloadDraft();
+        await loadMatchReview(false, false);
+        showMessage(restore ? 'Builder choices restored. Refresh streams and regenerate JSON when ready.' : 'Builder reset. Guide, TMDB data and connections preserved. Refresh streams and regenerate JSON when ready.');
+      } catch (error) { showMessage(error.message, true); }
+      finally {button.disabled=false;dispatchBusy=false;setDispatchControls();scheduleWorkflowRefresh(0);}
     }
 
     function setProviderAddressStatus(text, kind = '') {
@@ -1342,6 +1387,7 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
+      if (!matchReview.warning && Number.isFinite(matchReview.requiredCount)) els.matchStatus.textContent += ` ${matchReview.requiredCount} require review; ${matchReview.qualifiedCount || 0} qualify without confirmation.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       const candidates = matchReview.candidates || [];
@@ -1352,7 +1398,17 @@
           : 'No current proposals remain. Unmatched streams stay unchanged.';
         els.matchList.append(emptyMessage(message));
       }
-      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
+      const required = candidates.filter(c => c.reviewKind !== 'qualified');
+      for (const candidate of required) els.matchList.append(matchCard(candidate));
+      const qualified = candidates.filter(c => c.reviewKind === 'qualified');
+      if (qualified.length) {
+        const details = document.createElement('details'); details.className = 'qualified-matches';
+        const summary = document.createElement('summary'); summary.textContent = `${matchReview.qualifiedCount ?? qualified.length} qualified matches — optional exclusions`;
+        details.append(summary);
+        details.append(emptyMessage('These matches qualify without confirmation. Deny only incorrect matches.'));
+        for (const candidate of qualified) details.append(matchCard(candidate));
+        els.matchList.append(details);
+      }
       if (hasMore) {
         const remaining = matchReview.candidateCount - candidates.length;
         const amount = Math.min(100, remaining);
@@ -1367,9 +1423,24 @@
     }
 
     async function loadMoreMatches() {
-      if (!matchReview || dispatchBusy) return;
+      if (!matchReview || dispatchBusy || pendingDecisions.size) return;
       const requested = Math.min(matchReview.candidateCount, matchReviewLimit + 100);
       await loadMatchReview(false, true, requested);
+    }
+
+    function adjustReviewKindCount(candidate, delta) {
+      const field = candidate.reviewKind === 'qualified' ? 'qualifiedCount' : 'requiredCount';
+      if (Number.isFinite(matchReview[field])) matchReview[field] = Math.max(0, matchReview[field] + delta);
+    }
+
+    async function refillResolvedPage() {
+      if (!matchReview || dispatchBusy || pendingDecisions.size || els.alternativeDialog.hasAttribute('open')) return;
+      const required = (matchReview.candidates || []).filter(c => c.reviewKind !== 'qualified');
+      const remaining = matchReview.requiredCount ?? matchReview.candidateCount;
+      if (!required.length && remaining > 0 && matchReview.candidateCount > (matchReview.candidates || []).length) {
+        // One prefix reload per successful decision. Failure stays visible with Load more retry.
+        await loadMatchReview(false, true, Math.max(100, matchReviewLimit));
+      }
     }
 
     function matchCard(candidate) {
@@ -1399,7 +1470,8 @@
       confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
-      buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
+      if (candidate.reviewKind !== 'qualified') buttons.append(confirmButton);
+      buttons.append(denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
 
@@ -1415,7 +1487,7 @@
     }
 
     async function decideMatch(key, decision) {
-      if (pendingDecisions.has(key) || !matchReview) return;
+      if (pendingDecisions.size || dispatchBusy || !matchReview) return;
       const candidate = (matchReview.candidates || []).find(item => item.key === key);
       if (!candidate) return;
       pendingDecisions.add(key);
@@ -1430,21 +1502,29 @@
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
         decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
       };
+      adjustReviewKindCount(candidate, -1);
       renderMatchReview();
+      const decisionEpoch = dispatchReviewEpoch;
+      let saved = false;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
+        saved = true;
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== key);
-        await reloadDraft();
+        await reloadDraft(decisionEpoch);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
           openMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
-          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. Load more when you are ready for another review page.');
+          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied.');
         }
       } catch (error) {
+        if (saved || decisionEpoch !== dispatchReviewEpoch) { showMessage(error.message, true); return; }
+        adjustReviewKindCount(candidate, 1);
         matchReview.candidateCount++;
         matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
         matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
@@ -1455,15 +1535,18 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(key);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         ++dispatchReviewEpoch;
         workflowRemote.dispatch = null;
         workflowRemote.dispatchReady = false;
         renderGuidedWorkflow();
         scheduleWorkflowRefresh(0);
+        if (saved) await refillResolvedPage();
       }
     }
 
     function openMatchAlternatives(candidate) {
+      els.alternativeDialog.dataset.reviewKey = candidate.key;
       els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
       els.alternativeHelp.textContent = 'These channels also qualified in the same scan. You can confirm multiple targets, including SD, HD or duplicate lineup channels. Deny incorrect options, or close without deciding.';
       renderMatchAlternatives(candidate);
@@ -1497,21 +1580,28 @@
       confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
-      buttons.append(confirmButton, denyButton); card.append(buttons);
+      if (candidate.reviewKind !== 'qualified') buttons.append(confirmButton);
+      buttons.append(denyButton); card.append(buttons);
       return card;
     }
 
     async function decideAlternative(primary, candidate, decision, card) {
-      if (pendingDecisions.has(candidate.key)) return;
+      if (pendingDecisions.size || dispatchBusy) return;
       pendingDecisions.add(candidate.key);
       decisionRevision++;
       ++dispatchReviewEpoch;
+      const decisionEpoch = dispatchReviewEpoch;
+      const popupKey = els.alternativeDialog.dataset.reviewKey;
+      let saved = false;
       renderGuidedWorkflow();
       for (const button of card.querySelectorAll('button')) button.disabled = true;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
         });
+        saved = true;
+        if (decisionEpoch !== dispatchReviewEpoch) return;
+        adjustReviewKindCount(candidate, -1);
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
         matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
@@ -1521,26 +1611,25 @@
         matchReview.candidateStreamCount = Math.max(0, (matchReview.candidateStreamCount || 0) - candidate.streamCount);
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         renderMatchReview();
-        await reloadDraft();
-        if (decision === 'confirmed') {
+        if (popupKey === els.alternativeDialog.dataset.reviewKey) {
           card.remove();
-          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
-          showMessage('Alternate match confirmed. Review any remaining targets or close this window.');
-        } else {
-          card.remove();
-          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
-          showMessage('Alternate match denied.');
+          if (!els.alternativeList.querySelector('.match-alternative-card')) closeMatchAlternatives();
         }
+        await reloadDraft(decisionEpoch);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
+        showMessage(decision === 'confirmed' ? 'Alternate match confirmed.' : 'Alternate match denied.');
       } catch (error) {
-        for (const button of card.querySelectorAll('button')) button.disabled = false;
+        if (!saved) for (const button of card.querySelectorAll('button')) button.disabled = false;
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(candidate.key);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         ++dispatchReviewEpoch;
         workflowRemote.dispatch = null;
         workflowRemote.dispatchReady = false;
         renderGuidedWorkflow();
         scheduleWorkflowRefresh(0);
+        if (saved) await refillResolvedPage();
       }
     }
 
@@ -1598,9 +1687,15 @@
       }
     }
 
-    async function reloadDraft() {
-      draft = await api('/api/lineuparr/draft');
+    let draftRequest = 0;
+    async function reloadDraft(expectedEpoch = null) {
+      const request = ++draftRequest;
+      const next = await api('/api/lineuparr/draft');
+      if (request !== draftRequest || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
+      draft = next;
       renderAll();
+      void refreshResetRecovery();
+      return true;
     }
 
     function renderAll() {
@@ -2468,7 +2563,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && (workflowRemote.dispatch?.requiredCount ?? workflowRemote.dispatch?.candidateCount) === 0}
       ].filter(state => state.panel);
     }
 
@@ -2727,6 +2822,9 @@
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
     els.alternativeClose.addEventListener('click', closeMatchAlternatives);
+    els.alternativeDialog.addEventListener('close', () => { void refillResolvedPage(); });
+    document.getElementById('builder-reset').addEventListener('click', () => resetBuilder());
+    document.getElementById('builder-reset-undo').addEventListener('click', () => resetBuilder(true));
     els.dispatchRefresh.addEventListener('click', async () => { if (await loadMatchReview(true)) await reloadDraft(); });
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();

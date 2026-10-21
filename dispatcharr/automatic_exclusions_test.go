@@ -151,3 +151,21 @@ func TestAutomaticNegativesIndependentFromPositiveScoreAndManualDeny(t *testing.
 		}
 	}
 }
+
+func TestEastTargetStillExcludesProvenOpposingFeed(t *testing.T) {
+	c := affiliateCandidate("US: HBO West HD")
+	got := DeriveAutomaticExclusions([]Candidate{c}, nil, map[string]FeedIdentity{"502": {Family: "hbo", Region: "east", Evidence: "HBO East"}}, nil, nil)
+	if len(got.Rows) != 1 || got.Rows[0].PendingReview || !got.Hidden[c.Key] {
+		t.Fatalf("proven opposing feed escaped: %+v", got)
+	}
+}
+
+func TestEastFeedUncertaintyDoesNotCreatePacificReviewHold(t *testing.T) {
+	for _, raw := range []string{"TV: A DIFFERENT LABEL RAW", "Generic Brand HD", "Network East West"} {
+		c := Candidate{Key: raw, StreamName: raw, ChannelID: "east", Score: 100}
+		got := DeriveAutomaticExclusions([]Candidate{c}, nil, map[string]FeedIdentity{"east": {Family: "network", Region: "east", Evidence: "typed registry"}}, nil, nil)
+		if len(got.Rows) != 0 {
+			t.Fatalf("East-only uncertainty created a mandatory hold: %+v", got)
+		}
+	}
+}

@@ -261,7 +261,7 @@ func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 	dispatchConfig, _ := server.config.Get()
 	lineupConfig, _, _ := server.lineup.store.Get()
 	candidate := dispatcharr.Candidate{
-		Key: "alternate-candidate", ChannelID: "1001", ChannelNumber: "2", ChannelName: "TWO",
+		Key: "alternate-candidate", ReviewKind: "inclusion", ChannelID: "1001", ChannelNumber: "2", ChannelName: "TWO",
 		StreamID: 10, StreamKey: "3:10", StreamName: "US| TWO HD", TVGID: "Two.us", M3UAccountID: 3,
 		StreamHash: "stream-hash", Source: dispatchConfig.Fingerprint(), Score: 82, NameScore: 82, Reason: "Fuzzy name 82%", NormalizedAlias: "two",
 	}
