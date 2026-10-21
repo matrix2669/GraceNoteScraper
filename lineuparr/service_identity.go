@@ -140,7 +140,7 @@ func verifiedServiceSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				break
 			}
 		}
-		if len(base) < 3 {
+		if base == "" {
 			continue
 		}
 		suffixes[base] = append(suffixes[base], i)
@@ -152,7 +152,31 @@ func verifiedServiceSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 		}
 		stations := map[string]bool{}
 		compatible := true
+		if len(base) < 3 {
+			// Check the whole eligible evidence set before any raw suffix union;
+			// a third station may have an unrelated raw callsign but a competing
+			// official short-brand label. Do not choose a partial winner.
+			claims := map[string]bool{}
+			for _, c := range channels {
+				if c.StationID != "" && attributedShortIdentity(c, base) {
+					claims[c.StationID] = true
+				}
+			}
+			compatible = len(claims) <= 2
+		}
 		for _, i := range ids {
+			// Short callsigns can be real brands, but a coincidental letter or
+			// acronym is insufficient. Each station needs an admitted official
+			// identity independently corroborating that exact raw base.
+			if len(base) < 3 {
+				attributed := false
+				for _, j := range ids {
+					if channels[i].StationID != "" && channels[i].StationID == channels[j].StationID && attributedShortIdentity(channels[j], base) {
+						attributed = true
+					}
+				}
+				compatible = compatible && attributed
+			}
 			station := channels[i].StationID
 			if station == "" {
 				station = channels[i].ID
@@ -178,6 +202,14 @@ func verifiedServiceSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				continue
 			}
 			k := serviceKey(p.Value)
+			// Count competing short-brand stations together even when their
+			// official labels differ only by a terminal quality marker.
+			for _, suffix := range []string{"hd", "sd", "dt"} {
+				if strings.HasSuffix(k, suffix) && len(k) > len(suffix) && len(k)-len(suffix) < 3 {
+					k = strings.TrimSuffix(k, suffix)
+					break
+				}
+			}
 			if aliases[k] == nil {
 				aliases[k] = map[int]bool{}
 			}
@@ -352,6 +384,25 @@ func verifiedServiceSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 		}
 	}
 	return result
+}
+
+func attributedShortIdentity(c DraftChannel, base string) bool {
+	for _, p := range c.ServiceEvidence {
+		if !safeIdentityProof(c, p) || p.PeerStationID != "" || !strings.HasSuffix(p.SourceID, "-official-lineup") {
+			continue
+		}
+		key := serviceKey(p.Value)
+		for _, suffix := range []string{"hd", "sd", "dt"} {
+			if strings.HasSuffix(key, suffix) && len(key) > len(suffix) {
+				key = strings.TrimSuffix(key, suffix)
+				break
+			}
+		}
+		if key == base {
+			return true
+		}
+	}
+	return false
 }
 
 // Unattested aliases never create an edge; competing attributable aliases can
