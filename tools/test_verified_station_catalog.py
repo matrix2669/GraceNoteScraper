@@ -22,6 +22,13 @@ class VerifiedCatalogTests(unittest.TestCase):
         self.assertEqual(fallback[0]['aliases'], ['PBS Kids'])
         self.assertIn('WAAA PBS Kids',local[0]['aliases'])
 
+    def test_generic_local_subchannel_names_are_not_identity(self):
+        stations = 'channel_id,call_sign,original_name,clean_name\nPBS_WAAA,WAAA,PBS Alpha,PBS Alpha\n'
+        mapping = ('channel_id,gracenote_id,gracenote_id_natural\n'
+                   'PBS_WAAA_ga_local_subchannel_1,101,101\n'
+                   'PBS_WAAA_ga_local_subchannel_2,102,102\n')
+        self.assertEqual(generate(EMPTY_PRISM, stations, mapping)['channels'], [])
+
     def test_nested_identity_never_promoted_and_positions_never_aliases(self):
         prism = '''const BASE_CHANNEL_DEFINITIONS = {
   alpha: {

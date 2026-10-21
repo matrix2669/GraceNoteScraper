@@ -59,6 +59,10 @@ def generate(prism, stations, mapping):
     by_station={r['channel_id']:r for r in csv.DictReader(io.StringIO(stations.lstrip('\ufeff')))}
     for row in csv.DictReader(io.StringIO(mapping.lstrip('\ufeff'))):
         key=row['channel_id'].strip(); root=key.split('_ga_',1)[0].split('_kids_',1)[0]
+        # The map supplies an ID, but no distinct service descriptor for
+        # arbitrary local subchannels. A synthesized parent-station label would
+        # collapse different digital services into exact positive aliases.
+        if '_ga_local_subchannel_' in key: continue
         name, aliases, _=service_identity(key,by_station.get(root,{}))
         # Local OTA positions are display metadata, never reusable aliases.
         values=[v.strip() for v in [name,*aliases] if v.strip() and not re.search(r'\[|\]|\b\d+\.\d+\b',v)]

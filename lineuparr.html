@@ -1675,9 +1675,8 @@
 
     async function loadDraft() {
       try {
-        draft = await api('/api/lineuparr/draft');
+        if (!await reloadDraft()) return;
         showMessage('');
-        renderAll();
         if (dispatchConfig?.configured && !dispatchBusy) loadMatchReview();
       } catch (error) {
         const waiting = /still being generated/i.test(error.message);

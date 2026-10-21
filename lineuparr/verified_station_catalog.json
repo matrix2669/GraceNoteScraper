@@ -2549,28 +2549,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "111788",
-      "name": "WFWA PBS subchannel",
-      "aliases": [
-        "WFWA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WFWA_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "111788",
-      "name": "WFWA PBS subchannel",
-      "aliases": [
-        "WFWA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WFWA_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "111871",
       "name": "ACC Network",
       "aliases": [
@@ -4273,28 +4251,6 @@
       "path": "src/channels/index.ts"
     },
     {
-      "stationId": "116205",
-      "name": "WETA PBS subchannel",
-      "aliases": [
-        "WETA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WETA_ga_local_subchannel_2:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "116205",
-      "name": "WETA PBS subchannel",
-      "aliases": [
-        "WETA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WETA_ga_local_subchannel_2:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "116208",
       "name": "PBS Kids",
       "aliases": [
@@ -4747,28 +4703,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "21526",
-      "name": "WETA PBS subchannel",
-      "aliases": [
-        "WETA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WETA_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "21526",
-      "name": "WETA PBS subchannel",
-      "aliases": [
-        "WETA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WETA_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "21634",
       "name": "Twin Cities PBS",
       "aliases": [
@@ -4873,28 +4807,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "21895",
-      "name": "WMVS PBS subchannel",
-      "aliases": [
-        "WMVS PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WMVS_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "21895",
-      "name": "WMVS PBS subchannel",
-      "aliases": [
-        "WMVS PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WMVS_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "21896",
       "name": "SCETV",
       "aliases": [
@@ -4944,28 +4856,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_WGBY:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "24020",
-      "name": "KOCE PBS subchannel",
-      "aliases": [
-        "KOCE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KOCE_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "24020",
-      "name": "KOCE PBS subchannel",
-      "aliases": [
-        "KOCE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KOCE_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -5104,17 +4994,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_KNPB:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "24942",
-      "name": "KNPB PBS subchannel",
-      "aliases": [
-        "KNPB PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KNPB_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -5632,17 +5511,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "29144",
-      "name": "WMVS PBS subchannel",
-      "aliases": [
-        "WMVS PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WMVS_ga_local_subchannel_2:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "29145",
       "name": "WQLN",
       "aliases": [
@@ -5743,28 +5611,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "30334",
-      "name": "WVPB PBS subchannel",
-      "aliases": [
-        "WVPB PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WVPB_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30334",
-      "name": "WVPB PBS subchannel",
-      "aliases": [
-        "WVPB PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WVPB_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "30336",
       "name": "PBS Kids",
       "aliases": [
@@ -5803,72 +5649,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "30507",
-      "name": "KQED PBS subchannel",
-      "aliases": [
-        "KQED PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KQED_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30507",
-      "name": "KQED PBS subchannel",
-      "aliases": [
-        "KQED PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KQED_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30509",
-      "name": "WKLE PBS subchannel",
-      "aliases": [
-        "WKLE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKLE_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30509",
-      "name": "WKLE PBS subchannel",
-      "aliases": [
-        "WKLE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKLE_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30550",
-      "name": "WKLE PBS subchannel",
-      "aliases": [
-        "WKLE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKLE_ga_local_subchannel_2:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30550",
-      "name": "WKLE PBS subchannel",
-      "aliases": [
-        "WKLE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKLE_ga_local_subchannel_2:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "30551",
       "name": "PBS Kids",
       "aliases": [
@@ -5890,28 +5670,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_WUNC_kids_main:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30648",
-      "name": "WUNC PBS subchannel",
-      "aliases": [
-        "WUNC PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WUNC_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "30648",
-      "name": "WUNC PBS subchannel",
-      "aliases": [
-        "WUNC PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WUNC_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -6528,28 +6286,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "33814",
-      "name": "KUON PBS subchannel",
-      "aliases": [
-        "KUON PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KUON_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "33854",
-      "name": "WRLK PBS subchannel",
-      "aliases": [
-        "WRLK PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WRLK_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "33857",
       "name": "FNX",
       "aliases": [
@@ -7106,28 +6842,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "34844",
-      "name": "WLVT PBS subchannel",
-      "aliases": [
-        "WLVT PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WLVT_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "34844",
-      "name": "WLVT PBS subchannel",
-      "aliases": [
-        "WLVT PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WLVT_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "34915",
       "name": "BTPM PBS",
       "aliases": [
@@ -7151,17 +6865,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_WNED:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "34918",
-      "name": "WNED PBS subchannel",
-      "aliases": [
-        "WNED PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WNED_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -7564,28 +7267,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "35377",
-      "name": "KVIE PBS subchannel",
-      "aliases": [
-        "KVIE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KVIE_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "35377",
-      "name": "KVIE PBS subchannel",
-      "aliases": [
-        "KVIE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KVIE_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "35383",
       "name": "MSG Sportsnet",
       "aliases": [
@@ -7929,28 +7610,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_WPNE:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "35648",
-      "name": "WPNE PBS subchannel",
-      "aliases": [
-        "WPNE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WPNE_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "35648",
-      "name": "WPNE PBS subchannel",
-      "aliases": [
-        "WPNE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WPNE_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -9579,28 +9238,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "44732",
-      "name": "WCVE PBS subchannel",
-      "aliases": [
-        "WCVE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WCVE_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "44732",
-      "name": "WCVE PBS subchannel",
-      "aliases": [
-        "WCVE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WCVE_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "44775",
       "name": "Create TV",
       "aliases": [
@@ -9815,17 +9452,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_WSKG_kids_main:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "45716",
-      "name": "KUHT PBS subchannel",
-      "aliases": [
-        "KUHT PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KUHT_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
@@ -10335,17 +9961,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "49272",
-      "name": "WNPT PBS subchannel",
-      "aliases": [
-        "WNPT PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WNPT_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "49348",
       "name": "PBS Kids",
       "aliases": [
@@ -10405,28 +10020,6 @@
       "revision": "0aed952e80ec6a1bd997a7cb16a3abe256bf253c",
       "rowId": "natgeo:stationId",
       "path": "src/channels/index.ts"
-    },
-    {
-      "stationId": "49445",
-      "name": "WKNO PBS subchannel",
-      "aliases": [
-        "WKNO PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKNO_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "49445",
-      "name": "WKNO PBS subchannel",
-      "aliases": [
-        "WKNO PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WKNO_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
     },
     {
       "stationId": "49623",
@@ -10571,17 +10164,6 @@
       "revision": "0aed952e80ec6a1bd997a7cb16a3abe256bf253c",
       "rowId": "sny:stationId",
       "path": "src/channels/index.ts"
-    },
-    {
-      "stationId": "50203",
-      "name": "WPNE PBS subchannel",
-      "aliases": [
-        "WPNE PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WPNE_ga_local_subchannel_2:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
     },
     {
       "stationId": "50344",
@@ -11949,28 +11531,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "56744",
-      "name": "WEDU PBS subchannel",
-      "aliases": [
-        "WEDU PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WEDU_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "56744",
-      "name": "WEDU PBS subchannel",
-      "aliases": [
-        "WEDU PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WEDU_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "56905",
       "name": "Discovery - East",
       "aliases": [
@@ -12146,28 +11706,6 @@
       "revision": "0aed952e80ec6a1bd997a7cb16a3abe256bf253c",
       "rowId": "bigten:stationId",
       "path": "src/channels/index.ts"
-    },
-    {
-      "stationId": "58447",
-      "name": "WENH PBS subchannel",
-      "aliases": [
-        "WENH PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WENH_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "58447",
-      "name": "WENH PBS subchannel",
-      "aliases": [
-        "WENH PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WENH_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
     },
     {
       "stationId": "58452",
@@ -12966,28 +12504,6 @@
       "path": "executables/pbs_gracenote_map.csv"
     },
     {
-      "stationId": "61567",
-      "name": "WGTV PBS subchannel",
-      "aliases": [
-        "WGTV PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WGTV_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "61567",
-      "name": "WGTV PBS subchannel",
-      "aliases": [
-        "WGTV PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_WGTV_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
       "stationId": "61709",
       "name": "Create TV",
       "aliases": [
@@ -13034,28 +12550,6 @@
       "revision": "0aed952e80ec6a1bd997a7cb16a3abe256bf253c",
       "rowId": "golf:stationId",
       "path": "src/channels/index.ts"
-    },
-    {
-      "stationId": "61923",
-      "name": "KMOS PBS subchannel",
-      "aliases": [
-        "KMOS PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KMOS_ga_local_subchannel_1:gracenote_id",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "61923",
-      "name": "KMOS PBS subchannel",
-      "aliases": [
-        "KMOS PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KMOS_ga_local_subchannel_1:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
     },
     {
       "stationId": "62033",
@@ -16017,17 +15511,6 @@
       "sourceId": "pbs-gracenote-station-map",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_KVPT_ga_world:gracenote_id_natural",
-      "path": "executables/pbs_gracenote_map.csv"
-    },
-    {
-      "stationId": "98168",
-      "name": "KERA PBS subchannel",
-      "aliases": [
-        "KERA PBS subchannel"
-      ],
-      "sourceId": "pbs-gracenote-station-map",
-      "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
-      "rowId": "PBS_KERA_ga_local_subchannel_1:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
     },
     {

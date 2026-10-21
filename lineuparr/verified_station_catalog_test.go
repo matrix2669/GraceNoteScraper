@@ -1,7 +1,10 @@
 package lineuparr
 
 import (
+	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -85,5 +88,43 @@ func TestNationalPBSFallbackNeverBecomesLocalIdentity(t *testing.T) {
 	}
 	if len(in[0].ExternalAliases) == 0 {
 		t.Fatal("portable national service identity lost")
+	}
+}
+
+func TestVerifiedCatalogWithholdsGenericLocalSubchannels(t *testing.T) {
+	inputs := []InputChannel{{Key: "one", StationID: "21526", CallSign: "WETADT2"}, {Key: "two", StationID: "116205", CallSign: "WETADT3"}}
+	ApplyVerifiedStationCatalogs(inputs)
+	for _, in := range inputs {
+		for _, alias := range in.ExternalAliases {
+			if strings.Contains(strings.ToLower(alias.Value), "pbs subchannel") {
+				t.Fatalf("generic local subchannel alias admitted: %+v", alias)
+			}
+		}
+	}
+}
+
+// Public registry IDs with synthetic distinct callsigns exercise the complete
+// admission/export/consumer path; they are not assertions of live OTA positions.
+func TestVerifiedSubchannelJSONFixture(t *testing.T) {
+	output := os.Getenv("SUBCHANNEL_EXPORT_FIXTURE")
+	if output == "" {
+		t.Skip("consumer fixture output not requested")
+	}
+	inputs := []InputChannel{{Key: "one", StationID: "21526", CallSign: "WETADT2"}, {Key: "two", StationID: "116205", CallSign: "WETADT3"}}
+	ApplyVerifiedStationCatalogs(inputs)
+	store, err := LoadStateStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft, err := NewService(store, ServiceOptions{}).Build(context.Background(), LineupContext{SourceFingerprint: "fixture", Country: "US"}, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(ExportFromDraft(draft))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(output, data, 0600); err != nil {
+		t.Fatal(err)
 	}
 }

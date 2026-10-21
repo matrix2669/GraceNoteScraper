@@ -10,7 +10,10 @@ rows. Their opaque review keys never become matching aliases. Confirm/Deny,
 account constituents, history and Undo continue to use saved decisions.
 
 Coverage reports channels with no scored candidates before decisions/exclusions.
-Zero proposals means that review is complete, not that every channel has a stream.
+A current successful review with zero required proposals completes Step6; ordinary
+>=95 groups need no selection and remain available for optional Deny. Below95
+constituents require confirmation to add inclusion aliases. A complete review
+does not mean that every channel has a stream.
 Coverage describes the last explicit Refresh streams only. New or renamed streams
 require another refresh and explicit JSON regeneration. There is no background
 inventory request or guarantee for unseen names. A later observed changed inventory,
@@ -28,8 +31,9 @@ they may be unsupported or the stream may have disappeared. No choice is reverse
 Stream feed parsing recognizes the captured TV/account wrappers and presentation
 quality glyphs, including superscript RAW/HD, without changing raw exclusions.
 Service family, feed region and quality remain separate. Opposing proved feeds
-produce per-name negatives at every admitted score, including 70–94. Unknown feeds
-remain visible for manual review/held until confirmed. Existing confirmations win
+produce per-name negatives at every admitted score, including 70–94. Unknown Pacific
+identities remain visible for manual review/held until confirmed. Unknown East
+labels retain ordinary score-based review; they do not acquire a Pacific hold. Existing confirmations win
 and are flagged. There is no new matcher pass or global wildcard.
 
 Positive representations use admitted identity only: terminal `+` gains ` PLUS`,
@@ -45,9 +49,12 @@ without retaining the misleading bare `RETRO` abbreviation. The inactive evidenc
 remains inspectable. No arbitrary brand/feed letters are stripped, and missing,
 wrong-station or ambiguous descriptors do not authorize a representation.
 
-Optional embedded reference catalogs stay disabled when configured off. Descriptors
-found only there require a separate settings decision. Diagnostic schedule method
-text is not mined into authoritative aliases.
+The portable pinned PrismCast/PBS registry supplies exact-station-ID aliases
+independently of the legacy reference switch. Inputs must match reviewed Git-blob
+hashes. Provider positions, conflicting bindings, local identities on national
+PBS fallback IDs and generic local-subchannel placeholders are withheld. Legacy
+provider snapshots stay disabled. Diagnostic method text is not identity evidence.
+No Dispatcharr account is restored or used as a reference catalog.
 
 ## Provider admission
 
