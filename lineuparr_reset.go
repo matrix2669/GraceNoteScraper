@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 )
@@ -15,7 +16,7 @@ func (s *lineuparrServer) guardBuilder(next http.HandlerFunc) http.HandlerFunc {
 		s.resetMu.RLock()
 		defer s.resetMu.RUnlock()
 		mutates := r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
-		mutates = mutates || (r.URL.Path == "/api/lineuparr/dispatcharr/review" && r.URL.Query().Get("refresh") == "true")
+		mutates = mutates || (r.URL.Path == "/api/lineuparr/dispatcharr/review" && strings.EqualFold(r.URL.Query().Get("refresh"), "true"))
 		if mutates {
 			generation := strconv.FormatUint(s.builder.ResetGeneration(), 10)
 			supplied := r.Header.Get("X-Builder-Generation")

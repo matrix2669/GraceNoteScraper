@@ -68,6 +68,7 @@ func TestResetGenerationFencesQueuedRefreshGET(t *testing.T) {
 	}{
 		{"/api/lineuparr/dispatcharr/review?refresh=true", "", 409},
 		{"/api/lineuparr/dispatcharr/review?refresh=true", "0", 409},
+		{"/api/lineuparr/dispatcharr/review?refresh=TRUE", "0", 409},
 		{"/api/lineuparr/dispatcharr/review?refresh=true", "1", 200},
 		{"/api/lineuparr/dispatcharr/review", "", 200},
 	} {
