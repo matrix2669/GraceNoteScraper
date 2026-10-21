@@ -10,7 +10,7 @@ import (
 
 func eligibilityFixture() (*Service, EvidenceContext) {
 	c := EvidenceContext{Country: "USA", PostalCode: "12345", LineupID: "A", Device: "X", Fingerprint: "source-A", RawCallSigns: map[string][]string{"S": {"RAW"}}}
-	f := StationFact{Kind: FactAlias, Value: "Scoped alias", Normalized: "SCOPEDALIAS", SourceID: "directv-official-lineup", SourceRowID: "row", SourceRevision: "revision", RootSourceStationID: "S", RootSourceLineupKey: "a", LineupKeys: []string{"a"}, EvidencePolicy: ProviderIdentityPolicy, Method: "number-policy-provider-alias-v3; provider-source-alignment-v1"}
+	f := StationFact{Kind: FactAlias, Value: "Scoped alias", Normalized: "SCOPEDALIAS", SourceID: "directv-official-lineup", SourceRowID: "row", SourceRevision: "revision", RootSourceStationID: "S", RootSourceLineupKey: "a", LineupKeys: []string{"a"}, EvidencePolicy: ProviderIdentityPolicy, Method: "identity-policy-v2; provider-source-alignment-v1"}
 	idx := Index{Stations: map[string]*Station{"S": {StationID: "S", Facts: []StationFact{f}, Names: []StationName{{Kind: NameCallSign, Value: "OLD"}, {Kind: NameEventCallSign, Value: "EVENT"}}}}, Lineups: map[string]*LineupRecord{"a": {Country: "USA", PostalCode: "12345", LineupID: "A", Device: "X", ProviderName: "DIRECTV"}, "b": {Country: "USA", PostalCode: "12345", LineupID: "B", Device: "X", ProviderName: "DIRECTV"}}}
 	return &Service{index: idx}, c
 }
@@ -76,7 +76,7 @@ func TestExactIdentityRequiresCurrentRawCorroborationNotEventOrMethod(t *testing
 }
 func TestCategoryBindingsUseSameEligibleView(t *testing.T) {
 	s, c := eligibilityFixture()
-	s.index.CategoryRelations = []ProviderCategoryRelation{{StationID: "S", AliasValue: "Scoped alias", AliasNormalized: "SCOPEDALIAS", Category: "News & Weather", SourceID: "directv-official-lineup", SourceRowID: "row", SourceLineupKey: "a", LineupKeys: []string{"a"}, EvidencePolicy: ProviderIdentityPolicy, Method: "number-policy-provider-alias-v3; provider-source-alignment-v1"}}
+	s.index.CategoryRelations = []ProviderCategoryRelation{{StationID: "S", AliasValue: "Scoped alias", AliasNormalized: "SCOPEDALIAS", Category: "News & Weather", SourceID: "directv-official-lineup", SourceRowID: "row", SourceLineupKey: "a", LineupKeys: []string{"a"}, EvidencePolicy: ProviderIdentityPolicy, Method: "identity-policy-v2; provider-source-alignment-v1"}}
 	if s.EvidenceForLineup(c).CategoriesForStations([]string{"S"})["S"].Value == "" {
 		t.Fatal("current scoped category missing")
 	}
@@ -165,5 +165,18 @@ func TestEvidenceViewStaysDetachedAcrossIndexUpdates(t *testing.T) {
 	out["S"][0].Value = "mutated"
 	if hasEvidence(v, "mutated") {
 		t.Fatal("caller mutated view")
+	}
+}
+
+func TestCurrentNumberOnlyRowIsAuditOnlyWithoutChangingRetainedData(t *testing.T) {
+	s, c := eligibilityFixture()
+	s.index.Stations["S"].Facts[0].Method = "number-policy-provider-alias-v3; provider-source-alignment-v1"
+	before, _ := json.Marshal(s.index)
+	if hasEvidence(s.EvidenceForLineup(c), "Scoped alias") {
+		t.Fatal("position promoted to station identity")
+	}
+	after, _ := json.Marshal(s.index)
+	if string(before) != string(after) {
+		t.Fatal("retained evidence changed")
 	}
 }

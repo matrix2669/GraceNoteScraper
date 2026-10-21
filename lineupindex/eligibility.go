@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const ActiveEvidencePolicy = "station-evidence-eligibility-v1"
+const ActiveEvidencePolicy = "station-evidence-eligibility-v2"
 
 // EvidenceContext identifies the selected source, never a provider family or ZIP
 // alone. Historical observations remain in the retained index, not this view.
@@ -79,7 +79,7 @@ func rawStationIdentity(st *Station, value string) bool {
 func scopedFact(idx *Index, sid string, f StationFact, c EvidenceContext) bool {
 	// Legacy keys are observations, not a trustworthy row binding. Require an
 	// attributable original row and root, even in the selected lineup.
-	return usableFact(f) && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) && f.SourceRowID != "" && f.RootSourceStationID == sid && currentEvidenceScope(idx, f.RootSourceLineupKey, c) && officialOrigin(idx, f.SourceID, f.RootSourceLineupKey) && (f.EvidencePolicy == ProviderIdentityPolicy || strings.Contains(f.Method, ProviderSourceAlignmentV1) || strings.Contains(f.Method, "identity-policy-v2"))
+	return !strings.Contains(f.Method, "number-policy-provider-alias-v3") && usableFact(f) && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) && f.SourceRowID != "" && f.RootSourceStationID == sid && currentEvidenceScope(idx, f.RootSourceLineupKey, c) && officialOrigin(idx, f.SourceID, f.RootSourceLineupKey) && (f.EvidencePolicy == ProviderIdentityPolicy || strings.Contains(f.Method, ProviderSourceAlignmentV1) || strings.Contains(f.Method, "identity-policy-v2"))
 }
 func reusableDirectFact(idx *Index, sid string, f StationFact) bool {
 	if !usableFact(f) || strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) || f.SourceRowID == "" {
@@ -136,7 +136,7 @@ func (s *Service) EvidenceForLineup(c EvidenceContext) EvidenceView {
 		if r.quarantineReason != "" {
 			continue
 		}
-		f := StationFact{Kind: FactCategory, SourceID: r.SourceID, SourceRowID: r.SourceRowID, SourceRevision: r.SourceRevision, StationBound: r.StationBound, RootSourceStationID: r.StationID, RootSourceLineupKey: r.SourceLineupKey, LineupKeys: r.LineupKeys, Method: strings.ReplaceAll(r.Method, "number-policy-provider-alias-v3", ""), EvidencePolicy: r.EvidencePolicy}
+		f := StationFact{Kind: FactCategory, SourceID: r.SourceID, SourceRowID: r.SourceRowID, SourceRevision: r.SourceRevision, StationBound: r.StationBound, RootSourceStationID: r.StationID, RootSourceLineupKey: r.SourceLineupKey, LineupKeys: r.LineupKeys, Method: r.Method, EvidencePolicy: r.EvidencePolicy}
 		proofIndex := s.index
 		proofIndex.Stations = map[string]*Station{}
 		if original := s.index.Stations[r.StationID]; original != nil {

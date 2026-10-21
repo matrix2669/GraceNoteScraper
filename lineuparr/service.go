@@ -38,9 +38,10 @@ func NewService(store *StateStore, options ServiceOptions) *Service {
 }
 
 type aliasWork struct {
-	value   string
-	sources map[string]bool
-	methods map[string]bool
+	derivedFrom []string
+	value       string
+	sources     map[string]bool
+	methods     map[string]bool
 }
 
 type channelWork struct {
@@ -769,7 +770,11 @@ func applyAliasSuppressions(channel *DraftChannel, suppressed []string) {
 	evidence := make([]AliasEvidence, 0, len(channel.AliasEvidence))
 	removed := make([]AliasEvidence, 0)
 	for _, item := range channel.AliasEvidence {
-		if suppressedSet[strings.ToLower(item.Value)] {
+		suppressed := suppressedSet[strings.ToLower(item.Value)]
+		for _, parent := range item.DerivedFrom {
+			suppressed = suppressed || suppressedSet[strings.ToLower(parent)]
+		}
+		if suppressed {
 			removed = append(removed, item)
 			continue
 		}
@@ -987,14 +992,18 @@ func (c *channelWork) addEPGID(value, source, method string) {
 }
 
 func finalizeChannel(channel *channelWork) {
+	applyIdentityRepresentations(channel)
 	aliases := make([]string, 0, len(channel.aliases))
 	evidence := make([]AliasEvidence, 0, len(channel.aliases))
 	for _, alias := range channel.aliases {
 		aliases = append(aliases, alias.value)
 		sources := mapKeys(alias.sources)
 		methods := mapKeys(alias.methods)
-		evidence = append(evidence, AliasEvidence{Value: alias.value, Sources: sources, Methods: methods})
+		evidence = append(evidence, AliasEvidence{Value: alias.value, Sources: sources, Methods: methods, DerivedFrom: append([]string(nil), alias.derivedFrom...)})
 	}
+	sort.SliceStable(channel.draft.InactiveAliasEvidence, func(i, j int) bool {
+		return aliasLess(channel.draft.InactiveAliasEvidence[i].Value, channel.draft.InactiveAliasEvidence[j].Value)
+	})
 	sort.SliceStable(aliases, func(i, j int) bool { return aliasLess(aliases[i], aliases[j]) })
 	sort.SliceStable(evidence, func(i, j int) bool { return aliasLess(evidence[i].Value, evidence[j].Value) })
 	channel.draft.Aliases = aliases

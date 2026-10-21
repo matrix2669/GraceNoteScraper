@@ -658,8 +658,8 @@ func TestProviderCatalogRequiresTenPercentSameNumberAlignment(t *testing.T) {
 	entries[1].Name = "GRID2"
 	result = matchCatalog(request, catalogSource{ID: "fixture", Entries: entries})
 	target := factsForStation(result.Facts, "S3")
-	if len(target) != 1 || target[0].Value != "PROVIDER3" || !strings.Contains(target[0].Method, lineupindex.ProviderSourceAlignmentV1) {
-		t.Fatalf("aligned provider did not recover number alias: %+v", result)
+	if len(target) != 0 {
+		t.Fatalf("aligned catalog authorized unsupported row: %+v", result)
 	}
 }
 

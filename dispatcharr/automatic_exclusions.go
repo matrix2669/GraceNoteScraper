@@ -92,11 +92,11 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 	manualGroups := map[string]bool{}
 	for _, row := range result.Rows {
 		if row.PendingReview || row.Conflict {
-			manualGroups[row.Candidate.ChannelID+"\x00"+row.Candidate.NormalizedAlias] = true
+			manualGroups[row.Candidate.ChannelID+"\x00"+ReviewIdentity(row.Candidate.StreamName, row.Candidate.NormalizedAlias)] = true
 		}
 	}
 	for _, row := range result.Rows {
-		if !row.PendingReview && !row.Conflict && !manualGroups[row.Candidate.ChannelID+"\x00"+row.Candidate.NormalizedAlias] {
+		if !row.PendingReview && !row.Conflict && !manualGroups[row.Candidate.ChannelID+"\x00"+ReviewIdentity(row.Candidate.StreamName, row.Candidate.NormalizedAlias)] {
 			result.Hidden[row.Candidate.Key] = true
 		}
 	}

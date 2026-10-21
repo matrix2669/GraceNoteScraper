@@ -135,7 +135,7 @@ func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig
 	conn, connected := s.config.Get()
 	channels, included := dispatcharrSnapshotChannels(draft)
 	valid := connected && snapshot.dispatcharrFingerprint == conn.Fingerprint() && snapshot.lineupFingerprint == config.Fingerprint() && !snapshot.fetchedAt.IsZero() && snapshot.warning == "" && snapshot.guide == s.lineup.state.GetForSource(config.Fingerprint()) && dispatcharrInputsSubset(channels, snapshot.channels)
-	if !valid {
+	if !valid || s.inventoryDrift(snapshot) {
 		return view, empty
 	}
 	targets := map[string]dispatcharr.AffiliateTarget{}
@@ -242,7 +242,7 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 			return s.lineup.builder.WhileReviewState(lease.StateToken, func() error {
 				s.reviewMu.RLock()
 				defer s.reviewMu.RUnlock()
-				if snapshotIdentity(s.snapshot) != lease.SnapshotToken {
+				if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.inventoryDrift(s.snapshot) {
 					return errAutomaticStale
 				}
 				return action()

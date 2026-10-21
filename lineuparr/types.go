@@ -58,9 +58,10 @@ type AttributedCategory struct {
 }
 
 type AliasEvidence struct {
-	Value   string   `json:"value"`
-	Sources []string `json:"sources"`
-	Methods []string `json:"methods"`
+	DerivedFrom []string `json:"derivedFrom,omitempty"`
+	Value       string   `json:"value"`
+	Sources     []string `json:"sources"`
+	Methods     []string `json:"methods"`
 }
 
 type IdentifierEvidence struct {
@@ -104,6 +105,7 @@ type DraftChannel struct {
 	AutomaticExcludedAliases []string             `json:"automaticExcludedAliases,omitempty"`
 	ExcludedAliases          []string             `json:"excludedAliases,omitempty"`
 	AliasEvidence            []AliasEvidence      `json:"aliasEvidence,omitempty"`
+	InactiveAliasEvidence    []AliasEvidence      `json:"inactiveAliasEvidence,omitempty"`
 	SuppressedAliasEvidence  []AliasEvidence      `json:"suppressedAliasEvidence,omitempty"`
 	EPGIDs                   []string             `json:"epgIds,omitempty"`
 	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`

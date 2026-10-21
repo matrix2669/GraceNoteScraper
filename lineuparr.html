@@ -656,6 +656,7 @@
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
           <p>These are derived rules, separate from your saved Deny decisions. Clear callsign or opposing-feed conflicts are excluded automatically. Uncertain feed names remain below for Confirm/Deny and unresolved names are withheld from JSON until confirmed. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
           <div id="automatic-rows"></div>
+          <div id="match-coverage"></div>
         </details>
         <div class="match-list" id="match-list"></div>
         <details id="decision-history">
@@ -1293,7 +1294,7 @@
       }
     }
 
-    function renderAutomaticExclusions(view) {
+    function renderAutomaticExclusions(view, limit = 200) {
       const rows = view?.rows || [];
       const exported = rows.filter(row => row.exported).length;
       const pending = rows.filter(row => row.pendingReview && !row.conflict && row.manualDecision !== 'denied').length;
@@ -1301,17 +1302,35 @@
       document.getElementById('automatic-count').textContent = `(${exported} exclusions, ${pending} manual, ${conflicts} confirmation conflicts)`;
       document.getElementById('automatic-message').textContent = view?.message || 'Refresh streams to derive current exclusions. Saved manual decisions remain unchanged.';
       const container = document.getElementById('automatic-rows'); container.replaceChildren();
-      for (const row of rows.slice(0, 200)) {
-        const item = document.createElement('p'); item.className = 'channel-meta';
+      for (const row of [...rows].sort((a,b) => Number(!!b.conflict)-Number(!!a.conflict)).slice(0, limit)) {
+        const item = document.createElement('div'); item.className = 'channel-meta automatic-row';
         const state = row.conflict ? 'Saved confirmation preserved' : row.manualDecision === 'denied' ? 'Saved denial preserved; automatic constraint active' : row.pendingReview ? 'Manual review required' : 'Automatically excluded';
         item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}. ${row.reason}`;
+        if (row.conflict) {
+          const saved = (matchReview?.decisions || []).filter(d => d.decision === 'confirmed' && d.channelId === row.channelId && (d.streamNames || [d.streamName]).some(n => n.trim().toLowerCase() === row.streamName.trim().toLowerCase()));
+          for (const decision of saved) item.append(decisionRow(decision));
+        }
         container.append(item);
       }
-      if (rows.length > 200) container.append(emptyMessage(`Showing 200 of ${rows.length} derived rows. All eligible names are included in JSON; no selection is needed.`));
+      if (rows.length > limit) {
+        const more = document.createElement('button'); more.type='button'; more.textContent=`Show all ${rows.length} derived rows`;
+        more.addEventListener('click', () => renderAutomaticExclusions(view, rows.length));container.append(more);
+      }
+    }
+
+    function renderMatchCoverage(view) {
+      const coverage = document.getElementById('match-coverage');
+      coverage.replaceChildren();
+      if (view) {
+        coverage.append(emptyMessage(view.message));
+        const missing = view.unmatched || [];
+        if (missing.length) coverage.append(emptyMessage(`${missing.length} channels had no scored candidates: ${missing.map(c => `${c.number} ${c.name}`).join(', ')}`));
+      }
     }
 
     function renderMatchReview() {
       renderAutomaticExclusions(matchReview?.automatic);
+      renderMatchCoverage(matchReview?.coverage);
       if (!matchReview) return;
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
@@ -1390,6 +1409,7 @@
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
       const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
       copy.append(title, meta);
+      if (decision.needsReview) {const warning = document.createElement('p'); warning.className='warning'; warning.textContent=decision.reviewWarning;copy.append(warning);}
       const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
       row.append(copy, undo); return row;
     }

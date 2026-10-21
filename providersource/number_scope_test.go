@@ -26,9 +26,10 @@ func TestProviderOwnGridUsesUniqueNumberForAliasesOnly(t *testing.T) {
 	request.Grid.Channels[0].CallSign = "UNRELATED"
 	request.Grid.Channels[1].CallSign = "DIFFERENT"
 	got := factsForStation(matchCatalog(request, source).Facts, "ONE")
-	if len(got) != 1 || got[0].Kind != lineupindex.FactAlias || got[0].Value != "MUSIC" || !strings.Contains(got[0].Method, lineupindex.ProviderSourceAlignmentV1) {
-		t.Fatal("unique provider-local number did not recover only the aligned alias", got)
+	if len(got) != 0 {
+		t.Fatal("alignment authorized a contradictory number-only row", got)
 	}
+
 }
 
 func TestSameNumberAcrossProviderGridsDoesNotTransferCategories(t *testing.T) {
@@ -54,8 +55,11 @@ func TestSameNumberAcrossProviderGridsDoesNotTransferCategories(t *testing.T) {
 				categories++
 			}
 		}
-		if aliases != 1 || (categories > 0) != tc.wantCategory {
+		if aliases != map[bool]int{true: 1, false: 0}[tc.wantCategory] || (categories > 0) != tc.wantCategory {
 			t.Fatalf("%s: aliases=%d categories=%d facts=%+v", tc.station, aliases, categories, got.Facts)
+		}
+		if len(targetFacts) == 0 {
+			continue
 		}
 		method := targetFacts[0].Method
 		if tc.wantCategory && !strings.Contains(method, "number-policy-provider-v2") {
