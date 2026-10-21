@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestWorkflowConnectionIsNotSnapshot(t *testing.T) {
@@ -101,5 +102,53 @@ func TestWorkflowReviewStatusReloadRestartFailureAndLoading(t *testing.T) {
 	s.clearCandidateCache()
 	if r = snapshotReview(t, s, false); r.ReviewStatus != "refresh-required" {
 		t.Fatal("server restart completed")
+	}
+}
+
+func TestWorkflowConnectionCannotRaceActiveRefresh(t *testing.T) {
+	s, api := newDispatcharrTestServer(t, true)
+	s.refreshMu.Lock()
+	for _, method := range []string{"POST", "DELETE"} {
+		w := httptest.NewRecorder()
+		r := httptest.NewRequest(method, "/api/lineuparr/dispatcharr/config", strings.NewReader(`{"baseUrl":"https://fixture.invalid","authMethod":"api-key","apiKey":"synthetic"}`))
+		r.Header.Set("Content-Type", "application/json")
+		s.handleConfig(w, r)
+		if w.Code != 409 {
+			t.Fatalf("%s concurrent config %d", method, w.Code)
+		}
+	}
+	s.refreshMu.Unlock()
+	if api.tested.BaseURL != "" {
+		t.Fatal("busy connection operation touched client")
+	}
+}
+
+// A refresh blocked on the guide must already reserve the operation, so a
+// same-endpoint credential save cannot slip ahead of its captured configuration.
+func TestWorkflowRefreshReservesBeforeDraftRead(t *testing.T) {
+	s, _ := newDispatcharrTestServer(t, true)
+	s.lineup.state.mu.Lock()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		s.handleReview(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/lineuparr/dispatcharr/review?refresh=true", nil))
+	}()
+	defer func() { s.lineup.state.mu.Unlock(); <-done }()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		s.progressMu.Lock()
+		started := s.progress.Stage == "fetching"
+		s.progressMu.Unlock()
+		if started {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/config", strings.NewReader(`{"baseUrl":"https://dispatcharr.test","authMethod":"password","username":"admin","password":"synthetic-new"}`))
+	r.Header.Set("Content-Type", "application/json")
+	s.handleConfig(w, r)
+	if w.Code != 409 {
+		t.Fatalf("credential save passed blocked refresh: %d", w.Code)
 	}
 }
