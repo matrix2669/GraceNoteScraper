@@ -156,6 +156,14 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 			Username:   config.Username,
 		})
 	case http.MethodPost:
+		// Connection tests/reset and stream refresh share client authentication
+		// state. Serialize them so an in-flight old-credential refresh cannot
+		// republish a snapshot after Save and Test has cleared it.
+		if !s.refreshMu.TryLock() {
+			http.Error(w, "A stream refresh or connection test is already running", http.StatusConflict)
+			return
+		}
+		defer s.refreshMu.Unlock()
 		if !requireJSONContentType(w, r) {
 			return
 		}
@@ -207,6 +215,11 @@ func (s *dispatcharrServer) handleConfig(w http.ResponseWriter, r *http.Request)
 			Configured: true, BaseURL: config.BaseURL, AuthMethod: config.AuthMethod, Username: config.Username,
 		})
 	case http.MethodDelete:
+		if !s.refreshMu.TryLock() {
+			http.Error(w, "A stream refresh or connection test is already running", http.StatusConflict)
+			return
+		}
+		defer s.refreshMu.Unlock()
 		s.configMu.Lock()
 		defer s.configMu.Unlock()
 		if err := s.config.Clear(); err != nil {
@@ -355,6 +368,18 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, force bool) (dispatcharrReviewBuild, bool) {
+	// Acquire before reading configuration: credentials deliberately do not form
+	// part of the durable connection fingerprint. A save must not slip between
+	// capturing credentials and reserving the refresh operation.
+	if force {
+		if !s.refreshMu.TryLock() {
+			http.Error(w, "A stream refresh or connection test is already running", http.StatusConflict)
+			return dispatcharrReviewBuild{}, false
+		}
+		defer s.refreshMu.Unlock()
+		s.setMatchProgress("fetching", 0, 0)
+		defer s.setMatchProgress("idle", 0, 0)
+	}
 	visibleLimit, err := dispatcharrVisibleLimit(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -388,13 +413,6 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		s.reviewMu.Unlock()
 	}
 	if force {
-		if !s.refreshMu.TryLock() {
-			http.Error(w, "A stream refresh is already running", http.StatusConflict)
-			return dispatcharrReviewBuild{}, false
-		}
-		defer s.refreshMu.Unlock()
-		s.setMatchProgress("fetching", 0, 0)
-		defer s.setMatchProgress("idle", 0, 0)
 		streams, fetchErr := s.client.Streams(r.Context(), dispatchConfig)
 		failureMessage := "Unable to fetch Dispatcharr streams. Check the connection and retry Refresh streams."
 		var matches dispatcharr.CandidateSet
