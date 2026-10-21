@@ -10,9 +10,11 @@ rows. Their opaque review keys never become matching aliases. Confirm/Deny,
 account constituents, history and Undo continue to use saved decisions.
 
 Coverage reports channels with no scored candidates before decisions/exclusions.
-A current successful review with zero required proposals completes Step6; ordinary
->=95 groups need no selection and remain available for optional Deny. Below95
-constituents require confirmation to add inclusion aliases. A complete review
+A current successful review with zero unresolved proposals completes Step 6. All
+scores remain visible together with Confirm/Deny controls, including additional
+matches. Confirm at >=95 records review without adding an inclusion alias; below95
+confirmation adds an inclusion alias. Deny retains each raw name's existing exclusion
+eligibility. Scores do not change review visibility or completion requirements. A complete review
 does not mean that every channel has a stream.
 Coverage describes the last explicit Refresh streams only. New or renamed streams
 require another refresh and explicit JSON regeneration. There is no background

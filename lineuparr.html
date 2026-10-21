@@ -1387,7 +1387,7 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
-      if (!matchReview.warning && Number.isFinite(matchReview.requiredCount)) els.matchStatus.textContent += ` ${matchReview.requiredCount} require review; ${matchReview.qualifiedCount || 0} qualify without confirmation.`;
+      if (!matchReview.warning) els.matchStatus.textContent += ' Review all proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       const candidates = matchReview.candidates || [];
@@ -1398,17 +1398,7 @@
           : 'No current proposals remain. Unmatched streams stay unchanged.';
         els.matchList.append(emptyMessage(message));
       }
-      const required = candidates.filter(c => c.reviewKind !== 'qualified');
-      for (const candidate of required) els.matchList.append(matchCard(candidate));
-      const qualified = candidates.filter(c => c.reviewKind === 'qualified');
-      if (qualified.length) {
-        const details = document.createElement('details'); details.className = 'qualified-matches';
-        const summary = document.createElement('summary'); summary.textContent = `${matchReview.qualifiedCount ?? qualified.length} qualified matches — optional exclusions`;
-        details.append(summary);
-        details.append(emptyMessage('These matches qualify without confirmation. Deny only incorrect matches.'));
-        for (const candidate of qualified) details.append(matchCard(candidate));
-        els.matchList.append(details);
-      }
+      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
       if (hasMore) {
         const remaining = matchReview.candidateCount - candidates.length;
         const amount = Math.min(100, remaining);
@@ -1428,16 +1418,10 @@
       await loadMatchReview(false, true, requested);
     }
 
-    function adjustReviewKindCount(candidate, delta) {
-      const field = candidate.reviewKind === 'qualified' ? 'qualifiedCount' : 'requiredCount';
-      if (Number.isFinite(matchReview[field])) matchReview[field] = Math.max(0, matchReview[field] + delta);
-    }
-
     async function refillResolvedPage() {
       if (!matchReview || dispatchBusy || pendingDecisions.size || els.alternativeDialog.hasAttribute('open')) return;
-      const required = (matchReview.candidates || []).filter(c => c.reviewKind !== 'qualified');
-      const remaining = matchReview.requiredCount ?? matchReview.candidateCount;
-      if (!required.length && remaining > 0 && matchReview.candidateCount > (matchReview.candidates || []).length) {
+      const visible = matchReview.candidates || [];
+      if (!visible.length && matchReview.candidateCount > 0) {
         // One prefix reload per successful decision. Failure stays visible with Load more retry.
         await loadMatchReview(false, true, Math.max(100, matchReviewLimit));
       }
@@ -1470,7 +1454,7 @@
       confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
-      if (candidate.reviewKind !== 'qualified') buttons.append(confirmButton);
+      buttons.append(confirmButton);
       buttons.append(denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
@@ -1502,7 +1486,6 @@
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
         decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
       };
-      adjustReviewKindCount(candidate, -1);
       renderMatchReview();
       const decisionEpoch = dispatchReviewEpoch;
       let saved = false;
@@ -1520,11 +1503,10 @@
           openMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
-          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied.');
+          showMessage(decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
         if (saved || decisionEpoch !== dispatchReviewEpoch) { showMessage(error.message, true); return; }
-        adjustReviewKindCount(candidate, 1);
         matchReview.candidateCount++;
         matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
         matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
@@ -1580,7 +1562,7 @@
       confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
-      if (candidate.reviewKind !== 'qualified') buttons.append(confirmButton);
+      buttons.append(confirmButton);
       buttons.append(denyButton); card.append(buttons);
       return card;
     }
@@ -1601,7 +1583,6 @@
         });
         saved = true;
         if (decisionEpoch !== dispatchReviewEpoch) return;
-        adjustReviewKindCount(candidate, -1);
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
         matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
@@ -2562,7 +2543,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && (workflowRemote.dispatch?.requiredCount ?? workflowRemote.dispatch?.candidateCount) === 0}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0}
       ].filter(state => state.panel);
     }
 

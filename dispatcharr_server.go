@@ -129,8 +129,6 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
-	RequiredCount        int                          `json:"requiredCount"`
-	QualifiedCount       int                          `json:"qualifiedCount"`
 	Coverage             dispatcharrCoverage          `json:"coverage"`
 	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
@@ -571,15 +569,6 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
-	required, qualified := 0, 0
-	for _, g := range groups {
-		if g.ReviewKind == "qualified" {
-			qualified++
-		} else {
-			required++
-		}
-	}
-	sort.SliceStable(groups, func(i, j int) bool { return groups[i].ReviewKind != "qualified" && groups[j].ReviewKind == "qualified" })
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
 	visible := groups
 	if len(visible) > visibleLimit {
@@ -603,7 +592,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			RequiredCount: required, QualifiedCount: qualified, Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
+			Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
