@@ -25,7 +25,7 @@ console.log('Alternative popup threshold and multi-confirm checks passed');
     const survivor = {key:'c',alternatives:[target]};
     const primary = {alias:'Network',alternatives:[target,survivor]};
     const context = {
-      pendingDecisions:new Set(),
+      pendingDecisions:new Set(),decisionRevision:0,dispatchReviewEpoch:0,renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},
       matchReview:{candidates:[target,survivor],candidateCount:2,candidateStreamCount:4,confirmedCount:0,deniedCount:0,decisions:[]},
       api:async()=>{},renderMatchReview:()=>{},reloadDraft:async()=>{},showMessage:()=>{},
       els:{alternativeList:{querySelector:()=>true}},

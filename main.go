@@ -1538,6 +1538,9 @@ func main() {
 		lineup: lineuparrHandlers, config: dispatcharrConfigStore, client: dispatcharrClient,
 	}
 
+	lineuparrHandlers.automaticProjection = dispatcharrHandlers.projectAutomaticExclusions
+	lineuparrHandlers.commitDraft = dispatcharrHandlers.commitAutomaticDraft
+
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
 		log.Println("Initial scrape queued")
@@ -1583,6 +1586,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/dispatcharr/progress", dispatcharrHandlers.handleProgress)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", dispatcharrHandlers.handleDecision)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/affiliate-exclusions", dispatcharrHandlers.handleAffiliateExclusions)
+	mux.HandleFunc("/api/lineuparr/dispatcharr/automatic-exclusions", dispatcharrHandlers.handleAutomaticExclusions)
 	shareLinks := &shareLinksServer{path: configPath + ".links.json"}
 	mux.HandleFunc("/api/setup/share-links", shareLinks.handle)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))

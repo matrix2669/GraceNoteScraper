@@ -31,20 +31,22 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	tmdbConfigured     bool
-	tmdbEnriching      func() bool
-	beforeMarketScan   func() error
-	exportDir          string
-	store              *appconfig.Store
-	state              *GuideState
-	builder            *lineuparrbuilder.Service
-	marketIndex        *lineupindex.Service
-	addressSearcher    providerAddressSearcher
-	aliasQueue         *aliasJobQueue
-	addressTester      providerAddressTester
-	addressMu          sync.Mutex
-	nextAddressTest    time.Time
-	tmdbCachedEvidence func(string, bool, int) ([]int, []string, bool)
+	automaticProjection func(*lineuparrbuilder.Draft, appconfig.Config)
+	commitDraft         func(*lineuparrbuilder.Draft, func() error) (bool, error)
+	tmdbConfigured      bool
+	tmdbEnriching       func() bool
+	beforeMarketScan    func() error
+	exportDir           string
+	store               *appconfig.Store
+	state               *GuideState
+	builder             *lineuparrbuilder.Service
+	marketIndex         *lineupindex.Service
+	addressSearcher     providerAddressSearcher
+	aliasQueue          *aliasJobQueue
+	addressTester       providerAddressTester
+	addressMu           sync.Mutex
+	nextAddressTest     time.Time
+	tmdbCachedEvidence  func(string, bool, int) ([]int, []string, bool)
 }
 
 type providerAddressSearcher interface {
@@ -596,15 +598,29 @@ func (s *lineuparrServer) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	data = append(data, '\n')
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+lineuparrbuilder.ExportFilename(draft)+`"`)
-	w.Header().Set("Cache-Control", "no-store")
-	if r.Method == http.MethodGet {
-		_, _ = w.Write(data)
+	send := func() error {
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", `attachment; filename="`+lineuparrbuilder.ExportFilename(draft)+`"`)
+		w.Header().Set("Cache-Control", "no-store")
+		if r.Method == http.MethodGet {
+			_, err := w.Write(data)
+			return err
+		}
+		return nil
+	}
+	if s.commitDraft != nil {
+		current, err := s.commitDraft(draft, send)
+		if err != nil || !current {
+			http.Error(w, "Matching inputs changed; reload before exporting", 409)
+		}
+	} else {
+		_ = send()
 	}
 }
 
 func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*lineuparrbuilder.Draft, appconfig.Config, []lineuparrbuilder.InputChannel, bool) {
+	originalGuide := s.state.Get()
+	originalState := s.builder.ReviewStateToken()
 	config, inputs, ok := s.activeInputs(w)
 	if !ok {
 		return nil, appconfig.Config{}, nil, false
@@ -635,6 +651,19 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		return nil, appconfig.Config{}, nil, false
 	}
 	draft.SourceFingerprint = config.Fingerprint()
+	if s.automaticProjection != nil {
+		if originalGuide != s.state.GetForSource(config.Fingerprint()) || originalState != s.builder.ReviewStateToken() {
+			http.Error(w, "Matching inputs changed while building; reload the draft", 409)
+			return nil, appconfig.Config{}, nil, false
+		}
+		s.automaticProjection(draft, config)
+		if originalGuide != s.state.GetForSource(config.Fingerprint()) || originalState != s.builder.ReviewStateToken() {
+			http.Error(w, "Matching inputs changed while projecting; reload the draft", 409)
+			return nil, appconfig.Config{}, nil, false
+		}
+		draft.AutomaticLease.StateToken = originalState
+		draft.AutomaticLease.GuideToken = fmt.Sprintf("%p", originalGuide)
+	}
 	return draft, config, inputs, true
 }
 
