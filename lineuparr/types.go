@@ -72,13 +72,15 @@ type IdentifierEvidence struct {
 // ServiceIdentityEvidence keeps source/row/pair associations intact. It is
 // separate from flattened alias labels and never authorizes channel removal.
 type ServiceIdentityEvidence struct {
-	Value         string `json:"value"`
-	SourceID      string `json:"sourceId"`
-	SourceRowID   string `json:"sourceRowId,omitempty"`
-	PeerStationID string `json:"peerStationId,omitempty"`
-	RootStationID string `json:"rootStationId,omitempty"`
-	RootLineupKey string `json:"rootLineupKey,omitempty"`
-	Policy        string `json:"policy"`
+	BindingKind    string `json:"bindingKind,omitempty"`
+	SourceRevision string `json:"sourceRevision,omitempty"`
+	Value          string `json:"value"`
+	SourceID       string `json:"sourceId"`
+	SourceRowID    string `json:"sourceRowId,omitempty"`
+	PeerStationID  string `json:"peerStationId,omitempty"`
+	RootStationID  string `json:"rootStationId,omitempty"`
+	RootLineupKey  string `json:"rootLineupKey,omitempty"`
+	Policy         string `json:"policy"`
 }
 
 type DraftChannel struct {

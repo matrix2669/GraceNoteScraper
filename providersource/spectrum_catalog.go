@@ -487,6 +487,7 @@ func spectrumEvidenceResult(request lineupindex.ProviderEvidenceRequest, spectru
 
 func spectrumSnapshotFact(source catalogSource, stationID, kind, value, rawValue string) lineupindex.ProviderFact {
 	fact := lineupindex.ProviderFact{
+		EvidencePolicy: lineupindex.ProviderIdentityPolicy, SourceRowID: sourceRowIdentity(source, catalogEntry{Name: value, StationIDs: []string{stationID}}), RootSourceStationID: stationID,
 		StationID: stationID, Kind: kind, Value: value, RawValue: rawValue,
 		SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 		Method:       source.Method + "; authoritative Spectrum catalog snapshot",

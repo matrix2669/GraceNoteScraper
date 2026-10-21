@@ -23,6 +23,7 @@ func TestSoleAlignedCategoryRelationRemainsReviewableThroughBuilder(t *testing.T
 		Stations:          map[string]*lineupindex.Station{"S1": {StationID: "S1", Names: []lineupindex.StationName{{Value: "UNBRANDEDTEST", Normalized: "UNBRANDEDTEST", Kind: lineupindex.NameCallSign}}}},
 		CategoryRelations: []lineupindex.ProviderCategoryRelation{{StationID: "S1", AliasValue: "UNBRANDEDTEST", AliasNormalized: "UNBRANDEDTEST", Category: "News", SourceID: "directv-official-lineup", SourceLabel: "DIRECTV", SourceRowID: "row-1", LineupKeys: []string{"directv"}, Method: "unique provider-local channel number; number-policy-provider-alias-v3; provider-source-alignment-v1"}},
 	}
+	bindCategoryFixture(&idx, map[string]string{"S1": "UNBRANDEDTEST", "64549": "HLNHD"})
 	data, err := json.Marshal(idx)
 	if err != nil {
 		t.Fatal(err)
@@ -70,6 +71,7 @@ func TestOfficialAdultCategoryUsesEvidenceQualityNotContentLabel(t *testing.T) {
 				Stations:          map[string]*lineupindex.Station{"S1": {StationID: "S1", Names: []lineupindex.StationName{{Value: "UNBRANDEDTEST", Normalized: "UNBRANDEDTEST", Kind: lineupindex.NameCallSign}}, Facts: []lineupindex.StationFact{{Kind: lineupindex.FactCategory, Value: "Other", RawValue: "Adult", SourceID: "dish-official-lineup", Method: tc.method}}}},
 				CategoryRelations: []lineupindex.ProviderCategoryRelation{{StationID: "S1", AliasValue: "UNBRANDEDTEST", AliasNormalized: "UNBRANDEDTEST", Category: "Other", RawCategory: "Adult", SourceID: "dish-official-lineup", SourceLabel: "DISH", SourceRowID: "row-1", Method: tc.method}},
 			}
+			bindCategoryFixture(&idx, map[string]string{"S1": "UNBRANDEDTEST", "64549": "HLNHD"})
 			data, err := json.Marshal(idx)
 			if err != nil {
 				t.Fatal(err)
@@ -123,6 +125,7 @@ func TestProviderDisagreementSurvivesMaintainedHLNIdentityAndManualReview(t *tes
 		}},
 	}}
 	path := filepath.Join(t.TempDir(), "index.json")
+	bindCategoryFixture(&idx, map[string]string{"S1": "UNBRANDEDTEST", "64549": "HLNHD"})
 	data, err := json.Marshal(idx)
 	if err != nil {
 		t.Fatal(err)
@@ -137,8 +140,8 @@ func TestProviderDisagreementSurvivesMaintainedHLNIdentityAndManualReview(t *tes
 	}
 	unrecognized := []builder.InputChannel{{StationID: "64549", CallSign: "UNBRANDEDTEST"}}
 	s.applyMarketAliases("USA", "11743", "spectrum-official-lineup", unrecognized)
-	if hint := unrecognized[0].CategoryHint; hint == nil || hint.Value != "News & Weather" || !unrecognized[0].CategoryConflict {
-		t.Fatalf("provider majority must reach an unknown channel as a reviewable proposal: %+v", unrecognized[0])
+	if hint := unrecognized[0].CategoryHint; hint != nil {
+		t.Fatalf("unproven renamed identity must not inherit old category votes: %+v", unrecognized[0])
 	}
 	read := func() builder.DraftChannel {
 		t.Helper()
@@ -216,5 +219,41 @@ func TestProviderDisagreementSurvivesMaintainedHLNIdentityAndManualReview(t *tes
 	channel = read()
 	if channel.Category != "News & Weather" || channel.NeedsCategoryReview || channel.CategoryReview == nil {
 		t.Fatalf("saved manual confirmation must survive provider disagreement: %+v", channel)
+	}
+}
+
+// Existing category behavior is tested with explicit independent raw-identity
+// row bindings, not historical method labels without a source association.
+func bindCategoryFixture(idx *lineupindex.Index, raw map[string]string) {
+	if idx.Lineups == nil {
+		idx.Lineups = map[string]*lineupindex.LineupRecord{}
+	}
+	for sid, st := range idx.Stations {
+		original := append([]lineupindex.StationFact(nil), st.Facts...)
+		for i := range original {
+			f := &original[i]
+			key := "fixture-" + f.SourceID
+			f.SourceRowID = key
+			f.RootSourceStationID = sid
+			f.RootSourceLineupKey = key
+			f.LineupKeys = []string{key}
+			f.SourceRevision = "fixture-revision"
+			f.Method += "; identity-policy-v2"
+			idx.Lineups[key] = &lineupindex.LineupRecord{ProviderName: f.SourceID}
+			st.Facts[i] = *f
+			st.Facts = append(st.Facts, lineupindex.StationFact{Kind: lineupindex.FactAlias, Value: raw[sid], Normalized: raw[sid], SourceID: f.SourceID, SourceRowID: key, RootSourceStationID: sid, RootSourceLineupKey: key, LineupKeys: []string{key}, Method: "identity-policy-v2"})
+		}
+		for i := range idx.CategoryRelations {
+			r := &idx.CategoryRelations[i]
+			if r.StationID != sid {
+				continue
+			}
+			key := "fixture-" + r.SourceID
+			idx.Lineups[key] = &lineupindex.LineupRecord{ProviderName: r.SourceID}
+			r.SourceLineupKey = key
+			r.LineupKeys = []string{key}
+			r.Method += "; identity-policy-v2"
+			st.Facts = append(st.Facts, lineupindex.StationFact{Kind: lineupindex.FactAlias, Value: raw[sid], Normalized: raw[sid], SourceID: r.SourceID, SourceRowID: r.SourceRowID, RootSourceStationID: sid, RootSourceLineupKey: key, LineupKeys: []string{key}, Method: "identity-policy-v2"})
+		}
 	}
 }

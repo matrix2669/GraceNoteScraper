@@ -138,11 +138,22 @@ const (
 	ProviderSourceAlignmentV1 = "provider-source-alignment-v1"
 )
 
-// StationFact is official evidence joined to a provider's Gracenote grid and
-// therefore to a provider-independent Gracenote station ID.
+// StationFact is a retained claim associated with a station, not proof of
+// global reusability. Active consumers must use an EvidenceView.
+type StationPairProof struct {
+	TargetCallSigns   []string `json:"targetCallSigns"`
+	TargetStationID   string   `json:"targetStationId"`
+	PeerStationID     string   `json:"peerStationId"`
+	PeerCallSign      string   `json:"peerCallSign"`
+	Timezone          string   `json:"timezone"`
+	WindowStarts      []int64  `json:"windowStarts"`
+	ProgrammeRevision string   `json:"programmeRevision"`
+}
+
 type StationFact struct {
-	EvidencePolicy    string `json:"evidencePolicy,omitempty"`
-	PeerStationID     string `json:"peerStationId,omitempty"`
+	PairProof         *StationPairProof `json:"pairProof,omitempty"`
+	EvidencePolicy    string            `json:"evidencePolicy,omitempty"`
+	PeerStationID     string            `json:"peerStationId,omitempty"`
 	quarantineReason  string
 	viewPeerStationID string
 
@@ -219,6 +230,7 @@ type ProviderEvidenceResult struct {
 }
 
 type ProviderFact struct {
+	PairProof      *StationPairProof `json:"pairProof,omitempty"`
 	EvidencePolicy string
 	PeerStationID  string
 
@@ -295,6 +307,8 @@ type StationName struct {
 }
 
 type AliasCandidate struct {
+	BindingKind         string `json:"bindingKind,omitempty"`
+	SourceRevision      string `json:"sourceRevision,omitempty"`
 	EvidencePolicy      string `json:"evidencePolicy,omitempty"`
 	PeerStationID       string `json:"peerStationId,omitempty"`
 	SourceRowID         string `json:"sourceRowId,omitempty"`

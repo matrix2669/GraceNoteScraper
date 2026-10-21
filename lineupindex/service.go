@@ -910,6 +910,7 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			}
 			current.LineupKeys = appendUniqueString(current.LineupKeys, lineupKey)
 			current.Method = fact.Method
+			current.PairProof = fact.PairProof
 			current.EvidencePolicy = fact.EvidencePolicy
 			current.PeerStationID = fact.PeerStationID
 			current.quarantineReason = ""
@@ -932,7 +933,7 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			continue
 		}
 		station.Facts = append(station.Facts, StationFact{
-			EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			PairProof: fact.PairProof, EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
 			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),

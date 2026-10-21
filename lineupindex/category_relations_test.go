@@ -3,7 +3,6 @@ package lineupindex
 import (
 	"context"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -131,7 +130,7 @@ func TestProviderCategoryRelationsReplaceOneScopePreservesOtherScope(t *testing.
 	}
 }
 
-func TestReplaceEPGFactsPreservesDistinctProviderRootsForSameCategory(t *testing.T) {
+func TestPairConfirmationDoesNotTransferProviderCategories(t *testing.T) {
 	service, err := NewService(ServiceConfig{
 		Path:      filepath.Join(t.TempDir(), "market-index.json"),
 		Providers: &fakeProviders{responses: map[string][]web.Provider{}},
@@ -149,10 +148,10 @@ func TestReplaceEPGFactsPreservesDistinctProviderRootsForSameCategory(t *testing
 	}
 	stations := map[string]*epgIdentityStation{"S1": ensureEPGIdentityStation(map[string]*epgIdentityStation{}, "S1"), "P": peer}
 	facts := buildEPGDerivedFacts(stations, []epgPairResult{{Pair: epgCandidatePair{LeftID: "S1", RightID: "P", Evidence: []string{"shared alias"}}, Status: "confirmed", Occurrences: 2, MatchedMinutes: 120}}, epgSource, "America/New_York")
-	if _, categories, _, err := service.replaceEPGFacts(epgSource, facts); err != nil || categories != 2 {
+	if _, categories, _, err := service.replaceEPGFacts(epgSource, facts); err != nil || categories != 0 {
 		t.Fatalf("EPG root facts = categories %d err %v", categories, err)
 	}
-	if got := service.index.Stations["S1"].Facts; len(got) != 2 || got[0].RootSourceID == got[1].RootSourceID {
+	if got := service.index.Stations["S1"].Facts; len(got) != 0 {
 		t.Fatalf("same-category provider roots collapsed: %+v", got)
 	}
 }
@@ -359,7 +358,8 @@ func TestRunPostalEPGPreservesFailedProviderCategoryThroughConfirmedPair(t *test
 	}
 	scan := testEPGScan("L1", "Verizon FiOS", map[string]*web.GridResponse{blocks[0].ID: primary})
 	scan.Facts = baseFacts
-	scan.Relations = []ProviderCategoryRelation{{StationID: "A", AliasValue: "SHARED NETWORK", AliasNormalized: "SHAREDNETWORK", Category: "News", SourceID: "verizon-fios-official-lineup", SourceRowID: "row-a", SourceLineupKey: "L1", LineupKeys: []string{"L1"}, Method: "number-policy-provider-alias-v3; provider-source-alignment-v1"}}
+	bindScanFixture([]*postalLineupScan{scan})
+	scan.Relations = []ProviderCategoryRelation{{EvidencePolicy: ProviderIdentityPolicy, StationID: "A", AliasValue: "SHARED NETWORK", AliasNormalized: "SHAREDNETWORK", Category: "News", SourceID: "verizon-fios-official-lineup", SourceRowID: "row-a", SourceLineupKey: "L1", LineupKeys: []string{"L1"}, Method: "number-policy-provider-alias-v3; provider-source-alignment-v1"}}
 	scan.Sources = []EvidenceSourceRecord{{ID: "verizon-fios-official-lineup", Status: StatusComplete}}
 	lastGridRequest := time.Time{}
 	if _, err := service.runPostalEPG(context.Background(), "USA:11743", "USA", "11743", "America/New_York", []*postalLineupScan{scan}, blocks, &lastGridRequest); err != nil {
@@ -368,25 +368,22 @@ func TestRunPostalEPGPreservesFailedProviderCategoryThroughConfirmedPair(t *test
 	if len(service.index.Stations["B"].Facts) == 0 {
 		t.Fatal("first confirmed pair did not create EPG evidence")
 	}
-	foundTransferred := false
 	for _, fact := range service.index.Stations["B"].Facts {
-		if fact.Kind == FactCategory && fact.Value == "News & Weather" && strings.Contains(fact.Method, "provider-category-relation") && !strings.Contains(fact.Method, "number-policy-provider-alias-v3") {
-			foundTransferred = true
+		if fact.Kind == FactCategory {
+			t.Fatal("pair transferred provider category")
 		}
 	}
-	if !foundTransferred {
-		t.Fatalf("confirmed two-block pair did not transfer aligned relation category safely: %+v", service.index.Stations["B"].Facts)
-	}
-	if candidate, ok := service.CategoriesForStations([]string{"B"})["B"]; !ok || !strings.Contains(strings.Join(candidate.Methods, " "), "requires review") {
-		t.Fatalf("transferred relation category was not reviewable: %+v, %v", candidate, ok)
-	}
+	// Seed an older audit-only category to exercise last-good preservation on
+	// failed/skipped provider scopes below. It must never become active again.
+	service.index.Stations["B"].Facts = append(service.index.Stations["B"].Facts, StationFact{Kind: FactCategory, Value: "News & Weather", Normalized: "NEWSWEATHER", SourceID: weekdayEPGSourceID("USA", "11743"), RootSourceID: "verizon-fios-official-lineup", LineupKeys: []string{"L1"}, Method: "identity-policy-v2"})
+
 	if _, _, err := service.ingestProviderEvidence("L1", ProviderEvidenceResult{Sources: []EvidenceSourceRecord{{ID: "verizon-fios-official-lineup", Status: StatusComplete}}, Facts: baseFacts, CategoryRelations: scan.Relations}); err != nil {
 		t.Fatal(err)
 	}
 	checkUncategorizedPeerAlias := func() {
 		t.Helper()
 		for _, fact := range service.index.Stations["A"].Facts {
-			if fact.Kind == FactAlias && fact.SourceID == weekdayEPGSourceID("USA", "11743") && fact.RootSourceID == "verizon-fios-official-lineup" && fact.RootSourceStationID == "B" && fact.SourceRowID == "row-b" {
+			if fact.Kind == FactAlias && fact.SourceID == weekdayEPGSourceID("USA", "11743") && fact.PeerStationID == "B" && fact.Value == "LOCAL-B" {
 				return
 			}
 		}
@@ -406,6 +403,7 @@ func TestRunPostalEPGPreservesFailedProviderCategoryThroughConfirmedPair(t *test
 		{StationID: "A", Kind: FactAlias, Value: "SHARED NETWORK", SourceID: "directv-official-lineup", SourceRowID: "directv-a", RootSourceLineupKey: "L1", RootSourceStationID: "A"},
 		{StationID: "B", Kind: FactAlias, Value: "SHARED NETWORK", SourceID: "directv-official-lineup", SourceRowID: "directv-b", RootSourceLineupKey: "L1", RootSourceStationID: "B"},
 	}
+	bindScanFixture([]*postalLineupScan{scan})
 	scan.Relations = nil
 	scan.Sources = []EvidenceSourceRecord{{ID: "verizon-fios-official-lineup", Status: StatusError}}
 	if _, err := service.runPostalEPG(context.Background(), "USA:11743", "USA", "11743", "America/New_York", []*postalLineupScan{scan}, blocks, &lastGridRequest); err != nil {

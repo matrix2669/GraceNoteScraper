@@ -2,6 +2,8 @@ package lineupindex
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -267,13 +269,12 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			station := ensureEPGIdentityStation(stations, stationID)
 			station.LineupKeys[scan.Lineup.Key] = true
 			addEPGCallSign(station, channel.CallSign)
-			addEPGCallSign(station, channel.AffiliateCallSign)
 			addEPGAffiliate(station, channel.AffiliateName)
-			for _, event := range channel.Events {
-				addEPGCallSign(station, event.CallSign)
-			}
 		}
 		for _, fact := range scan.Facts {
+			if !scanFactBindingValid(scan, fact) {
+				continue
+			}
 			// National station-ID facts describe this Gracenote station only.
 			// They cannot be used as identity evidence for joining it to another
 			// GNID; only independent callsign/name evidence may seed EPG peers.
@@ -305,6 +306,9 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			}
 		}
 		for _, relation := range scan.Relations {
+			if relation.EvidencePolicy != ProviderIdentityPolicy || relation.SourceRowID == "" || relation.SourceLineupKey != scan.Lineup.Key {
+				continue
+			}
 			// A station-bound national catalog fact is tied to this GNID and
 			// must never become cross-lineup identity/category evidence.
 			if relation.StationBound || strings.TrimSpace(relation.StationID) == "" || originScopeUnsafe(&Index{Lineups: map[string]*LineupRecord{scan.Lineup.Key: scan.Lineup}}, relation.SourceID, []string{scan.Lineup.Key}, relation.Method) != "" {
@@ -792,7 +796,7 @@ func unionEPGMinutes(intervals [][2]time.Time) int {
 	return int(total.Round(time.Minute) / time.Minute)
 }
 
-func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epgPairResult, sourceID, timezone string) []epgDerivedFact {
+func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epgPairResult, sourceID, timezone string, proofs ...StationPairProof) []epgDerivedFact {
 	byKey := make(map[string]epgDerivedFact)
 	for _, result := range results {
 		if result.Status != "confirmed" {
@@ -810,6 +814,17 @@ func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epg
 	}
 	result := make([]epgDerivedFact, 0, len(byKey))
 	for _, fact := range byKey {
+		if len(proofs) == 1 {
+			proof := proofs[0]
+			proof.TargetStationID = fact.StationID
+			for _, raw := range stations[fact.StationID].CallSigns {
+				proof.TargetCallSigns = append(proof.TargetCallSigns, raw)
+			}
+			sort.Strings(proof.TargetCallSigns)
+			proof.PeerStationID = fact.PeerStationID
+			proof.PeerCallSign = fact.Value
+			fact.PairProof = &proof
+		}
 		result = append(result, fact)
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -824,68 +839,37 @@ func buildEPGDerivedFacts(stations map[string]*epgIdentityStation, results []epg
 	return result
 }
 
+// Schedule identity transfers only raw GN station callsigns. Provider aliases
+// and categories remain attached to their own proof, never laundered by a pair.
 func appendEPGPeerFacts(byKey map[string]epgDerivedFact, target, peer *epgIdentityStation, sourceID, method string) {
-	lineups := unionStringKeys(target.LineupKeys, peer.LineupKeys)
-	aliases := make(map[string]string)
-	aliasFacts := make(map[string][]ProviderFact)
-	for normalized, value := range peer.CallSigns {
-		aliases[normalizeName(value)] = value
-		if normalized != normalizeName(value) {
-			aliases[normalized] = normalized
-		}
-	}
-	for normalized, value := range peer.ProviderNames {
-		aliases[normalized] = value
-	}
-	for normalized, facts := range peer.ProviderNameFacts {
-		for _, fact := range facts {
-			aliases[normalized] = strings.TrimSpace(fact.Value)
-			aliasFacts[normalized] = append(aliasFacts[normalized], fact)
-		}
-	}
-	for normalized, value := range aliases {
-		if ignoredName(normalized) || isEPGEventFeedName(value) {
+	for _, value := range peer.CallSigns {
+		if ignoredName(normalizeName(value)) || isEPGEventFeedName(value) {
 			continue
 		}
-		facts := aliasFacts[normalized]
-		if len(facts) == 0 {
-			facts = []ProviderFact{{Value: value}}
-		}
-		for _, providerFact := range facts {
-			rootID := providerFactRootSourceID(providerFact)
-			rowID := strings.TrimSpace(providerFact.SourceRowID)
-			key := target.StationID + "\x00" + FactAlias + "\x00" + normalized + "\x00" + rootID + "\x00" + rowID + "\x00" + providerFact.RootSourceLineupKey + "\x00" + providerFact.RootSourceStationID
-			byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
-				EvidencePolicy: providerFact.EvidencePolicy, PeerStationID: peer.StationID, StationID: target.StationID, Kind: FactAlias, Value: value,
-				SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: method,
-				SourceRevision: providerFact.SourceRevision, SourceRowID: rowID,
-				RootSourceID: rootID, RootSourceLabel: providerFactRootSourceLabel(providerFact), RootSourceURL: providerFactRootSourceURL(providerFact),
-				RootSourceLineupKey: providerFact.RootSourceLineupKey, RootSourceStationID: providerFact.RootSourceStationID,
-			}, LineupKeys: lineups}
+		key := target.StationID + "\x00" + peer.StationID + "\x00" + normalizeName(value)
+		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{EvidencePolicy: ProviderIdentityPolicy, StationID: target.StationID, PeerStationID: peer.StationID, Kind: FactAlias, Value: value, SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: method}, LineupKeys: unionStringKeys(target.LineupKeys, peer.LineupKeys)}
+	}
+}
+
+func scheduleProof(scans []*postalLineupScan, blocks []epgBlock, zone string) StationPairProof {
+	// Sort source keys so the retained programme revision is deterministic.
+	data := map[string]*web.GridResponse{}
+	seen := map[string]bool{}
+	for _, scan := range scans {
+		for id, g := range scan.Grids {
+			data[scan.Lineup.Key+"|"+id] = g
+			seen[id] = true
 		}
 	}
-	for _, category := range peer.Categories {
-		normalized := normalizeName(category.Value)
-		if ignoredName(normalized) {
-			continue
+	encoded, _ := json.Marshal(data)
+	revision := sha256.Sum256(encoded)
+	proof := StationPairProof{Timezone: zone, ProgrammeRevision: fmt.Sprintf("%x", revision)}
+	for _, b := range blocks {
+		if seen[b.ID] {
+			proof.WindowStarts = append(proof.WindowStarts, b.Start.Unix())
 		}
-		rootID := providerFactRootSourceID(category)
-		rowID := strings.TrimSpace(category.SourceRowID)
-		key := target.StationID + "\x00" + FactCategory + "\x00" + normalized + "\x00" + rootID + "\x00" + rowID + "\x00" + category.RootSourceLineupKey + "\x00" + category.RootSourceStationID
-		categoryMethod := method + "; category carried from " + strings.TrimSpace(category.SourceLabel)
-		// Identity confirmation must retain, not upgrade, category provenance.
-		categoryMethod += "; " + category.Method
-		if strings.Contains(category.Method, "identity-policy-v2") {
-			categoryMethod += "; identity-policy-v2"
-		}
-		byKey[key] = epgDerivedFact{ProviderFact: ProviderFact{
-			EvidencePolicy: category.EvidencePolicy, PeerStationID: peer.StationID, StationID: target.StationID, Kind: FactCategory, Value: category.Value, RawValue: category.RawValue,
-			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation",
-			Method: categoryMethod, SourceRevision: category.SourceRevision, SourceRowID: category.SourceRowID,
-			RootSourceID: providerFactRootSourceID(category), RootSourceLabel: providerFactRootSourceLabel(category), RootSourceURL: providerFactRootSourceURL(category),
-			RootSourceLineupKey: category.RootSourceLineupKey, RootSourceStationID: category.RootSourceStationID,
-		}, LineupKeys: lineups}
 	}
+	return proof
 }
 
 func providerFactRootSourceID(fact ProviderFact) string {
@@ -1065,7 +1049,7 @@ func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCo
 			result.RejectedPairs++
 		}
 	}
-	result.Facts = buildEPGDerivedFacts(stations, finalResults, sourceID, timezone)
+	result.Facts = buildEPGDerivedFacts(stations, finalResults, sourceID, timezone, scheduleProof(scans, blocks, timezone))
 	aliases, categories, matched, err := s.replaceEPGFactsForRun(sourceID, result.Facts, preserveRoots)
 	if err != nil {
 		result.Source.Status = StatusError
@@ -1249,7 +1233,7 @@ func (s *Service) replaceEPGFactsForRun(sourceID string, facts []epgDerivedFact,
 		}
 		retained[factKey] = true
 		station.Facts = append(station.Facts, StationFact{
-			EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
+			PairProof: fact.PairProof, EvidencePolicy: fact.EvidencePolicy, PeerStationID: fact.PeerStationID, Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: strings.TrimSpace(fact.Method),
 			LineupKeys: append([]string(nil), derived.LineupKeys...), SourceRevision: strings.TrimSpace(fact.SourceRevision), SourceRowID: strings.TrimSpace(fact.SourceRowID),
 			RootSourceID: providerFactRootSourceID(fact), RootSourceLabel: providerFactRootSourceLabel(fact), RootSourceURL: providerFactRootSourceURL(fact),
@@ -1324,4 +1308,10 @@ func epgFactProvenanceKey(stationID string, fact StationFact) string {
 		row = root
 	}
 	return stationID + "\x00" + fact.Kind + "\x00" + fact.Normalized + "\x00" + root + "\x00" + row + "\x00" + strings.TrimSpace(fact.RootSourceLineupKey) + "\x00" + strings.TrimSpace(fact.RootSourceStationID)
+}
+
+// Fresh provider assertions can seed comparison only in their actual source
+// lineup. Historical EPG copies never reseed a scan through station storage.
+func scanFactBindingValid(scan *postalLineupScan, f ProviderFact) bool {
+	return officialOrigin(&Index{Lineups: map[string]*LineupRecord{scan.Lineup.Key: scan.Lineup}}, f.SourceID, scan.Lineup.Key) && usableFact(StationFact{Kind: f.Kind, SourceID: f.SourceID, Method: f.Method}) && f.EvidencePolicy == ProviderIdentityPolicy && f.SourceRowID != "" && f.RootSourceLineupKey == scan.Lineup.Key && f.RootSourceStationID == f.StationID && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix)
 }
