@@ -1282,6 +1282,7 @@
       if (!confirm('Remove the saved Dispatcharr connection? Confirmed aliases will remain until you undo or remove them.')) { showMessage('Disconnect cancelled.'); return; }
       invalidateDispatchReview();
       dispatchBusy = true;
+      showMessage('Removing the Dispatcharr connection…');
       renderGuidedWorkflow();
       setDispatchControls();
       try {

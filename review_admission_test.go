@@ -254,3 +254,23 @@ func TestCancelledRequestBeforePersistenceLeavesChoicesUnchanged(t *testing.T) {
 		t.Fatal("cancelled request committed")
 	}
 }
+
+func TestAutomaticViewCacheDoesNotReuseAnotherConfiguration(t *testing.T) {
+	s, _, _ := syntheticReviewBurstFixture(t)
+	config, _, _ := s.lineup.store.Get()
+	draft := automaticDraft(t, s)
+	view, _ := s.automaticView(draft, config, s.snapshot)
+	if view.Status != "current" {
+		t.Fatal("fixture not current")
+	}
+	changed := config
+	changed.Gracenote.Country = "CAN"
+	view, _ = s.automaticView(draft, changed, s.snapshot)
+	if view.Status != "refresh-required" {
+		t.Fatal("cached view ignored computation configuration", view.Status)
+	}
+	view, _ = s.automaticView(draft, config, s.snapshot)
+	if view.Status != "current" {
+		t.Fatal("obsolete configuration poisoned current cache")
+	}
+}

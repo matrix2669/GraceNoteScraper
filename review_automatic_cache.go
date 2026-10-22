@@ -23,13 +23,13 @@ func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig
 	s.automaticMu.Lock()
 	defer s.automaticMu.Unlock()
 	inputs := s.lineup.reviewInputsRevision()
-	key := snapshotIdentity(snapshot) + s.inventoryObservationToken() + s.lineup.builder.ReviewStateToken() + automaticDraftEvidenceToken(draft)
+	key := configurationToken(config) + snapshotIdentity(snapshot) + s.inventoryObservationToken() + s.lineup.builder.ReviewStateToken() + automaticDraftEvidenceToken(draft)
 	if s.lineup.reusableEvidence() && s.automaticCache.key == key && s.automaticCache.inputs == inputs {
 		return s.automaticCache.view, s.automaticCache.result
 	}
 	view, result := s.automaticViewUncached(draft, config, snapshot)
 	if s.lineup.reusableEvidence() && inputs == s.lineup.reviewInputsRevision() {
-		current := snapshotIdentity(snapshot) + s.inventoryObservationToken() + s.lineup.builder.ReviewStateToken() + automaticDraftEvidenceToken(draft)
+		current := configurationToken(config) + snapshotIdentity(snapshot) + s.inventoryObservationToken() + s.lineup.builder.ReviewStateToken() + automaticDraftEvidenceToken(draft)
 		if current == key {
 			s.automaticCache = cachedAutomaticView{key, inputs, view, result}
 		}
