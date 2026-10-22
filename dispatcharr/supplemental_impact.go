@@ -26,9 +26,11 @@ type ImpactRequest struct {
 	Streams  []ImpactStream `json:"streams"`
 }
 type ImpactMatch struct {
-	Name   string   `json:"name"`
-	Number string   `json:"number"`
-	Names  []string `json:"names"`
+	Category   string   `json:"category"`
+	EntryIndex int      `json:"entryIndex"`
+	Name       string   `json:"name"`
+	Number     string   `json:"number"`
+	Names      []string `json:"names"`
 }
 type ImpactResult struct {
 	Baseline []ImpactMatch `json:"baseline"`

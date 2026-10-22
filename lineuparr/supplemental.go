@@ -165,6 +165,7 @@ func (s *Service) ClearSupplementalDecisions(source, key string) ([]string, erro
 func (s *Service) ProjectSupplementalDecisions(draft *Draft, source, connection string) {
 	decisions := s.SupplementalDecisions(source)
 	primary := s.MatchDecisions(source)
+	overrides := s.store.Snapshot(source)
 	keys := make([]string, 0, len(decisions))
 	for k := range decisions {
 		keys = append(keys, k)
@@ -188,21 +189,33 @@ func (s *Service) ProjectSupplementalDecisions(draft *Draft, source, connection 
 				continue
 			}
 			draft.SupplementalDecisionCount++
-			suppressed := false
-			for _, a := range c.SuppressedAliasEvidence {
-				if literalSupplementalName(a.Value) == literalSupplementalName(d.StreamName) {
-					suppressed = true
-				}
-			}
-			if suppressed {
-				continue
-			}
 			if d.Decision == "confirmed" {
+				evidence := AliasEvidence{Value: d.StreamName, Sources: []string{"dispatcharr-supplemental"}, Methods: []string{"user-confirmed full raw name; supplemental retrieval, no primary score; downstream name matching may expand"}}
+				// Build applied base-alias suppression before this projection. A
+				// supplemental-only alias must consult the same persisted choices.
+				// Positive suppression never removes a reviewed negative exclusion.
+				suppressed, recorded := false, false
+				for _, a := range c.SuppressedAliasEvidence {
+					if literalSupplementalName(a.Value) == literalSupplementalName(d.StreamName) {
+						suppressed, recorded = true, true
+					}
+				}
+				for _, a := range overrides[c.ID].SuppressedAliases {
+					if literalSupplementalName(a) == literalSupplementalName(d.StreamName) {
+						suppressed = true
+					}
+				}
+				if suppressed {
+					if !recorded {
+						c.SuppressedAliasEvidence = append(c.SuppressedAliasEvidence, evidence)
+					}
+					continue
+				}
 				if !containsExact(c.Aliases, d.StreamName) {
 					c.Aliases = append(c.Aliases, d.StreamName)
 					c.SupplementalAliases = append(c.SupplementalAliases, d.StreamName)
 				}
-				c.AliasEvidence = append(c.AliasEvidence, AliasEvidence{Value: d.StreamName, Sources: []string{"dispatcharr-supplemental"}, Methods: []string{"user-confirmed full raw name; supplemental retrieval, no primary score; downstream name matching may expand"}})
+				c.AliasEvidence = append(c.AliasEvidence, evidence)
 			} else if d.Decision == "denied" {
 				exists := false
 				for _, a := range c.ExcludedAliases {

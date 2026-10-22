@@ -24,22 +24,23 @@ def main():
         matcher = FuzzyMatcher(match_threshold=95)
         matcher.precompute_normalizations(names)
         maps = {}
-        entries = [(cat, e) for cat, rows in lineup['categories'].items() for e in rows]
-        for country in {request['country'], *(detect_category_country(c) or request['country'] for c, _ in entries)}:
+        entries = [(cat, i, e) for cat, rows in lineup['categories'].items() for i, e in enumerate(rows)]
+        for country in {request['country'], *(detect_category_country(c) or request['country'] for c, _, _ in entries)}:
             aliases = {k: list(v) for k, v in CHANNEL_ALIASES.items()}
             for k, v in COUNTRY_ALIASES.get(country, {}).items():
                 aliases[k] = list(dict.fromkeys(aliases.get(k, []) + list(v)))
-            for _, entry in entries:
+            for _, _, entry in entries:
                 k = entry['name']
                 aliases[k] = list(dict.fromkeys(aliases.get(k, []) + (entry.get('aliases') or [])))
             maps[country] = aliases
         rows = []
-        for index, (category, entry) in enumerate(entries):
+        for index, (category, entry_index, entry) in enumerate(entries):
             cc = detect_category_country(category) or request['country']
             matches = matcher.match_all_streams(entry['name'], names, maps[cc],
                 channel_number=None, lineup_country=cc, quality_aware=False,
                 candidate_countries=countries, excluded_aliases=entry.get('excluded_aliases'))
-            rows.append({'name': entry['name'], 'number': str(entry['number']), 'names': [m[0] for m in matches]})
+            # Correlate each exported occurrence, even when names/numbers collide.
+            rows.append({'category': category, 'entryIndex': entry_index, 'name': entry['name'], 'number': str(entry['number']), 'names': [m[0] for m in matches]})
             if sum(len(r['names']) for r in rows) > 250000:
                 raise ValueError('Impact exceeds 250000 name pairs')
             print('GNS_PROGRESS %d %d' % (index + 1, len(entries)), file=sys.stderr, flush=True)

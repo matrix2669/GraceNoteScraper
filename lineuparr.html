@@ -226,6 +226,7 @@
     .match-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
     .match-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
     .match-evidence summary { cursor: pointer; }
+    .match-raw-name { white-space: pre-wrap; overflow-wrap: anywhere; }
     .match-evidence-list { display: grid; gap: 4px; margin-top: 7px; overflow-wrap: anywhere; }
     .match-tier { display: inline-flex; margin-right: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(124,230,166,.1); color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
     .match-tier.contained { color: var(--warning); background: rgba(255,203,92,.1); }
@@ -1697,6 +1698,17 @@
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
       const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "Supplemental · no primary score" : `${decision.score}%`}`;
       copy.append(title, meta);
+      if (decision.origin) {
+        const details=document.createElement('details'); details.className='match-evidence';
+        const summary=document.createElement('summary'); summary.textContent='Saved raw names and physical streams'; details.append(summary);
+        for (const name of decision.streamNames || [decision.streamName]) { const item=document.createElement('div'); item.className='match-raw-name'; item.textContent=name; details.append(item); }
+        for (const member of decision.constituents || []) { const item=document.createElement('div'); item.className='match-raw-name'; item.textContent=`Account ${member.m3uAccountId}, stream ${member.streamId}: ${member.streamName}`; details.append(item); }
+        if (!(decision.constituents || []).length && (decision.m3uAccountIds || []).length) { const item=document.createElement('div'); item.textContent=`Accounts: ${decision.m3uAccountIds.join(', ')}. Physical IDs are unavailable in this record.`; details.append(item); }
+        const effect=document.createElement('p'); effect.textContent=decision.decision === 'confirmed'
+          ? 'When current and unsuppressed, these full raw names contribute aliases. Consumer matching remains fuzzy; check export impact after your batch.'
+          : 'When current, these reviewed names contribute channel-scoped literal exclusions without a primary score. Positive alias suppression does not remove this Deny.';
+        details.append(effect); const limit=document.createElement('p'); limit.textContent='Identical raw names cannot split account outcomes. Future inventory is not protected by a past impact check.'; details.append(limit); copy.append(details);
+      }
       const action = matchActionState(decision.key).state;
       if (action) meta.textContent += ` · ${action[0].toUpperCase() + action.slice(1)}${action === 'queued' || action === 'saving' ? '…' : ''}`;
       if (decision.needsReview) {const warning = document.createElement('p'); warning.className='warning'; warning.textContent=decision.reviewWarning;copy.append(warning);}
@@ -1806,7 +1818,7 @@
       const decisionEpoch = dispatchReviewEpoch;
       const source = draft.sourceFingerprint;
       if (matchReview.supplementalImpact && matchReview.supplementalImpact.state !== 'unchecked') matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'stale',message:'Review is changing. Check supplemental export impact after this batch.'};
-      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore};
+      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, m3uAccountIds:candidate.m3uAccountIds, constituents:candidate.constituents, streamCount:candidate.streamCount, score:candidate.maximumScore};
       beginMatchDecision(key);
       matchReview = {
         ...matchReview,

@@ -199,7 +199,17 @@ func TestSupplementalImpactPhysicalConflictsAndExtraAdmission(t *testing.T) {
 	s.snapshot.identityStreams = append(s.snapshot.identityStreams, dispatcharr.IdentityStream{ID: 99, AccountID: 3, Name: "Unexpected literal * extra", Fingerprint: "extra"})
 	s.reviewMu.Unlock()
 	s.impactRunner = func(_ context.Context, req dispatcharr.ImpactRequest) (dispatcharr.ImpactResult, error) {
-		return dispatcharr.ImpactResult{Proposed: []dispatcharr.ImpactMatch{{Name: g.ChannelName, Number: g.ChannelNumber, Names: []string{g.StreamNames[0], "Unexpected literal * extra"}}}}, nil
+		var exported builder.ExportFile
+		if err := json.Unmarshal([]byte(req.Proposed), &exported); err != nil {
+			t.Fatal(err)
+		}
+		result := dispatcharr.ImpactResult{}
+		for category, entries := range exported.Categories {
+			for i, entry := range entries {
+				result.Proposed = append(result.Proposed, dispatcharr.ImpactMatch{Category: category, EntryIndex: i, Name: entry.Name, Number: fmt.Sprint(entry.Number), Names: []string{g.StreamNames[0], "Unexpected literal * extra"}})
+			}
+		}
+		return result, nil
 	}
 	supplementalRequest(t, s, "POST", "/impact", map[string]string{})
 	done := awaitImpact(t, s, "complete")
@@ -212,15 +222,32 @@ func TestSupplementalImpactPhysicalConflictsAndExtraAdmission(t *testing.T) {
 		t.Fatal(w.Body.String())
 	}
 	found := false
+	collateral := map[string]bool{}
+	for _, row := range done.Rows {
+		if row.ChannelID != g.ChannelID && len(row.Extra) > 0 {
+			collateral[row.ChannelID] = false
+		}
+	}
+	if len(collateral) == 0 {
+		t.Fatal("unsaved sibling collateral omitted")
+	}
 	for _, row := range built.response.Supplemental.Candidates {
 		if row.StreamName == "Unexpected literal * extra" {
 			found = true
+			if _, ok := collateral[row.ChannelID]; ok {
+				collateral[row.ChannelID] = true
+			}
 			body := supplementalSaveBody(built.response, row)
 			body["decision"] = "denied"
 			w := supplementalRequest(t, s, "POST", "/decision", body)
 			if w.Code != 200 {
 				t.Fatal(w.Body.String())
 			}
+		}
+	}
+	for channel, reviewed := range collateral {
+		if !reviewed {
+			t.Fatalf("collateral target %s has no literal review path", channel)
 		}
 	}
 	if !found {
@@ -285,7 +312,7 @@ func TestSupplementalImpactSameNameAccountAndProtectedBaseline(t *testing.T) {
 	denied.M3UAccountID = 3
 	denied.StreamFingerprint = "second"
 	inventory := []dispatcharr.IdentityStream{{Name: "Equal Name", ID: 1, AccountID: 2, Fingerprint: "first"}, {Name: "Equal Name", ID: 2, AccountID: 3, Fingerprint: "second"}, {Name: "Protected Prior", ID: 4, AccountID: 5, Fingerprint: "protected"}}
-	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Name: "Canonical", Number: "1", Names: []string{"Protected Prior"}}}, Proposed: []dispatcharr.ImpactMatch{{Name: "Canonical", Number: "1", Names: []string{"Equal Name"}}}}
+	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Protected Prior"}}}, Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Equal Name"}}}}
 	rows := compareSupplementalImpact(draft, inventory, map[string]builder.SupplementalDecision{"a": selected, "b": denied}, nil, result, "conn")
 	if len(rows) != 1 || len(rows[0].Extra) != 1 || len(rows[0].SameNameConflicts) != 2 || len(rows[0].ProtectedConflicts) != 1 {
 		t.Fatalf("account/baseline conflicts hidden: %+v", rows)

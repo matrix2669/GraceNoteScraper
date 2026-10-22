@@ -138,3 +138,63 @@ func TestSupplementalPersistenceFailureRollsBack(t *testing.T) {
 		})
 	}
 }
+
+func TestSupplementalSuppressionRestartRestoreAndNegativeIndependence(t *testing.T) {
+	svc := newTestService(t, "", "")
+	d := supplementalFixture()
+	if err := svc.SaveSupplementalDecisions("source", svc.ReviewInputToken(), []SupplementalDecision{d}, false, func(f func() error) error { return f() }); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetAliasSuppressed("source", d.ChannelID, d.StreamName, true); err != nil {
+		t.Fatal(err)
+	}
+	store, err := LoadStateStore(svc.store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc = NewService(store, ServiceOptions{})
+	fresh := func() *Draft {
+		return &Draft{Channels: []DraftChannel{{ID: d.ChannelID, StationID: d.StationID, PlacementID: d.PlacementID, CallSign: d.RawCallSign, Included: true}}}
+	}
+	draft := fresh()
+	svc.ProjectSupplementalDecisions(draft, "source", "conn")
+	c := draft.Channels[0]
+	if len(c.Aliases) != 0 || len(c.SupplementalAliases) != 0 || len(c.SuppressedAliasEvidence) != 1 || c.SuppressedAliasEvidence[0].Sources[0] != "dispatcharr-supplemental" {
+		t.Fatalf("suppression/removal evidence lost: %+v", c)
+	}
+	if len(svc.SupplementalDecisions("source")) != 1 {
+		t.Fatal("suppression erased choice")
+	}
+	if err := svc.SetAliasSuppressed("source", d.ChannelID, d.StreamName, false); err != nil {
+		t.Fatal(err)
+	}
+	draft = fresh()
+	svc.ProjectSupplementalDecisions(draft, "source", "conn")
+	if len(draft.Channels[0].Aliases) != 1 || draft.Channels[0].Aliases[0] != d.StreamName {
+		t.Fatal("restoration failed", draft)
+	}
+	if _, err := svc.ClearSupplementalDecisions("source", d.Key); err != nil {
+		t.Fatal(err)
+	}
+	d.Decision = "denied"
+	d.OperationID = "negative"
+	if err := svc.SaveSupplementalDecisions("source", svc.ReviewInputToken(), []SupplementalDecision{d}, false, func(f func() error) error { return f() }); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.SetAliasSuppressed("source", d.ChannelID, d.StreamName, true); err != nil {
+		t.Fatal(err)
+	}
+	draft = fresh()
+	svc.ProjectSupplementalDecisions(draft, "source", "conn")
+	if len(draft.Channels[0].ExcludedAliases) != 1 || draft.Channels[0].ExcludedAliases[0] != d.StreamName {
+		t.Fatal("positive suppression erased negative choice", draft)
+	}
+	if _, err := svc.ClearSupplementalDecisions("source", d.Key); err != nil {
+		t.Fatal(err)
+	}
+	draft = fresh()
+	svc.ProjectSupplementalDecisions(draft, "source", "conn")
+	if len(draft.Channels[0].ExcludedAliases) != 0 {
+		t.Fatal("Undo retained exclusion")
+	}
+}

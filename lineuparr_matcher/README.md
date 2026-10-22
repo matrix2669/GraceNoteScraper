@@ -51,6 +51,11 @@ explicit batched supplemental export-impact action. It serializes/decodes real
 export JSON, runs baseline and prospective lineups at Exact95 against the same
 captured names and group-country metadata, and returns names without assigning
 scores to supplemental proposals. The primary runner is unchanged.
+Results carry the category and entry position from the decoded JSON. The Go
+export keeps an internal target ID through the same stable sorting, omitted from
+the consumer JSON, so duplicate names and normalized numbers cannot merge impact
+results. The adapter reports every exported occurrence; comparison includes
+collateral changes and protected conflicts on targets without supplemental saves.
 
 The unchanged `aliases.py` from the same installed pinned revision supplies the
 consumer's built-in and country aliases. SHA-256:

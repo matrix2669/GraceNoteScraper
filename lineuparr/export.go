@@ -20,6 +20,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 			category = uncategorized
 		}
 		categories[category] = append(categories[category], ExportChannel{
+			ChannelID:       channel.ID,
 			Name:            channel.Name,
 			Number:          exportNumber(channel.Number),
 			Aliases:         append([]string(nil), channel.Aliases...),

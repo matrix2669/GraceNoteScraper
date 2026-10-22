@@ -285,6 +285,8 @@ type ExportFile struct {
 }
 
 type ExportChannel struct {
+	// Internal correlation survives export sorting but never enters consumer JSON.
+	ChannelID       string   `json:"-"`
 	Name            string   `json:"name"`
 	Number          any      `json:"number"`
 	Aliases         []string `json:"aliases,omitempty"`

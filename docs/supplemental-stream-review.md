@@ -13,12 +13,20 @@ distinct supplemental origin and support history and Undo. Equal literal names
 are grouped with every captured physical member, including same-account duplicate
 IDs. Primary decisions remain authoritative. New or changed physical members are
 not silently approved. Suppressed aliases stay suppressed.
+Saved history expands to every raw spelling, account and physical stream ID,
+including pending local choices. Positive alias suppression can be restored and
+never removes a reviewed negative exclusion for that name.
 
 After a batch, use **Check supplemental export impact**. This explicit action
 serializes the prospective lineup and compares it with its protected baseline
 using the unchanged consumer at Exact95, on the same immutable captured
 inventory. It shows selected, matched, extra, missed and protected-conflict rows.
 Newly exposed extras become review proposals; none are automatically denied.
+Embedded aliases can also affect included sibling channels with the same exported
+name. Their added matches and protected conflicts are shown even when no
+supplemental choice was saved on that channel; review each extra on its own target.
+The check keeps every exported entry distinct, including duplicate names and
+numbers that serialize alike (for example, `005.10` and `5.1`).
 Checks run independently of saves, coalesce identical requests, can be cancelled,
 and cache a completed result only for the same full input fingerprints. Failed
 or cancelled checks can be retried explicitly. Reads, export, individual choices

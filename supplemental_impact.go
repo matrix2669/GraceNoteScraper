@@ -186,11 +186,11 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	job.cancel = cancel
+	initialResponse := job.response
 	s.impact = job
 	s.impactMu.Unlock()
 	decisions := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
-	initialResponse := job.response
 	run := s.impactRunner
 	if run == nil {
 		run = dispatcharr.CheckSupplementalImpact
@@ -240,18 +240,25 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 	writeLineuparrJSON(w, 202, initialResponse)
 }
 func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.IdentityStream, decisions map[string]builder.SupplementalDecision, primary map[string]builder.MatchDecision, result dispatcharr.ImpactResult, connection string) []supplementalImpactRow {
-	key := func(name, number string) string { return name + "\x00" + number }
+	// The export's stable per-category ordering retains target IDs internally.
+	// Names and serialized numbers are not unique identifiers (005.10 and 5.1
+	// serialize alike); never join or overwrite results using those display fields.
+	exported := builder.ExportFromDraft(draft)
 	before, after := map[string]map[string]bool{}, map[string]map[string]bool{}
 	for _, phase := range []struct {
 		rows []dispatcharr.ImpactMatch
 		dest map[string]map[string]bool
 	}{{result.Baseline, before}, {result.Proposed, after}} {
 		for _, r := range phase.rows {
+			entries := exported.Categories[r.Category]
+			if r.EntryIndex < 0 || r.EntryIndex >= len(entries) {
+				continue
+			}
 			set := map[string]bool{}
 			for _, name := range r.Names {
 				set[name] = true
 			}
-			phase.dest[key(r.Name, r.Number)] = set
+			phase.dest[entries[r.EntryIndex].ChannelID] = set
 		}
 	}
 	rows := []supplementalImpactRow{}
@@ -274,11 +281,8 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 				}
 			}
 		}
-		if len(saved) == 0 {
-			continue
-		}
 		row := supplementalImpactRow{ChannelID: c.ID, ChannelName: c.Name, ChannelNumber: c.Number, Selected: []supplementalImpactPhysical{}, Matched: []supplementalImpactPhysical{}, Extra: []supplementalImpactPhysical{}, Missed: []supplementalImpactPhysical{}, ProtectedConflicts: []string{}, SameNameConflicts: []string{}}
-		baseline, proposed := before[key(c.Name, c.Number)], after[key(c.Name, c.Number)]
+		baseline, proposed := before[c.ID], after[c.ID]
 		for _, d := range saved {
 			if d.Decision == "confirmed" {
 				physical := supplementalImpactPhysical{d.StreamName, d.M3UAccountID, d.StreamID}
@@ -329,7 +333,13 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 		}
 		sort.Strings(row.ProtectedConflicts)
 		sort.Strings(row.SameNameConflicts)
-		rows = append(rows, row)
+		// Embedded aliases are shared by exported name in the unchanged consumer.
+		// Include collateral additions/losses and protected conflicts even on a
+		// sibling target that has no supplemental decision of its own. Its extras
+		// enter the existing explicit channel-scoped review path, never auto-Deny.
+		if len(saved) > 0 || len(row.Extra) > 0 || len(row.ProtectedConflicts) > 0 {
+			rows = append(rows, row)
+		}
 	}
 	sort.Slice(rows, func(i, j int) bool { return rows[i].ChannelID < rows[j].ChannelID })
 	return rows
