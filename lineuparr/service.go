@@ -1534,7 +1534,11 @@ func aliasLess(left, right string) bool {
 	if leftNumeric != rightNumeric {
 		return !leftNumeric
 	}
-	return strings.ToLower(left) < strings.ToLower(right)
+	leftFolded, rightFolded := strings.ToLower(left), strings.ToLower(right)
+	if leftFolded == rightFolded {
+		return left < right
+	}
+	return leftFolded < rightFolded
 }
 
 func isDigits(value string) bool {

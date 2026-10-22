@@ -1,9 +1,35 @@
 package lineuparr
 
 import (
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 )
+
+func TestCaseVariantRepresentationsHaveDeterministicOrder(t *testing.T) {
+	// Case-sensitive consumer representations must not inherit Go map iteration
+	// order when their folded identities compare equal.
+	if !aliasLess("THEGRIO", "TheGrio") || aliasLess("TheGrio", "THEGRIO") {
+		t.Fatal("case variants need a deterministic tie breaker")
+	}
+	for _, values := range [][]string{{"TheGrio", "THEGRIO", "22", "METV PLUS"}, {"22", "THEGRIO", "METV PLUS", "TheGrio"}} {
+		sort.SliceStable(values, func(i, j int) bool { return aliasLess(values[i], values[j]) })
+		if !reflect.DeepEqual(values, []string{"METV PLUS", "THEGRIO", "TheGrio", "22"}) {
+			t.Fatalf("unexpected alias order: %v", values)
+		}
+	}
+	var first DraftChannel
+	for attempt := 0; attempt < 20; attempt++ {
+		c := newChannelWork(InputChannel{Key: "s", StationID: "s", CallSign: "CALL", ExternalAliases: []AttributedAlias{{Value: "TheGrio", Source: "fixture", Method: "exact row"}}})
+		finalizeChannel(c)
+		if attempt == 0 {
+			first = c.draft
+		} else if !reflect.DeepEqual(c.draft.Aliases, first.Aliases) || !reflect.DeepEqual(c.draft.AliasEvidence, first.AliasEvidence) {
+			t.Fatalf("finalized aliases or evidence changed order: %+v", c.draft)
+		}
+	}
+}
 
 func TestAdmittedRepresentationPreservesPlusAndCase(t *testing.T) {
 	c := newChannelWork(InputChannel{Key: "s", StationID: "s", CallSign: "CALL", Affiliate: "METV+", ExternalAliases: []AttributedAlias{{Value: "TheGrio", Source: "fixture", Method: "exact row"}}})
