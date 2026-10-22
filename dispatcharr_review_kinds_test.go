@@ -78,7 +78,7 @@ func TestHighScoreReviewRemainsVisibleAndDecisionExportSemantics(t *testing.T) {
 				out := httptest.NewRecorder()
 				request := httptest.NewRequest(method, "/api/lineuparr/dispatcharr/decision", strings.NewReader(string(body)))
 				request.Header.Set("Content-Type", "application/json")
-				server.handleDecision(out, request)
+				server.handleDecision(out, withTestReviewOperation(server, request))
 				if out.Code != http.StatusOK {
 					t.Fatalf("decision: %d %s", out.Code, out.Body.String())
 				}
@@ -213,7 +213,7 @@ func TestPendingFeedDecisionRestartAndUndoKeepScoreClasses(t *testing.T) {
 				r := httptest.NewRequest(method, "/api/lineuparr/dispatcharr/decision", strings.NewReader(string(data)))
 				r.Header.Set("Content-Type", "application/json")
 				w := httptest.NewRecorder()
-				s.handleDecision(w, r)
+				s.handleDecision(w, withTestReviewOperation(s, r))
 				if w.Code != 200 {
 					t.Fatal(w.Code, w.Body.String())
 				}

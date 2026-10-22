@@ -60,8 +60,10 @@ func TestKnownInventoryDriftFencesExportLease(t *testing.T) {
 		t.Fatalf("known drift blocked fresh advisory generation: %v", err)
 	}
 	s.cache.mu.Lock()
-	s.cache.streams[0].Name = "Changed again"
+	streams := append([]dispatcharr.Stream(nil), s.cache.streams...)
 	s.cache.mu.Unlock()
+	streams[0].Name = "Changed again"
+	s.cache.observe(s.snapshot.dispatcharrFingerprint, streams)
 	if _, err := s.commitAutomaticDraft(fresh, func() error { t.Fatal("inventory changed mid-export"); return nil }); err == nil {
 		t.Fatal("new drift did not fence old export lease")
 	}

@@ -299,3 +299,14 @@ func (s *Store) Save(config Config) error {
 	s.source = "file"
 	return nil
 }
+
+// WhileConfiguration fences metadata that can change without changing the source
+// identity (for example provider labels used as source evidence).
+func (s *Store) WhileConfiguration(config Config, action func() error) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if !s.configured || s.config != config {
+		return false, nil
+	}
+	return true, action()
+}

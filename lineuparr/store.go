@@ -12,9 +12,10 @@ import (
 )
 
 type StateStore struct {
-	mu    sync.RWMutex
-	path  string
-	state State
+	mu         sync.RWMutex
+	path       string
+	state      State
+	beforeSave func(string) error // isolated persistence fault injection; nil in production
 }
 
 var ErrMatchChannelExcluded = errors.New("match target is excluded")
@@ -220,6 +221,10 @@ func (s *StateStore) SetMatchDecision(fingerprint string, decision MatchDecision
 }
 
 func (s *StateStore) SetMatchDecisions(fingerprint string, decisions []MatchDecision) error {
+	return s.setMatchDecisions(fingerprint, "", decisions, false, false, nil)
+}
+
+func (s *StateStore) setMatchDecisions(fingerprint, inputToken string, decisions []MatchDecision, admitted, retryOnly bool, guard func(func() error) error) error {
 	if fingerprint == "" || len(decisions) == 0 {
 		return errors.New("source fingerprint and match decisions are required")
 	}
@@ -230,17 +235,57 @@ func (s *StateStore) SetMatchDecisions(fingerprint string, decisions []MatchDeci
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.ensureSourceLocked(fingerprint)
+	if admitted && s.reviewInputTokenLocked() != inputToken {
+		return ErrStaleReview
+	}
 	for _, decision := range decisions {
-		if included := s.state.Channels[decision.ChannelID].Included; included != nil && !*included {
-			return ErrMatchChannelExcluded
+		if s.state.SourceFingerprint == fingerprint {
+			if included := s.state.Channels[decision.ChannelID].Included; included != nil && !*included {
+				return ErrMatchChannelExcluded
+			}
 		}
 	}
+	if admitted {
+		identical := 0
+		for _, decision := range decisions {
+			if old, found := s.state.MatchDecisions[decision.Key]; found && s.state.SourceFingerprint == fingerprint {
+				old.UpdatedAt = time.Time{}
+				decision.UpdatedAt = time.Time{}
+				if old != decision {
+					return ErrStaleReview
+				}
+				identical++
+			}
+		}
+		if identical == len(decisions) {
+			if guard != nil {
+				return guard(func() error { return nil })
+			}
+			return nil
+		}
+		if retryOnly || identical != 0 {
+			return ErrStaleReview
+		}
+		// A different admitted group cannot reverse a settled literal pair. Keep
+		// the same literal equality used by FilterSnapshotCandidates.
+		if s.state.SourceFingerprint == fingerprint {
+			for _, decision := range decisions {
+				for _, old := range s.state.MatchDecisions {
+					if old.ChannelID == decision.ChannelID && (old.StreamFingerprint == decision.StreamFingerprint && old.StreamFingerprint != "" || strings.EqualFold(strings.Join(strings.Fields(old.StreamName), " "), strings.Join(strings.Fields(decision.StreamName), " "))) {
+						return ErrStaleReview
+					}
+				}
+			}
+		}
+	}
+	previous := s.state
+	s.state = cloneReviewState(s.state)
+	s.ensureSourceLocked(fingerprint)
 	for _, decision := range decisions {
 		s.state.MatchDecisions[decision.Key] = decision
 		if decision.Decision == "confirmed" && decision.ChannelID != "" && decision.StreamName != "" {
 			override := s.state.Channels[decision.ChannelID]
-			filtered := override.SuppressedAliases[:0]
+			filtered := make([]string, 0, len(override.SuppressedAliases))
 			for _, alias := range override.SuppressedAliases {
 				if !strings.EqualFold(alias, decision.StreamName) {
 					filtered = append(filtered, alias)
@@ -254,7 +299,31 @@ func (s *StateStore) SetMatchDecisions(fingerprint string, decisions []MatchDeci
 			}
 		}
 	}
-	return s.saveLocked()
+	write := s.saveLocked
+	if guard != nil {
+		write = func() error { return guard(s.saveLocked) }
+	}
+	if err := write(); err != nil {
+		s.state = previous
+		return err
+	}
+	return nil
+}
+
+// Copy the maps and mutable alias slices touched by review writes. Readers hold
+// the state lock and only see the new state after the atomic rename succeeds.
+func cloneReviewState(state State) State {
+	next := state
+	next.Channels = make(map[string]ChannelOverride, len(state.Channels))
+	for k, v := range state.Channels {
+		v.SuppressedAliases = append([]string(nil), v.SuppressedAliases...)
+		next.Channels[k] = v
+	}
+	next.MatchDecisions = make(map[string]MatchDecision, len(state.MatchDecisions))
+	for k, v := range state.MatchDecisions {
+		next.MatchDecisions[k] = v
+	}
+	return next
 }
 
 func (s *StateStore) ClearMatchDecision(fingerprint, key string) error {
@@ -272,11 +341,17 @@ func (s *StateStore) ClearMatchDecisions(fingerprint string, keys []string) erro
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	previous := s.state
+	s.state = cloneReviewState(s.state)
 	s.ensureSourceLocked(fingerprint)
 	for _, key := range keys {
 		delete(s.state.MatchDecisions, key)
 	}
-	return s.saveLocked()
+	if err := s.saveLocked(); err != nil {
+		s.state = previous
+		return err
+	}
+	return nil
 }
 
 func (s *StateStore) SetTMDBDisposition(fingerprint, disposition string, completedAt time.Time) error {
@@ -326,6 +401,9 @@ func (s *StateStore) ensureSourceLocked(fingerprint string) {
 }
 
 func (s *StateStore) saveLocked() error {
+	if err := s.saveStage("encode"); err != nil {
+		return err
+	}
 	data, err := json.MarshalIndent(s.state, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encoding Lineuparr builder state: %w", err)
@@ -350,9 +428,17 @@ func (s *StateStore) saveLocked() error {
 		_ = tmp.Close()
 		return fmt.Errorf("securing temporary Lineuparr state: %w", err)
 	}
+	if err := s.saveStage("write"); err != nil {
+		_ = tmp.Close()
+		return err
+	}
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("writing Lineuparr state: %w", err)
+	}
+	if err := s.saveStage("sync"); err != nil {
+		_ = tmp.Close()
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
@@ -361,10 +447,20 @@ func (s *StateStore) saveLocked() error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("closing temporary Lineuparr state: %w", err)
 	}
+	if err := s.saveStage("rename"); err != nil {
+		return err
+	}
 	if err := os.Rename(tmpName, s.path); err != nil {
 		return fmt.Errorf("replacing Lineuparr state: %w", err)
 	}
 	removeTemp = false
 	// The 0600 temporary file retains its mode across atomic rename.
+	return nil
+}
+
+func (s *StateStore) saveStage(stage string) error {
+	if s.beforeSave != nil {
+		return s.beforeSave(stage)
+	}
 	return nil
 }

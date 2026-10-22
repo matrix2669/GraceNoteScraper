@@ -66,6 +66,8 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.evaluate(()=>{clearTimeout(matchReconcileTimer);matchReview={...matchReview,candidates:[candidate('last1'),candidate('last2')],candidateCount:3,candidateStreamCount:3};renderMatchReview();});
   await row('last1').locator('.confirm-button').click();await row('last2').locator('.deny-button').click();
   await page.waitForFunction(()=>saves.length===4);assert.equal(await page.evaluate(()=>loads),0);
+  assert.equal(await page.locator('.match-load-more').isDisabled(),true,'pending render must disable Load more');
+  await page.evaluate(()=>loadMoreMatches());assert.match(await page.evaluate(()=>messages.at(-1).text),/Waiting for/);assert.equal(await page.evaluate(()=>loads),0);
   await page.evaluate(()=>saves[3].resolve({saved:true}));await page.waitForFunction(()=>saves.length===5);assert.equal(await page.evaluate(()=>loads),0);
   await page.evaluate(()=>saves[4].resolve({saved:true}));await page.waitForFunction(()=>loads===1);
   // A new source/reset epoch must fence both the in-flight reply and choices
