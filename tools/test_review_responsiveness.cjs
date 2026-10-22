@@ -84,6 +84,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   assert.equal(await popup.evaluate(n=>n.open),true);await popup.getByRole('button',{name:'Confirm this match',exact:true}).click();await page.waitForFunction(()=>saves.length===10);await page.evaluate(()=>saves[9].resolve({saved:true}));
   await page.waitForFunction(()=>document.getElementById('match-alternative-title').textContent==='Other matches for primary-b');assert.equal(await popup.evaluate(n=>n.open),true);
   await popup.getByRole('button',{name:'Deny',exact:true}).click();await page.waitForFunction(()=>saves.length===11);await page.evaluate(()=>saves[10].resolve({saved:true}));await page.waitForFunction(()=>!document.getElementById('match-alternative-dialog').open);assert.equal(await page.evaluate(()=>matchReview.candidateCount),0);
+  assert.equal(await page.evaluate(()=>saves.every(s=>Array.isArray(s.body.tvgIds)&&s.body.tvgIds.length===0)),true,'primary and popup writes must omit provider IDs');
   console.log(`Responsive review: 21,208-stream view, 100 rows/722 decisions/800 constraints; next choice accepted in ${elapsed.toFixed(1)}ms while prior save pending; failure isolation and background draft overlap pass`);
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
