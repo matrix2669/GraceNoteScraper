@@ -884,6 +884,9 @@
     let matchReview = null;
     let dispatchBusy = false;
     const pendingDecisions = new Set();
+    let decisionSaveQueue = Promise.resolve();
+    let matchReconcileTimer = null;
+    const pendingAlternativeReviews = [];
     let decisionRevision = 0;
     let matchReviewRequest = 0;
     let matchReviewLimit = 100;
@@ -1168,6 +1171,9 @@
     }
 
     function invalidateDispatchReview() {
+      clearTimeout(matchReconcileTimer);
+      pendingAlternativeReviews.length = 0;
+      reviewOrder = new Map();
       renderAutomaticExclusions(null);
       ++dispatchReviewEpoch;
       ++matchReviewRequest;
@@ -1321,7 +1327,7 @@
     }
 
     async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
-      if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
+      if (!draft || !dispatchConfig?.configured || pendingDecisions.size || (interactive && dispatchBusy)) return;
       if (force) {
         requestedLimit = 100;
         ++dispatchReviewEpoch;
@@ -1344,13 +1350,14 @@
         const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         matchReview = review;
+        reviewOrder = new Map();
         workflowRemote.dispatch = review;
         workflowRemote.dispatchReady = true;
         matchReviewLimit = review.visibleLimit || requestedLimit;
         renderMatchReview();
         return true;
       } catch (error) {
-        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) return false;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return false;
         if (matchReview) matchReview = {...matchReview, reviewStatus:'stale'};
         workflowRemote.dispatch = matchReview;
         if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
@@ -1358,7 +1365,7 @@
         return false;
       } finally {
         stopProgress();
-        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) {
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) {
           if (interactive && dispatchBusyRequest === requestNumber) {
             dispatchBusy = false;
             setDispatchControls();
@@ -1426,6 +1433,7 @@
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
       if (!matchReview.warning) els.matchStatus.textContent += ' Review all proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
+      if (pendingDecisions.size) els.matchStatus.textContent += ` Saving ${pendingDecisions.size} choice(s)… You can continue reviewing.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       const candidates = matchReview.candidates || [];
@@ -1457,7 +1465,7 @@
     }
 
     async function refillResolvedPage() {
-      if (!matchReview || dispatchBusy || pendingDecisions.size || els.alternativeDialog.hasAttribute('open')) return;
+      if (!matchReview || dispatchBusy || pendingDecisions.size || pendingAlternativeReviews.length || els.alternativeDialog.hasAttribute('open')) return;
       const visible = matchReview.candidates || [];
       if (!visible.length && matchReview.candidateCount > 0) {
         // One prefix reload per successful decision. Failure stays visible with Load more retry.
@@ -1493,28 +1501,110 @@
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
       buttons.append(confirmButton);
+      if (candidate.saveError) { const error = document.createElement('p'); error.className='warning'; error.textContent=candidate.saveError; stream.append(error); }
       buttons.append(denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
 
     function decisionRow(decision) {
-      const row = document.createElement('div'); row.className = 'decision-row';
+      const row = document.createElement('div'); row.className = 'decision-row'; row.dataset.key = decision.key;
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
       const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
       copy.append(title, meta);
+      if (pendingDecisions.has(decision.key)) meta.textContent += ' · Saving…';
       if (decision.needsReview) {const warning = document.createElement('p'); warning.className='warning'; warning.textContent=decision.reviewWarning;copy.append(warning);}
-      const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
+      const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.disabled = pendingDecisions.size > 0; undo.addEventListener('click', () => clearDecision(decision.key));
       row.append(copy, undo); return row;
     }
 
-    async function decideMatch(key, decision) {
-      if (pendingDecisions.size || dispatchBusy || !matchReview) return;
-      const candidate = (matchReview.candidates || []).find(item => item.key === key);
-      if (!candidate) return;
+    // Individual choices are accepted immediately. Persist in order because the
+    // server validates a source/state lease per save; do not race that lease with
+    // another local write. This is not a batch or an automatic review decision.
+    function saveMatchDecision(key, decision, epoch) {
+      const save = decisionSaveQueue.then(() => {
+        if (epoch !== dispatchReviewEpoch) throw new Error('Review changed before this choice was saved. Reload match review.');
+        return api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
+        });
+      });
+      decisionSaveQueue = save.catch(() => {});
+      return save;
+    }
+
+    let reviewOrder = new Map();
+    function rememberReviewOrder() {
+      // Removal-only input changes retain this visible page, including pending
+      // rows. Only a new authoritative window/source replaces its order map.
+      for (const item of matchReview.candidates || []) if (!reviewOrder.has(item.key)) reviewOrder.set(item.key, reviewOrder.size);
+      return reviewOrder;
+    }
+
+    function protectUnsavedReview(event) {
+      if (!pendingDecisions.size) return;
+      event.preventDefault();
+      event.returnValue = '';
+    }
+
+    function beginMatchDecision(key) {
       pendingDecisions.add(key);
       decisionRevision++;
-      ++dispatchReviewEpoch;
+      clearTimeout(matchReconcileTimer);
+      workflowRemote.dispatch = null;
+      workflowRemote.dispatchReady = false;
+      setDispatchControls();
+      renderGuidedWorkflow();
+    }
+
+    function scheduleDecisionDraftRefresh() {
+      clearTimeout(matchReconcileTimer);
+      const epoch = dispatchReviewEpoch;
+      matchReconcileTimer = setTimeout(async () => {
+        matchReconcileTimer = null;
+        if (pendingDecisions.size || dispatchBusy || epoch !== dispatchReviewEpoch) return;
+        const revision = decisionRevision;
+        try { await reloadDraft(epoch, revision); }
+        catch (error) {
+          if (epoch === dispatchReviewEpoch && revision === decisionRevision) showMessage(`Choices saved. Could not update the draft: ${error.message}`, true);
+        }
+        if (epoch === dispatchReviewEpoch && revision === decisionRevision) scheduleWorkflowRefresh(0);
+      }, 350);
+    }
+
+    async function finishMatchDecision(key, epoch, saved) {
+      pendingDecisions.delete(key);
+      decisionRevision++;
+      // Epoch changes cancel unsent choices but must not strand global controls
+      // or leave the current view claiming those choices are still saving.
+      renderMatchReview();
+      setDispatchControls();
+      renderGuidedWorkflow();
+      if (!pendingDecisions.size) {
+        if (saved && epoch === dispatchReviewEpoch) await refillResolvedPage();
+        scheduleDecisionDraftRefresh();
+      }
+    }
+
+    function offerMatchAlternatives(candidate) {
+      if (candidate.reviewEpoch !== undefined && candidate.reviewEpoch !== dispatchReviewEpoch) return;
+      const decided = new Set((matchReview?.decisions || []).map(d => d.key));
+      const included = new Set(draft.channels.filter(c => c.included).map(c => c.id));
+      candidate = {...candidate, reviewEpoch:dispatchReviewEpoch, alternatives:(candidate.alternatives || []).filter(a => included.has(a.channelId) && !pendingDecisions.has(a.key) && !decided.has(a.key))};
+      if (!candidate.alternatives.length) return;
+      if (els.alternativeDialog.hasAttribute('open')) pendingAlternativeReviews.push(candidate);
+      else openMatchAlternatives(candidate);
+    }
+
+    async function decideMatch(key, decision) {
+      if (pendingDecisions.has(key) || dispatchBusy || builderResetPending || !matchReview) return;
+      const index = (matchReview.candidates || []).findIndex(item => item.key === key);
+      const candidate = matchReview.candidates?.[index];
+      if (!candidate) return;
+      const order = rememberReviewOrder();
+      const decisionEpoch = dispatchReviewEpoch;
+      const source = draft.sourceFingerprint;
+      const optimistic = {key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore};
+      beginMatchDecision(key);
       matchReview = {
         ...matchReview,
         candidateCount: Math.max(0, matchReview.candidateCount - 1),
@@ -1522,46 +1612,44 @@
         confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
         deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
-        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
+        decisions: [optimistic, ...(matchReview.decisions || [])]
       };
       renderMatchReview();
-      const decisionEpoch = dispatchReviewEpoch;
       let saved = false;
       try {
-        await api('/api/lineuparr/dispatcharr/decision', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
-        });
+        await saveMatchDecision(key, decision, decisionEpoch);
         saved = true;
         if (decisionEpoch !== dispatchReviewEpoch) return;
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== key);
-        await reloadDraft(decisionEpoch);
-        if (decisionEpoch !== dispatchReviewEpoch) return;
         const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
-          openMatchAlternatives(candidate);
+          offerMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
           showMessage(decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
-        if (saved || decisionEpoch !== dispatchReviewEpoch) { showMessage(error.message, true); return; }
-        matchReview.candidateCount++;
-        matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
-        matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
-        matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
-        matchReview.candidates = [candidate, ...(matchReview.candidates || [])];
-        matchReview.decisions = (matchReview.decisions || []).filter(item => item.key !== key);
-        renderMatchReview();
-        showMessage(error.message, true);
+        if (saved) return;
+        // Only roll back our own optimistic entry. A newer server response or
+        // another source may already have replaced it with authoritative state.
+        if (matchReview?.decisions?.includes(optimistic)) {
+          matchReview.decisions = matchReview.decisions.filter(item => item !== optimistic);
+          matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
+          matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
+          const currentTarget = source === draft.sourceFingerprint && matchReview.reviewStatus === 'current' && draft.channels.some(c => c.id === candidate.channelId && c.included);
+          if (decisionEpoch === dispatchReviewEpoch || currentTarget) {
+            candidate.saveError = `Save not acknowledged: ${error.message}. Retry or reload to check saved state.`;
+            candidate.alternatives = (candidate.alternatives || []).filter(a => draft.channels.some(c => c.id === a.channelId && c.included));
+            const nextIndex = matchReview.candidates.findIndex(c => (order.get(c.key) ?? Infinity) > order.get(key));
+            matchReview.candidates.splice(nextIndex < 0 ? matchReview.candidates.length : nextIndex, 0, candidate);
+            matchReview.candidateCount++;
+            matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
+          }
+          renderMatchReview();
+        }
+        showMessage(`Save not acknowledged for ${candidate.alias}: ${error.message}. Retry the restored item or reload to check the current review.`, true);
       } finally {
-        pendingDecisions.delete(key);
-        if (decisionEpoch !== dispatchReviewEpoch) return;
-        ++dispatchReviewEpoch;
-        workflowRemote.dispatch = null;
-        workflowRemote.dispatchReady = false;
-        renderGuidedWorkflow();
-        scheduleWorkflowRefresh(0);
-        if (saved) await refillResolvedPage();
+        await finishMatchDecision(key, decisionEpoch, saved);
       }
     }
 
@@ -1606,24 +1694,19 @@
     }
 
     async function decideAlternative(primary, candidate, decision, card) {
-      if (pendingDecisions.size || dispatchBusy) return;
-      pendingDecisions.add(candidate.key);
-      decisionRevision++;
-      ++dispatchReviewEpoch;
+      if (pendingDecisions.has(candidate.key) || dispatchBusy || builderResetPending) return;
       const decisionEpoch = dispatchReviewEpoch;
       const popupKey = els.alternativeDialog.dataset.reviewKey;
+      beginMatchDecision(candidate.key);
       let saved = false;
-      renderGuidedWorkflow();
       for (const button of card.querySelectorAll('button')) button.disabled = true;
       try {
-        await api('/api/lineuparr/dispatcharr/decision', {
-          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
-        });
+        await saveMatchDecision(candidate.key, decision, decisionEpoch);
         saved = true;
         if (decisionEpoch !== dispatchReviewEpoch) return;
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
-        matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        matchReview.decisions = [{key:candidate.key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
         primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         matchReview.candidates = (matchReview.candidates || []).filter(item => item.key !== candidate.key);
         matchReview.candidateCount = Math.max(0, matchReview.candidateCount - 1);
@@ -1634,21 +1717,13 @@
           card.remove();
           if (!els.alternativeList.querySelector('.match-alternative-card')) closeMatchAlternatives();
         }
-        await reloadDraft(decisionEpoch);
-        if (decisionEpoch !== dispatchReviewEpoch) return;
         showMessage(decision === 'confirmed' ? 'Alternate match confirmed.' : 'Alternate match denied.');
       } catch (error) {
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         if (!saved) for (const button of card.querySelectorAll('button')) button.disabled = false;
         showMessage(error.message, true);
       } finally {
-        pendingDecisions.delete(candidate.key);
-        if (decisionEpoch !== dispatchReviewEpoch) return;
-        ++dispatchReviewEpoch;
-        workflowRemote.dispatch = null;
-        workflowRemote.dispatchReady = false;
-        renderGuidedWorkflow();
-        scheduleWorkflowRefresh(0);
-        if (saved) await refillResolvedPage();
+        await finishMatchDecision(candidate.key, decisionEpoch, saved);
       }
     }
 
@@ -1658,7 +1733,7 @@
     }
 
     async function clearDecision(key) {
-      if (dispatchBusy) return;
+      if (dispatchBusy || pendingDecisions.size) return;
       ++dispatchReviewEpoch;
       dispatchBusy = true; setDispatchControls(); renderGuidedWorkflow();
       try {
@@ -1683,7 +1758,12 @@
       els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
       els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
       els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
-      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
+      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) {
+        const key = control.closest('[data-key]')?.dataset.key;
+        control.disabled = dispatchBusy || (key && pendingDecisions.has(key)) || (pendingDecisions.size > 0 && !!control.closest('.decision-row, .match-load-more'));
+      }
+      for (const control of [els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy || pendingDecisions.size > 0;
+      els.exportOpen.disabled = publishing || saving || pendingChannelSaves > 0 || pendingDecisions.size > 0;
     }
 
     function showConfirmedMatches() {
@@ -1706,10 +1786,10 @@
     }
 
     let draftRequest = 0;
-    async function reloadDraft(expectedEpoch = null) {
+    async function reloadDraft(expectedEpoch = null, expectedRevision = decisionRevision) {
       const request = ++draftRequest;
       const next = await api('/api/lineuparr/draft');
-      if (request !== draftRequest || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
+      if (request !== draftRequest || expectedRevision !== decisionRevision || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
       draft = next;
       renderAll();
       void refreshResetRecovery();
@@ -1758,6 +1838,7 @@
           matchReview = {...matchReview, candidates, candidateCount:candidates.length,
             candidateStreamCount:candidates.reduce((sum,c) => sum+c.streamCount,0)};
         } else {
+          reviewOrder = new Map();
           matchReview = {...matchReview, automatic:{status:'refresh-required',rows:[]}, reviewStatus:'refresh-required', streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
             warning:'Refresh required to match streams to the included channels. Press Refresh streams.'};
         }
@@ -1781,7 +1862,7 @@
       els.removeDuplicates.title = 'Review SD/HD groups and exact repeated positions. No channels change until you apply your choices.';
       els.removeDuplicates.disabled = saving || count === 0;
       els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
-      els.exportOpen.disabled = saving || pendingChannelSaves > 0;
+      els.exportOpen.disabled = saving || pendingChannelSaves > 0 || pendingDecisions.size > 0;
     }
 
     function remainingDuplicateSuggestions() {
@@ -2523,9 +2604,10 @@
     }
 
     async function loadWorkflowStatus() {
-      if (workflowRefreshing || !draft) { scheduleWorkflowRefresh(); return; }
+      if (workflowRefreshing || pendingDecisions.size || !draft) { scheduleWorkflowRefresh(); return; }
       workflowRefreshing = true;
       const epoch = dispatchReviewEpoch;
+      const revision = decisionRevision;
       try {
         const requests = [api('/api/lineuparr/workflow')];
         const positions = {progress: 0};
@@ -2539,7 +2621,7 @@
           positions[key] = requests.length; requests.push(optionalAPI(path));
         }
         const results = await Promise.all(requests);
-        if (epoch !== dispatchReviewEpoch) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
         workflowProgress = results[positions.progress] || {};
         for (const key of ['local','major','tmdb','dispatchConfig']) if (positions[key] !== undefined && results[positions[key]]) workflowRemote[key] = results[positions[key]];
         if (workflowRemote.tmdb?.state === 'enriching') workflowRemote.setup = await optionalAPI('/api/setup/status');
@@ -2547,10 +2629,10 @@
         if (tmdbConfigured && workflowRemote.tmdb.state === 'current' && workflowProgress.tmdbDisposition !== 'complete') {
           workflowProgress = await api('/api/lineuparr/workflow', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'complete-tmdb', sourceFingerprint:draft.sourceFingerprint})});
         }
-        if (epoch !== dispatchReviewEpoch) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
         if (workflowRemote.dispatchConfig?.configured) {
           const review = await optionalAPI('/api/lineuparr/dispatcharr/review?limit=1');
-          if (epoch !== dispatchReviewEpoch) return;
+          if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
           workflowRemote.dispatch = review;
           workflowRemote.dispatchReady = !!workflowRemote.dispatch;
         } else if (workflowRemote.dispatchConfig) {
@@ -2558,7 +2640,7 @@
         }
         renderGuidedWorkflow();
       } catch (error) {
-        if (epoch !== dispatchReviewEpoch) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
         showMessage(error.message, true);
       } finally {
         workflowRefreshing = false;
@@ -2737,7 +2819,7 @@
     document.addEventListener('DOMContentLoaded', () => { arrangeLineuparrWorkflow(); refreshExportSummary(); scheduleWorkflowRefresh(0); });
 
     async function generateLineup() {
-      if (publishing || !draft || saving || pendingChannelSaves) return;
+      if (publishing || !draft || saving || pendingChannelSaves || pendingDecisions.size) return;
       publishing = true; els.exportOpen.disabled = true; showMessage('Generating the Lineuparr lineup file…');
       try {
         const result = await api('/api/lineuparr/publish', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint})});
@@ -2836,11 +2918,15 @@
     initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
+    window.addEventListener('beforeunload', protectUnsavedReview);
     els.dispatchForm.addEventListener('submit', saveDispatch);
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
     els.alternativeClose.addEventListener('click', closeMatchAlternatives);
-    els.alternativeDialog.addEventListener('close', () => { void refillResolvedPage(); });
+    els.alternativeDialog.addEventListener('close', () => {
+      while (pendingAlternativeReviews.length && !els.alternativeDialog.hasAttribute('open')) offerMatchAlternatives(pendingAlternativeReviews.shift());
+      void refillResolvedPage();
+    });
     document.getElementById('builder-reset').addEventListener('click', () => resetBuilder());
     document.getElementById('builder-reset-undo').addEventListener('click', () => resetBuilder(true));
     els.dispatchRefresh.addEventListener('click', async () => { if (await loadMatchReview(true)) await reloadDraft(); });
