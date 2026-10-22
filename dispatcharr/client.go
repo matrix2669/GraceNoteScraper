@@ -110,6 +110,10 @@ func (c *Client) Streams(ctx context.Context, config Config) ([]Stream, error) {
 		for _, stream := range page.Results {
 			stream.Name = strings.TrimSpace(stream.Name)
 			stream.TVGID = strings.TrimSpace(stream.TVGID)
+			stream.GroupName = strings.TrimSpace(stream.GroupName)
+			if len(stream.GroupName) > maxStreamNameSize {
+				stream.GroupName = ""
+			}
 			if stream.ID <= 0 || stream.M3UAccountID <= 0 || stream.Name == "" || len(stream.Name) > maxStreamNameSize {
 				continue
 			}

@@ -24,7 +24,7 @@ type dispatcharrCoverage struct {
 func streamInventoryDigest(streams []dispatcharr.Stream) string {
 	keys := make([]string, len(streams))
 	for i, s := range streams {
-		keys[i] = s.Fingerprint()
+		keys[i] = s.Fingerprint() + "\x00" + s.GroupName
 	}
 	sort.Strings(keys)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(keys, "\x00"))))

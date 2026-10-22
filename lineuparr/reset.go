@@ -72,6 +72,7 @@ func (s *Service) ResetBuilder(fingerprint, token, restore string, withdrawPubli
 		}
 		next.Channels = map[string]ChannelOverride{}
 		next.MatchDecisions = map[string]MatchDecision{}
+		next.SupplementalDecisions = map[string]SupplementalDecision{}
 		next.Workflow.CustomizationSignature = ""
 		next.Workflow.CustomizationCompletedAt = time.Time{}
 	}

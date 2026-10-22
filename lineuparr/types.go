@@ -19,16 +19,17 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key              string
-	StationID        string
-	PlacementID      string
-	Number           string
-	CallSign         string
-	Affiliate        string
-	EventCallSigns   []string
-	PreferredName    *AttributedAlias
-	CategoryHint     *AttributedCategory
-	CategoryConflict bool
+	SupplementalEvidence []ServiceIdentityEvidence
+	Key                  string
+	StationID            string
+	PlacementID          string
+	Number               string
+	CallSign             string
+	Affiliate            string
+	EventCallSigns       []string
+	PreferredName        *AttributedAlias
+	CategoryHint         *AttributedCategory
+	CategoryConflict     bool
 	// Independent schedule support is kept separate from CategoryHint. A
 	// provider category may be the selected proposal while the guide schedule
 	// independently confirms it (or disagrees and keeps review open).
@@ -73,6 +74,8 @@ type IdentifierEvidence struct {
 // ServiceIdentityEvidence keeps source/row/pair associations intact. It is
 // separate from flattened alias labels and never authorizes channel removal.
 type ServiceIdentityEvidence struct {
+	Feed           string `json:"feed,omitempty"`
+	ServiceFamily  string `json:"serviceFamily,omitempty"`
 	BindingKind    string `json:"bindingKind,omitempty"`
 	SourceRevision string `json:"sourceRevision,omitempty"`
 	Value          string `json:"value"`
@@ -85,8 +88,11 @@ type ServiceIdentityEvidence struct {
 }
 
 type DraftChannel struct {
-	ServiceEvidence []ServiceIdentityEvidence `json:"serviceEvidence,omitempty"`
-	InclusionChoice *bool                     `json:"inclusionChoice,omitempty"`
+	SupplementalEvidence        []ServiceIdentityEvidence `json:"supplementalEvidence,omitempty"`
+	SupplementalAliases         []string                  `json:"supplementalAliases,omitempty"`
+	SupplementalExcludedAliases []string                  `json:"supplementalExcludedAliases,omitempty"`
+	ServiceEvidence             []ServiceIdentityEvidence `json:"serviceEvidence,omitempty"`
+	InclusionChoice             *bool                     `json:"inclusionChoice,omitempty"`
 
 	CategoryPriority         int                  `json:"categoryPriority"`
 	NeedsCategoryReview      bool                 `json:"needsCategoryReview"`
@@ -172,32 +178,34 @@ type AutomaticMatchLease struct {
 }
 
 type Draft struct {
-	ResetGeneration          uint64                `json:"resetGeneration"`
-	PublicationGeneration    uint64                `json:"publicationGeneration"`
-	AutomaticLease           *AutomaticMatchLease  `json:"-"`
-	AutomaticMatchingStatus  string                `json:"automaticMatchingStatus,omitempty"`
-	AutomaticMatchingMessage string                `json:"automaticMatchingMessage,omitempty"`
-	AutomaticExclusionCount  int                   `json:"automaticExclusionCount"`
-	SourceFingerprint        string                `json:"sourceFingerprint"`
-	GeneratedAt              time.Time             `json:"generatedAt"`
-	Package                  string                `json:"package"`
-	ProviderName             string                `json:"providerName"`
-	PostalCode               string                `json:"postalCode"`
-	LineupID                 string                `json:"lineupId"`
-	CountryCode              string                `json:"countryCode"`
-	Channels                 []DraftChannel        `json:"channels"`
-	DuplicateSuggestions     []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups          []DuplicateGroup      `json:"duplicateGroups"`
-	Sources                  []SourceStatus        `json:"sources"`
-	Categories               []string              `json:"categories"`
-	Total                    int                   `json:"total"`
-	Included                 int                   `json:"included"`
-	Excluded                 int                   `json:"excluded"`
-	AliasCount               int                   `json:"aliasCount"`
-	Categorized              int                   `json:"categorized"`
-	Uncategorized            int                   `json:"uncategorized"`
-	CustomizationSignature   string                `json:"customizationSignature"`
-	ExportSignatures         ExportSignatures      `json:"exportSignatures"`
+	SupplementalMessage       string                `json:"supplementalMessage,omitempty"`
+	SupplementalDecisionCount int                   `json:"supplementalDecisionCount"`
+	ResetGeneration           uint64                `json:"resetGeneration"`
+	PublicationGeneration     uint64                `json:"publicationGeneration"`
+	AutomaticLease            *AutomaticMatchLease  `json:"-"`
+	AutomaticMatchingStatus   string                `json:"automaticMatchingStatus,omitempty"`
+	AutomaticMatchingMessage  string                `json:"automaticMatchingMessage,omitempty"`
+	AutomaticExclusionCount   int                   `json:"automaticExclusionCount"`
+	SourceFingerprint         string                `json:"sourceFingerprint"`
+	GeneratedAt               time.Time             `json:"generatedAt"`
+	Package                   string                `json:"package"`
+	ProviderName              string                `json:"providerName"`
+	PostalCode                string                `json:"postalCode"`
+	LineupID                  string                `json:"lineupId"`
+	CountryCode               string                `json:"countryCode"`
+	Channels                  []DraftChannel        `json:"channels"`
+	DuplicateSuggestions      []DuplicateSuggestion `json:"duplicateSuggestions"`
+	DuplicateGroups           []DuplicateGroup      `json:"duplicateGroups"`
+	Sources                   []SourceStatus        `json:"sources"`
+	Categories                []string              `json:"categories"`
+	Total                     int                   `json:"total"`
+	Included                  int                   `json:"included"`
+	Excluded                  int                   `json:"excluded"`
+	AliasCount                int                   `json:"aliasCount"`
+	Categorized               int                   `json:"categorized"`
+	Uncategorized             int                   `json:"uncategorized"`
+	CustomizationSignature    string                `json:"customizationSignature"`
+	ExportSignatures          ExportSignatures      `json:"exportSignatures"`
 }
 
 type ExportSignatures struct {
@@ -249,14 +257,15 @@ type MatchDecision struct {
 }
 
 type State struct {
-	ResetGeneration       uint64                     `json:"resetGeneration,omitempty"`
-	PublicationGeneration uint64                     `json:"publicationGeneration,omitempty"`
-	TMDBCategoryScan      TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
-	Version               int                        `json:"version"`
-	SourceFingerprint     string                     `json:"sourceFingerprint"`
-	Channels              map[string]ChannelOverride `json:"channels,omitempty"`
-	MatchDecisions        map[string]MatchDecision   `json:"matchDecisions,omitempty"`
-	Workflow              WorkflowProgress           `json:"workflow,omitempty"`
+	SupplementalDecisions map[string]SupplementalDecision `json:"supplementalDecisions,omitempty"`
+	ResetGeneration       uint64                          `json:"resetGeneration,omitempty"`
+	PublicationGeneration uint64                          `json:"publicationGeneration,omitempty"`
+	TMDBCategoryScan      TMDBCategoryScan                `json:"tmdbCategoryScan,omitempty"`
+	Version               int                             `json:"version"`
+	SourceFingerprint     string                          `json:"sourceFingerprint"`
+	Channels              map[string]ChannelOverride      `json:"channels,omitempty"`
+	MatchDecisions        map[string]MatchDecision        `json:"matchDecisions,omitempty"`
+	Workflow              WorkflowProgress                `json:"workflow,omitempty"`
 }
 
 type WorkflowProgress struct {
@@ -276,6 +285,8 @@ type ExportFile struct {
 }
 
 type ExportChannel struct {
+	// Internal correlation survives export sorting but never enters consumer JSON.
+	ChannelID       string   `json:"-"`
 	Name            string   `json:"name"`
 	Number          any      `json:"number"`
 	Aliases         []string `json:"aliases,omitempty"`

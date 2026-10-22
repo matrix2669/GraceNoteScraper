@@ -12,6 +12,7 @@ import (
 // used for matching. Stream URLs, logos, tokens, and statistics are never
 // represented here, which keeps them out of browser responses by construction.
 type Stream struct {
+	GroupName       string   `json:"channel_group_name,omitempty"`
 	ID              int64    `json:"id"`
 	Name            string   `json:"name"`
 	TVGID           string   `json:"tvg_id,omitempty"`

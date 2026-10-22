@@ -13,7 +13,7 @@ SHA-256:
 
 `runner.py` is GraceNoteScraper's adapter. It creates one matcher at 70,
 precomputes unique stream names once, and returns every accepted pair with the
-consumer's returned score. There is no second Exact/95 pass and no Go score
+consumer's returned score. There is no second Exact/95 pass in primary prediction and no Go score
 adjustment or EPG-based candidate admission.
 
 The input profile uses the active lineup's country, channel numbers, and base
@@ -43,3 +43,26 @@ update the revision in embed.go and runner.py, update hashes here and in the
 provenance test, and run Go/Python integration tests against the intended
 consumer revision. Existing saved reviews retain their historical revision;
 use Undo and refresh to review them with the new matcher.
+
+## Explicit supplemental impact adapter
+
+`impact_runner.py` is a separate GraceNoteScraper adapter invoked only by the
+explicit batched supplemental export-impact action. It serializes/decodes real
+export JSON, runs baseline and prospective lineups at Exact95 against the same
+captured names and group-country metadata, and returns names without assigning
+scores to supplemental proposals. The primary runner is unchanged.
+Results carry the category and entry position from the decoded JSON. The Go
+export keeps an internal target ID through the same stable sorting, omitted from
+the consumer JSON, so duplicate names and normalized numbers cannot merge impact
+results. The adapter reports every exported occurrence; comparison includes
+collateral changes and protected conflicts on targets without supplemental saves.
+
+The unchanged `aliases.py` from the same installed pinned revision supplies the
+consumer's built-in and country aliases. SHA-256:
+`b9d07af27658da4ee0a74fc996611d368b2332538ddef77403b1553321a42b3b`.
+Its upstream MIT license is the included LICENSE. The explicit profile uses
+specific numbering (no number boost), embedded aliases, quality filtering off,
+and no custom aliases/settings. Missing group-country metadata is reported.
+Ordinary reads, decisions and exports never invoke this adapter. The same process
+isolation, deadline and bounded-output rules apply. Cancellation/failure never
+writes decisions or publishes a lineup.
