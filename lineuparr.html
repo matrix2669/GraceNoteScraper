@@ -1355,7 +1355,7 @@
         renderMatchReview();
         return true;
       } catch (error) {
-        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) return false;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return false;
         if (matchReview) matchReview = {...matchReview, reviewStatus:'stale'};
         workflowRemote.dispatch = matchReview;
         if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
@@ -1363,7 +1363,7 @@
         return false;
       } finally {
         stopProgress();
-        if (requestNumber !== matchReviewRequest || epoch !== dispatchReviewEpoch) {
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) {
           if (interactive && dispatchBusyRequest === requestNumber) {
             dispatchBusy = false;
             setDispatchControls();
@@ -1463,7 +1463,7 @@
     }
 
     async function refillResolvedPage() {
-      if (!matchReview || dispatchBusy || pendingDecisions.size || els.alternativeDialog.hasAttribute('open')) return;
+      if (!matchReview || dispatchBusy || pendingDecisions.size || pendingAlternativeReviews.length || els.alternativeDialog.hasAttribute('open')) return;
       const visible = matchReview.candidates || [];
       if (!visible.length && matchReview.candidateCount > 0) {
         // One prefix reload per successful decision. Failure stays visible with Load more retry.
@@ -1499,6 +1499,7 @@
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
       buttons.append(confirmButton);
+      if (candidate.saveError) { const error = document.createElement('p'); error.className='warning'; error.textContent=candidate.saveError; stream.append(error); }
       buttons.append(denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
@@ -1527,6 +1528,17 @@
       });
       decisionSaveQueue = save.catch(() => {});
       return save;
+    }
+
+    let reviewOrderEpoch = -1;
+    let reviewOrder = new Map();
+    function rememberReviewOrder() {
+      if (reviewOrderEpoch !== dispatchReviewEpoch) {
+        reviewOrderEpoch = dispatchReviewEpoch;
+        reviewOrder = new Map();
+      }
+      for (const item of matchReview.candidates || []) if (!reviewOrder.has(item.key)) reviewOrder.set(item.key, reviewOrder.size);
+      return reviewOrder;
     }
 
     function protectUnsavedReview(event) {
@@ -1563,12 +1575,13 @@
     async function finishMatchDecision(key, epoch, saved) {
       pendingDecisions.delete(key);
       decisionRevision++;
-      if (epoch !== dispatchReviewEpoch) return;
+      // Epoch changes cancel unsent choices but must not strand global controls
+      // or leave the current view claiming those choices are still saving.
       renderMatchReview();
       setDispatchControls();
       renderGuidedWorkflow();
       if (!pendingDecisions.size) {
-        if (saved) await refillResolvedPage();
+        if (saved && epoch === dispatchReviewEpoch) await refillResolvedPage();
         scheduleDecisionDraftRefresh();
       }
     }
@@ -1587,8 +1600,10 @@
       const index = (matchReview.candidates || []).findIndex(item => item.key === key);
       const candidate = matchReview.candidates?.[index];
       if (!candidate) return;
-      const following = matchReview.candidates.slice(index + 1).map(c => c.key);
+      const order = rememberReviewOrder();
       const decisionEpoch = dispatchReviewEpoch;
+      const source = draft.sourceFingerprint;
+      const optimistic = {key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore};
       beginMatchDecision(key);
       matchReview = {
         ...matchReview,
@@ -1597,7 +1612,7 @@
         confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
         deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
-        decisions: [{key, decision, channelId:candidate.channelId, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamNames:candidate.streamNames, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
+        decisions: [optimistic, ...(matchReview.decisions || [])]
       };
       renderMatchReview();
       let saved = false;
@@ -1614,16 +1629,24 @@
           showMessage(decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
-        if (saved || decisionEpoch !== dispatchReviewEpoch) return;
-        matchReview.candidateCount++;
-        matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
-        matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
-        matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
-        const nextIndex = matchReview.candidates.findIndex(c => following.includes(c.key));
-        matchReview.candidates.splice(nextIndex < 0 ? matchReview.candidates.length : nextIndex, 0, candidate);
-        matchReview.decisions = (matchReview.decisions || []).filter(item => item.key !== key);
-        renderMatchReview();
-        showMessage(`Save not acknowledged for ${candidate.alias}: ${error.message}. The item is restored; retry or reload to check saved state.`, true);
+        if (saved) return;
+        // Only roll back our own optimistic entry. A newer server response or
+        // another source may already have replaced it with authoritative state.
+        if (matchReview?.decisions?.includes(optimistic)) {
+          matchReview.decisions = matchReview.decisions.filter(item => item !== optimistic);
+          matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
+          matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
+          const currentTarget = source === draft.sourceFingerprint && matchReview.reviewStatus === 'current' && draft.channels.some(c => c.id === candidate.channelId && c.included);
+          if (decisionEpoch === dispatchReviewEpoch || currentTarget) {
+            candidate.saveError = `Save not acknowledged: ${error.message}. Retry or reload to check saved state.`;
+            const nextIndex = matchReview.candidates.findIndex(c => (order.get(c.key) ?? Infinity) > order.get(key));
+            matchReview.candidates.splice(nextIndex < 0 ? matchReview.candidates.length : nextIndex, 0, candidate);
+            matchReview.candidateCount++;
+            matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
+          }
+          renderMatchReview();
+        }
+        showMessage(`Save not acknowledged for ${candidate.alias}: ${error.message}. Retry the restored item or reload to check the current review.`, true);
       } finally {
         await finishMatchDecision(key, decisionEpoch, saved);
       }

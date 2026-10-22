@@ -10,7 +10,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.evaluate(code=>{
    window.els={};for(const [key,id] of Object.entries({matchReview:'match-review',matchStreams:'match-streams',matchCandidates:'match-candidates',matchConfirmed:'match-confirmed',matchConfirmedJump:'match-confirmed-jump',matchDenied:'match-denied',matchList:'match-list',dispatchLoading:'dispatch-loading',matchStatus:'match-status',decisionList:'decision-list',decisionHistory:'decision-history',alternativeDialog:'match-alternative-dialog',alternativeList:'match-alternative-list',alternativeTitle:'match-alternative-title',alternativeHelp:'match-alternative-help'}))els[key]=document.getElementById(id);
    for(const [key,id] of Object.entries({exportOpen:'export-open',dispatchURL:'dispatch-url',dispatchAuth:'dispatch-auth',dispatchUser:'dispatch-user',dispatchPassword:'dispatch-password',dispatchAPIKey:'dispatch-api-key',dispatchSave:'dispatch-save',dispatchRefresh:'dispatch-refresh',dispatchDisconnect:'dispatch-disconnect'}))els[key]=document.getElementById(id);
-   Object.assign(window,{publishing:false,saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),dispatchBusy:false,decisionRevision:0,dispatchReviewEpoch:0,workflowRemote:{},matchReviewLimit:100,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,pendingAlternativeReviews:[],builderResetPending:false});
+   Object.assign(window,{draft:{sourceFingerprint:'fixture',channels:[]},publishing:false,saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),dispatchBusy:false,decisionRevision:0,dispatchReviewEpoch:0,workflowRemote:{},matchReviewLimit:100,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,pendingAlternativeReviews:[],builderResetPending:false});
    for(const name of ['renderGuidedWorkflow','scheduleWorkflowRefresh','renderSummary'])window[name]=()=>{};
    window.messages=[];window.showMessage=(text,error)=>messages.push({text,error});
    window.emptyMessage=text=>{const p=document.createElement('p');p.textContent=text;return p};
@@ -50,7 +50,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.evaluate(()=>new Promise(resolve=>setTimeout(()=>{saves[0].reject(Error('isolated write failure'));resolve();},5000)));
   await page.waitForFunction(()=>saves.length===2);
   assert.ok(await page.evaluate(()=>heartbeats)>100,'browser remains responsive throughout five-second save delay');await page.evaluate(()=>clearInterval(heartbeat));
-  assert.equal(await row('row0').count(),1);assert.equal(await row('row1').count(),0);
+  assert.equal(await row('row0').count(),1);assert.match(await row('row0').textContent(),/Save not acknowledged/);assert.equal(await row('row1').count(),0);
   await page.evaluate(()=>saves[1].resolve({saved:true}));
   await page.waitForFunction(()=>pendingDecisions.size===0);
   await page.waitForFunction(()=>drafts.length===1);

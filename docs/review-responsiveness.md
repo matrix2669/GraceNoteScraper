@@ -12,14 +12,17 @@ Distinct review choices are accepted immediately; individual POSTs are ordered
 so their state validation does not race another local decision. No batch API or
 persistence schema is introduced. Only a duplicate pending key is suppressed.
 Errors restore that item's original relative position without reverting newer
-choices. Pending history is marked Saving, navigation warns, and generation,
+choices. Input changes cancel unsent writes, remove only their own optimistic
+history, restore still-applicable rows and release current-view controls. Failed
+rows retain a retry warning even if another save completes. Pending history is marked Saving, navigation warns, and generation,
 Undo, reset and connection changes cannot race unsaved choices.
 
 A single delayed draft reconciliation follows a settled burst. Source epoch,
 request number and decision revision fence stale draft/workflow responses.
 Reconciliation never replaces or reorders the current review page. Popup saves
 retain their own pending/error state; the last successful item closes it. Queued
-alternative dialogs preserve separate primary decisions. Automatic refill waits
+alternative dialogs preserve separate primary decisions and finish before refill
+can advance the review epoch. Automatic refill waits
 for persistence and runs only when the visible list is exhausted. No refresh,
 matcher run or new export is triggered by these actions.
 

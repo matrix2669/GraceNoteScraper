@@ -27,7 +27,7 @@ for(const minimumScore of [94,95,98]) {const c={candidate:{minimumScore,alternat
  }
  // A response for an obsolete review cannot remove cards or close a newer popup.
  let release;const c={pendingDecisions:new Set(),dispatchBusy:false,builderResetPending:false,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,clearTimeout(){},setTimeout(){},setDispatchControls(){},decisionRevision:0,dispatchReviewEpoch:0,
- renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},api:()=>new Promise(r=>release=r),
+ renderGuidedWorkflow(){},renderMatchReview(){},workflowRemote:{},scheduleWorkflowRefresh(){},api:()=>new Promise(r=>release=r),
  els:{alternativeDialog:{dataset:{reviewKey:'old'}}},primary:{},target:{key:'b'},decision:'denied',card:{querySelectorAll:()=>[],remove(){throw Error('stale removal');}},refillResolvedPage:async()=>{}};
  const p=vm.runInNewContext(alternate+';decideAlternative(primary,target,decision,card)',c);await Promise.resolve();c.dispatchReviewEpoch++;release();await p;
  console.log('Alternative popup: pending/failure, last item, multiple items, Confirm/Deny and stale replies pass');
