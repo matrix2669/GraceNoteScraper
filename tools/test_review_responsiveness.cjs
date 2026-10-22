@@ -31,6 +31,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    const decisions=input.decisions.map(d=>({key:d.key,decision:d.decision,channelId:d.channelId,channelName:d.channelName,channelNumber:d.channelNumber,streamName:d.streamName,streamCount:1,score:d.score}));
    await page.evaluate(({automatic,decisions,count})=>{matchReview={...matchReview,automatic:{rows:automatic},decisions,streamCount:count};renderMatchReview();},{automatic,decisions,count:input.streams.length});
   }
+  const dimensions=await page.evaluate(()=>({streams:matchReview.streamCount,rows:matchReview.candidates.length,decisions:matchReview.decisions.length,constraints:matchReview.automatic.rows.length}));
   const row=key=>page.locator(`#match-list > .match-card[data-key="${key}"]`);
   await row('row0').locator('.confirm-button').click();
   await page.waitForFunction(()=>saves.length===1);
@@ -85,6 +86,6 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.waitForFunction(()=>document.getElementById('match-alternative-title').textContent==='Other matches for primary-b');assert.equal(await popup.evaluate(n=>n.open),true);
   await popup.getByRole('button',{name:'Deny',exact:true}).click();await page.waitForFunction(()=>saves.length===11);await page.evaluate(()=>saves[10].resolve({saved:true}));await page.waitForFunction(()=>!document.getElementById('match-alternative-dialog').open);assert.equal(await page.evaluate(()=>matchReview.candidateCount),0);
   assert.equal(await page.evaluate(()=>saves.every(s=>Array.isArray(s.body.tvgIds)&&s.body.tvgIds.length===0)),true,'primary and popup writes must omit provider IDs');
-  console.log(`Responsive review: 21,208-stream view, 100 rows/722 decisions/800 constraints; next choice accepted in ${elapsed.toFixed(1)}ms while prior save pending; failure isolation and background draft overlap pass`);
+  console.log(`Responsive review: ${dimensions.streams}-stream view, ${dimensions.rows} rows/${dimensions.decisions} decisions/${dimensions.constraints} constraints; next choice accepted in ${elapsed.toFixed(1)}ms while prior save pending; failure isolation and background draft overlap pass`);
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});
