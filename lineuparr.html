@@ -1366,7 +1366,9 @@
         let review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         matchReview = review;
-        if (await reconcileMatchActionStates(review)) {
+        const refreshAdmission = await reconcileMatchActionStates(review);
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+        if (refreshAdmission) {
           review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
           if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
           matchReview = review;
