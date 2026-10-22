@@ -654,8 +654,9 @@
         <details id="automatic-exclusions">
           <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
-          <p>These are derived rules, separate from your saved Deny decisions. Clear callsign or opposing-feed conflicts are excluded automatically. Uncertain feed names remain below for Confirm/Deny and unresolved names are withheld from JSON until confirmed. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
+          <p>These are derived rules, separate from your saved Deny decisions. Definite opposing feeds are excluded across the successful stream inventory, even when they have no match score. Clear callsign conflicts and uncertain feed holds use scored review candidates. Uncertain feed names remain below for Confirm/Deny. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
           <div id="automatic-rows"></div>
+          <div id="match-coverage"></div>
         </details>
         <div class="match-list" id="match-list"></div>
         <details id="decision-history">
@@ -717,6 +718,8 @@
           <button type="button" id="batch-toggle" class="batch-button" aria-pressed="false">Batch categorize</button>
           <button type="button" id="remove-duplicates" class="duplicate-button">Remove suggested SD</button>
           <button type="button" id="restore-all">Restore all</button>
+          <button type="button" id="builder-reset">Start builder fresh</button>
+          <button type="button" id="builder-reset-undo" hidden>Restore pre-reset choices</button>
           <button type="button" class="export-button" id="export-open">Generate Lineup File</button>
         </div>
       </div>
@@ -737,6 +740,21 @@
       </div>
     </details>
   </main>
+
+  <dialog class="source-evidence-dialog" id="builder-reset-dialog" aria-labelledby="builder-reset-title">
+    <form id="builder-reset-form">
+      <h2 id="builder-reset-title">Start builder fresh</h2>
+      <p id="builder-reset-summary" style="white-space:pre-wrap"></p>
+      <fieldset>
+        <legend>Published lineup JSON</legend>
+        <p><label><input type="radio" name="builder-publication" value="keep" checked> Keep serving the last valid published JSON while rebuilding (default)</label></p>
+        <p><label><input type="radio" name="builder-publication" value="withdraw"> Withdraw published JSON until I generate it again</label></p>
+      </fieldset>
+      <p>Keep preserves the existing publication state; it does not reactivate an already withdrawn file. Withdraw makes the download/import URL unavailable until regeneration. Neither option changes JSON already imported into Dispatcharr.</p>
+      <button type="button" id="builder-reset-cancel">Cancel</button>
+      <button type="submit" id="builder-reset-confirm">Start builder fresh</button>
+    </form>
+  </dialog>
 
   <dialog class="source-evidence-dialog" id="source-evidence-dialog">
     <div class="source-evidence-header">
@@ -887,10 +905,76 @@
     }
 
     async function api(path, options = {}) {
+      if (path.startsWith('/api/lineuparr/')) {
+        const headers = new Headers(options.headers || {});
+        headers.set('X-Builder-Generation', String(draft?.resetGeneration || 0));
+        options = {...options, headers};
+      }
       const response = await fetch(path, options);
       if (!response.ok) throw new Error((await response.text()).trim() || `Request failed (${response.status})`);
       const type = response.headers.get('content-type') || '';
       return type.includes('application/json') ? response.json() : null;
+    }
+
+    let builderResetBackup = null;
+    let builderResetPending = false;
+    function confirmBuilderReset(summary, restore) {
+      const dialog = document.getElementById('builder-reset-dialog');
+      document.getElementById('builder-reset-title').textContent = restore ? 'Restore pre-reset builder choices' : 'Start builder fresh';
+      document.getElementById('builder-reset-confirm').textContent = restore ? 'Restore builder choices' : 'Start builder fresh';
+      document.getElementById('builder-reset-summary').textContent = restore
+        ? 'Restore the most recent saved choices for this lineup? Current choices will also be backed up. Guide, TMDB data, source settings and connection credentials remain unchanged. Refresh streams before continuing review.'
+        : `Clear:\n${summary.clears.join('\n')}\n\nKeep:\n${summary.preserves.join('\n')}\n\nA private builder-only recovery backup will be retained. Dispatcharr itself is not changed.`;
+      dialog.querySelector('input[value="keep"]').checked = true;
+      dialog.returnValue = '';
+      return new Promise(resolve => {
+        const form = document.getElementById('builder-reset-form');
+        const cancel = document.getElementById('builder-reset-cancel');
+        form.onsubmit = event => {event.preventDefault(); dialog.close('apply');};
+        cancel.onclick = () => dialog.close('cancel');
+        dialog.onclose = () => {
+          const choice = dialog.returnValue === 'apply'
+            ? {withdrawPublished: dialog.querySelector('input[value="withdraw"]').checked} : null;
+          form.onsubmit = null; cancel.onclick = null; dialog.onclose = null;
+          resolve(choice);
+        };
+        dialog.showModal();
+      });
+    }
+    async function refreshResetRecovery() {
+      const source = draft?.sourceFingerprint;
+      try {
+        const summary = await api('/api/lineuparr/reset');
+        if (source !== draft?.sourceFingerprint || summary.sourceFingerprint !== source) return;
+        builderResetBackup = summary.recovery?.id || null;
+        document.getElementById('builder-reset-undo').hidden = !builderResetBackup;
+      } catch (_) { /* A busy builder leaves recovery available on the next reload. */ }
+    }
+
+    async function resetBuilder(restore = false) {
+      if (builderResetPending || dispatchBusy || saving || pendingDecisions.size || !draft) return;
+      builderResetPending = true;
+      const button = document.getElementById(restore ? 'builder-reset-undo' : 'builder-reset');
+      button.disabled = true;
+      try {
+        const summary = await api('/api/lineuparr/reset');
+        if (restore) {
+          builderResetBackup = summary.recovery?.id || null;
+          if (!builderResetBackup) throw new Error('No recovery backup is available for this lineup.');
+        }
+        const publication = await confirmBuilderReset(summary, restore);
+        if (!publication) return;
+        dispatchBusy = true;
+        invalidateDispatchReview(); closeMatchAlternatives(); setDispatchControls();
+        const result = await api('/api/lineuparr/reset', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,...publication,...(restore ? {restore:builderResetBackup} : {})})});
+        builderResetBackup = result.backup;
+        matchReview = null; matchReviewLimit = 100; matchInputSignature = null;
+        document.getElementById('builder-reset-undo').hidden = result.restoreAvailable === false;
+        await reloadDraft();
+        await loadMatchReview(false, false);
+        showMessage(`${restore ? 'Builder choices restored.' : 'Builder reset.'} Guide, TMDB data and connections preserved. Refresh streams before continuing review. ${publication.withdrawPublished ? 'Published JSON is withdrawn until regeneration.' : 'Existing publication state is preserved; regenerate JSON when ready.'}`);
+      } catch (error) { showMessage(error.message, true); }
+      finally {builderResetPending=false;button.disabled=false;dispatchBusy=false;setDispatchControls();scheduleWorkflowRefresh(0);}
     }
 
     function setProviderAddressStatus(text, kind = '') {
@@ -1293,7 +1377,7 @@
       }
     }
 
-    function renderAutomaticExclusions(view) {
+    function renderAutomaticExclusions(view, limit = 200) {
       const rows = view?.rows || [];
       const exported = rows.filter(row => row.exported).length;
       const pending = rows.filter(row => row.pendingReview && !row.conflict && row.manualDecision !== 'denied').length;
@@ -1301,17 +1385,35 @@
       document.getElementById('automatic-count').textContent = `(${exported} exclusions, ${pending} manual, ${conflicts} confirmation conflicts)`;
       document.getElementById('automatic-message').textContent = view?.message || 'Refresh streams to derive current exclusions. Saved manual decisions remain unchanged.';
       const container = document.getElementById('automatic-rows'); container.replaceChildren();
-      for (const row of rows.slice(0, 200)) {
-        const item = document.createElement('p'); item.className = 'channel-meta';
+      for (const row of [...rows].sort((a,b) => Number(!!b.conflict)-Number(!!a.conflict)).slice(0, limit)) {
+        const item = document.createElement('div'); item.className = 'channel-meta automatic-row';
         const state = row.conflict ? 'Saved confirmation preserved' : row.manualDecision === 'denied' ? 'Saved denial preserved; automatic constraint active' : row.pendingReview ? 'Manual review required' : 'Automatically excluded';
-        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}. ${row.reason}`;
+        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}${row.inventoryOnly ? ' (inventory identity; no match score)' : ''}. ${row.reason}`;
+        if (row.conflict) {
+          const saved = (matchReview?.decisions || []).filter(d => d.decision === 'confirmed' && d.channelId === row.channelId && (d.streamNames || [d.streamName]).some(n => n.trim().toLowerCase() === row.streamName.trim().toLowerCase()));
+          for (const decision of saved) item.append(decisionRow(decision));
+        }
         container.append(item);
       }
-      if (rows.length > 200) container.append(emptyMessage(`Showing 200 of ${rows.length} derived rows. All eligible names are included in JSON; no selection is needed.`));
+      if (rows.length > limit) {
+        const more = document.createElement('button'); more.type='button'; more.textContent=`Show all ${rows.length} derived rows`;
+        more.addEventListener('click', () => renderAutomaticExclusions(view, rows.length));container.append(more);
+      }
+    }
+
+    function renderMatchCoverage(view) {
+      const coverage = document.getElementById('match-coverage');
+      coverage.replaceChildren();
+      if (view) {
+        coverage.append(emptyMessage(view.message));
+        const missing = view.unmatched || [];
+        if (missing.length) coverage.append(emptyMessage(`${missing.length} channels had no scored candidates: ${missing.map(c => `${c.number} ${c.name}`).join(', ')}`));
+      }
     }
 
     function renderMatchReview() {
       renderAutomaticExclusions(matchReview?.automatic);
+      renderMatchCoverage(matchReview?.coverage);
       if (!matchReview) return;
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
@@ -1323,6 +1425,7 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
+      if (!matchReview.warning) els.matchStatus.textContent += ' Review all proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
       const candidates = matchReview.candidates || [];
@@ -1348,9 +1451,18 @@
     }
 
     async function loadMoreMatches() {
-      if (!matchReview || dispatchBusy) return;
+      if (!matchReview || dispatchBusy || pendingDecisions.size) return;
       const requested = Math.min(matchReview.candidateCount, matchReviewLimit + 100);
       await loadMatchReview(false, true, requested);
+    }
+
+    async function refillResolvedPage() {
+      if (!matchReview || dispatchBusy || pendingDecisions.size || els.alternativeDialog.hasAttribute('open')) return;
+      const visible = matchReview.candidates || [];
+      if (!visible.length && matchReview.candidateCount > 0) {
+        // One prefix reload per successful decision. Failure stays visible with Load more retry.
+        await loadMatchReview(false, true, Math.max(100, matchReviewLimit));
+      }
     }
 
     function matchCard(candidate) {
@@ -1380,7 +1492,8 @@
       confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
-      buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
+      buttons.append(confirmButton);
+      buttons.append(denyButton); card.append(stream, arrow, channel, buttons);
       return card;
     }
 
@@ -1390,12 +1503,13 @@
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
       const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
       copy.append(title, meta);
+      if (decision.needsReview) {const warning = document.createElement('p'); warning.className='warning'; warning.textContent=decision.reviewWarning;copy.append(warning);}
       const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
       row.append(copy, undo); return row;
     }
 
     async function decideMatch(key, decision) {
-      if (pendingDecisions.has(key) || !matchReview) return;
+      if (pendingDecisions.size || dispatchBusy || !matchReview) return;
       const candidate = (matchReview.candidates || []).find(item => item.key === key);
       if (!candidate) return;
       pendingDecisions.add(key);
@@ -1411,20 +1525,26 @@
         decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
       };
       renderMatchReview();
+      const decisionEpoch = dispatchReviewEpoch;
+      let saved = false;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
+        saved = true;
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== key);
-        await reloadDraft();
+        await reloadDraft(decisionEpoch);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
           openMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
-          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. Load more when you are ready for another review page.');
+          showMessage(decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
+        if (saved || decisionEpoch !== dispatchReviewEpoch) { showMessage(error.message, true); return; }
         matchReview.candidateCount++;
         matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
         matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
@@ -1435,15 +1555,18 @@
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(key);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         ++dispatchReviewEpoch;
         workflowRemote.dispatch = null;
         workflowRemote.dispatchReady = false;
         renderGuidedWorkflow();
         scheduleWorkflowRefresh(0);
+        if (saved) await refillResolvedPage();
       }
     }
 
     function openMatchAlternatives(candidate) {
+      els.alternativeDialog.dataset.reviewKey = candidate.key;
       els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
       els.alternativeHelp.textContent = 'These channels also qualified in the same scan. You can confirm multiple targets, including SD, HD or duplicate lineup channels. Deny incorrect options, or close without deciding.';
       renderMatchAlternatives(candidate);
@@ -1477,21 +1600,27 @@
       confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
       const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
       denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
-      buttons.append(confirmButton, denyButton); card.append(buttons);
+      buttons.append(confirmButton);
+      buttons.append(denyButton); card.append(buttons);
       return card;
     }
 
     async function decideAlternative(primary, candidate, decision, card) {
-      if (pendingDecisions.has(candidate.key)) return;
+      if (pendingDecisions.size || dispatchBusy) return;
       pendingDecisions.add(candidate.key);
       decisionRevision++;
       ++dispatchReviewEpoch;
+      const decisionEpoch = dispatchReviewEpoch;
+      const popupKey = els.alternativeDialog.dataset.reviewKey;
+      let saved = false;
       renderGuidedWorkflow();
       for (const button of card.querySelectorAll('button')) button.disabled = true;
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
         });
+        saved = true;
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
         matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
@@ -1501,26 +1630,25 @@
         matchReview.candidateStreamCount = Math.max(0, (matchReview.candidateStreamCount || 0) - candidate.streamCount);
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         renderMatchReview();
-        await reloadDraft();
-        if (decision === 'confirmed') {
+        if (popupKey === els.alternativeDialog.dataset.reviewKey) {
           card.remove();
-          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
-          showMessage('Alternate match confirmed. Review any remaining targets or close this window.');
-        } else {
-          card.remove();
-          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
-          showMessage('Alternate match denied.');
+          if (!els.alternativeList.querySelector('.match-alternative-card')) closeMatchAlternatives();
         }
+        await reloadDraft(decisionEpoch);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
+        showMessage(decision === 'confirmed' ? 'Alternate match confirmed.' : 'Alternate match denied.');
       } catch (error) {
-        for (const button of card.querySelectorAll('button')) button.disabled = false;
+        if (!saved) for (const button of card.querySelectorAll('button')) button.disabled = false;
         showMessage(error.message, true);
       } finally {
         pendingDecisions.delete(candidate.key);
+        if (decisionEpoch !== dispatchReviewEpoch) return;
         ++dispatchReviewEpoch;
         workflowRemote.dispatch = null;
         workflowRemote.dispatchReady = false;
         renderGuidedWorkflow();
         scheduleWorkflowRefresh(0);
+        if (saved) await refillResolvedPage();
       }
     }
 
@@ -1566,9 +1694,8 @@
 
     async function loadDraft() {
       try {
-        draft = await api('/api/lineuparr/draft');
+        if (!await reloadDraft()) return;
         showMessage('');
-        renderAll();
         if (dispatchConfig?.configured && !dispatchBusy) loadMatchReview();
       } catch (error) {
         const waiting = /still being generated/i.test(error.message);
@@ -1578,9 +1705,15 @@
       }
     }
 
-    async function reloadDraft() {
-      draft = await api('/api/lineuparr/draft');
+    let draftRequest = 0;
+    async function reloadDraft(expectedEpoch = null) {
+      const request = ++draftRequest;
+      const next = await api('/api/lineuparr/draft');
+      if (request !== draftRequest || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
+      draft = next;
       renderAll();
+      void refreshResetRecovery();
+      return true;
     }
 
     function renderAll() {
@@ -2707,6 +2840,9 @@
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
     els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
     els.alternativeClose.addEventListener('click', closeMatchAlternatives);
+    els.alternativeDialog.addEventListener('close', () => { void refillResolvedPage(); });
+    document.getElementById('builder-reset').addEventListener('click', () => resetBuilder());
+    document.getElementById('builder-reset-undo').addEventListener('click', () => resetBuilder(true));
     els.dispatchRefresh.addEventListener('click', async () => { if (await loadMatchReview(true)) await reloadDraft(); });
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();

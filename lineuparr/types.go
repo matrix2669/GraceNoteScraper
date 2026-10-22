@@ -58,9 +58,10 @@ type AttributedCategory struct {
 }
 
 type AliasEvidence struct {
-	Value   string   `json:"value"`
-	Sources []string `json:"sources"`
-	Methods []string `json:"methods"`
+	DerivedFrom []string `json:"derivedFrom,omitempty"`
+	Value       string   `json:"value"`
+	Sources     []string `json:"sources"`
+	Methods     []string `json:"methods"`
 }
 
 type IdentifierEvidence struct {
@@ -104,6 +105,7 @@ type DraftChannel struct {
 	AutomaticExcludedAliases []string             `json:"automaticExcludedAliases,omitempty"`
 	ExcludedAliases          []string             `json:"excludedAliases,omitempty"`
 	AliasEvidence            []AliasEvidence      `json:"aliasEvidence,omitempty"`
+	InactiveAliasEvidence    []AliasEvidence      `json:"inactiveAliasEvidence,omitempty"`
 	SuppressedAliasEvidence  []AliasEvidence      `json:"suppressedAliasEvidence,omitempty"`
 	EPGIDs                   []string             `json:"epgIds,omitempty"`
 	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
@@ -160,11 +162,14 @@ type SourceMatch struct {
 type AutomaticMatchLease struct {
 	StateToken          string
 	SnapshotToken       string
+	InventoryToken      string
 	DispatchFingerprint string
 	GuideToken          string
 }
 
 type Draft struct {
+	ResetGeneration          uint64                `json:"resetGeneration"`
+	PublicationGeneration    uint64                `json:"publicationGeneration"`
 	AutomaticLease           *AutomaticMatchLease  `json:"-"`
 	AutomaticMatchingStatus  string                `json:"automaticMatchingStatus,omitempty"`
 	AutomaticMatchingMessage string                `json:"automaticMatchingMessage,omitempty"`
@@ -218,6 +223,7 @@ type ChannelOverride struct {
 }
 
 type MatchDecision struct {
+	ReviewKind             string    `json:"reviewKind,omitempty"`
 	MatcherVersion         string    `json:"matcherVersion,omitempty"`
 	Key                    string    `json:"key"`
 	Decision               string    `json:"decision"`
@@ -239,12 +245,14 @@ type MatchDecision struct {
 }
 
 type State struct {
-	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
-	Version           int                        `json:"version"`
-	SourceFingerprint string                     `json:"sourceFingerprint"`
-	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
-	MatchDecisions    map[string]MatchDecision   `json:"matchDecisions,omitempty"`
-	Workflow          WorkflowProgress           `json:"workflow,omitempty"`
+	ResetGeneration       uint64                     `json:"resetGeneration,omitempty"`
+	PublicationGeneration uint64                     `json:"publicationGeneration,omitempty"`
+	TMDBCategoryScan      TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
+	Version               int                        `json:"version"`
+	SourceFingerprint     string                     `json:"sourceFingerprint"`
+	Channels              map[string]ChannelOverride `json:"channels,omitempty"`
+	MatchDecisions        map[string]MatchDecision   `json:"matchDecisions,omitempty"`
+	Workflow              WorkflowProgress           `json:"workflow,omitempty"`
 }
 
 type WorkflowProgress struct {

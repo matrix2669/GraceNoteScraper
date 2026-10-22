@@ -45,6 +45,7 @@ type MatchChannel struct {
 }
 
 type Decision struct {
+	ReviewKind      string
 	Key             string
 	Decision        string
 	Source          string
@@ -55,6 +56,7 @@ type Decision struct {
 }
 
 type Candidate struct {
+	ReviewKind       string   `json:"reviewKind,omitempty"`
 	ReviewGeneration string   `json:"-"`
 	MatcherVersion   string   `json:"-"`
 	Key              string   `json:"key"`
@@ -93,6 +95,7 @@ type TVGIDEvidence struct {
 }
 
 type CandidateGroup struct {
+	ReviewKind      string           `json:"reviewKind,omitempty"`
 	Key             string           `json:"key"`
 	ChannelID       string           `json:"channelId"`
 	ChannelNumber   string           `json:"channelNumber"`

@@ -28,8 +28,10 @@ included with the module source and remains authoritative.
 
 ## PrismCast channel registry
 
-This compatibility snapshot is disabled by default and is used only when
-`LINEUPARR_REFERENCE_CATALOGS=on`.
+The legacy compatibility snapshot is retained for audit. The builder uses only
+the portable exact-station-ID assertions in `lineuparr/verified_station_catalog.json`,
+generated from the pinned source below with input hashes and row provenance.
+Provider positions and ambiguous bindings do not enter that registry.
 
 `lineuparr/network_catalog.json` is a normalized snapshot of station identity,
 tag, direct-site, and service-name records from PrismCast commit
@@ -55,8 +57,10 @@ PERFORMANCE OF THIS SOFTWARE.
 
 ## Stream Link Manager PBS station map
 
-This compatibility snapshot is disabled by default and is used only when
-`LINEUPARR_REFERENCE_CATALOGS=on`.
+The legacy compatibility snapshot is retained for audit. The builder uses only
+the portable exact-station-ID assertions in `lineuparr/verified_station_catalog.json`,
+generated from the pinned source below with input hashes and row provenance.
+Provider positions and ambiguous bindings do not enter that registry.
 
 `lineuparr/pbs_catalog.json` is a normalized snapshot of PBS station-to-
 Gracenote records from Stream Link Manager for Channels commit
