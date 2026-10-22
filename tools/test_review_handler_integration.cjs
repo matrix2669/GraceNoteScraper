@@ -73,6 +73,7 @@ if(!process.env.REVIEW_HANDLER_URL){
      await api('/api/lineuparr/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,withdrawPublished:false})});
      await recoverMatchActions();
      if(matchActionState(third).state!=='cancelled'||hasUncertainMatchActions())throw Error('reset supersession stranded recovery');
+     if(draft.resetGeneration!==summary.generation+1)throw Error('recovery retained the pre-reset request generation');
     });
     console.log('Real grouped browser→Go recovery: lost acknowledgement, off-page receipt, raw group Undo, old-token rejection after GET, fresh choice, refresh/reset supersession passed');
     return;

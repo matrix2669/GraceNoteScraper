@@ -1483,11 +1483,14 @@
     async function recoverMatchActions() {
       if (pendingDecisions.size || dispatchBusy || recoverMatchActions.pending) { showMessage('Wait for the current review operation, then check saved state.'); return; }
       recoverMatchActions.pending = true; renderMatchRecovery(); showMessage('Checking saved state…');
+      let checked = false;
       try {
         await reconcileMatchActionStates(null);
+        checked = true;
+        await reloadDraft();
         await loadMatchReview(false, true);
         if (!hasUncertainMatchActions()) showMessage('Save state checked. Current choices are shown below.');
-      } catch (error) { showMessage(`Could not check saved state: ${error.message}. Try Check saved state again.`, true); }
+      } catch (error) { showMessage(checked ? `Save state checked. Could not update the current view: ${error.message}` : `Could not check saved state: ${error.message}. Try Check saved state again.`, true); }
       recoverMatchActions.pending = false;
       renderMatchReview(); setDispatchControls(); renderGuidedWorkflow();
     }
