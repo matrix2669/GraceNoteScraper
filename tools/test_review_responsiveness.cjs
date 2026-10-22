@@ -17,7 +17,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    window.saves=[];window.drafts=[];
    window.api=async(path,options)=>new Promise((resolve,reject)=>saves.push({body:JSON.parse(options.body),resolve,reject}));
    window.reloadDraft=async(epoch,revision)=>new Promise(resolve=>drafts.push({epoch,revision,resolve}));
-   window.candidate=(key,score=100)=>({key,reviewKind:score<95?'inclusion':'qualified',alias:key,streamNames:[key],streamCount:1,minimumScore:score,maximumScore:score,channelNumber:'1',channelName:'Fixture',reasons:[],alternatives:[]});
+   window.candidate=(key,score=100)=>({key,channelId:key,reviewKind:score<95?'inclusion':'qualified',alias:key,streamNames:[key],streamCount:1,minimumScore:score,maximumScore:score,channelNumber:'1',channelName:'Fixture',reasons:[],alternatives:[]});
    window.matchReview={streamCount:21208,candidateCount:100,confirmedCount:722,deniedCount:0,candidates:Array.from({length:100},(_,i)=>candidate('row'+i)),decisions:Array.from({length:722},(_,i)=>({key:'old'+i,decision:'confirmed',streamName:'Saved '+i,channelName:'Fixture',streamCount:1,score:100})),automatic:{rows:Array.from({length:800},(_,i)=>({key:'auto'+i,exported:true,streamName:'Synthetic '+i,channelNumber:'1',channelName:'Fixture',reason:'identity fixture'}))}};
    window.loads=0;window.loadMatchReview=async()=>{loads++;};
    (0,eval)(code+'\nwindow.renderMatchReview=renderMatchReview;window.decideMatch=decideMatch;window.decideAlternative=decideAlternative;window.openMatchAlternatives=openMatchAlternatives;');renderMatchReview();
@@ -75,7 +75,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.evaluate(()=>{dispatchReviewEpoch++;matchReview={...matchReview,candidates:[candidate('new-source')],candidateCount:1};renderMatchReview();saves[5].resolve({saved:true});});
   await page.waitForFunction(()=>pendingDecisions.size===0);assert.equal(await page.evaluate(()=>saves.length),6);assert.equal(await row('new-source').count(),1);
   // Two successful low-score primaries cannot replace each other's popup.
-  await page.evaluate(()=>{clearTimeout(matchReconcileTimer);const a=candidate('primary-a',82),b=candidate('primary-b',94);a.alternatives=[candidate('alt-a',94)];b.alternatives=[candidate('alt-b',95)];matchReview={...matchReview,candidates:[a,b],candidateCount:4};renderMatchReview();});
+  await page.evaluate(()=>{clearTimeout(matchReconcileTimer);const a=candidate('primary-a',82),b=candidate('primary-b',94);a.alternatives=[candidate('alt-a',94)];b.alternatives=[candidate('alt-b',95)];draft.channels=[{id:'alt-a',included:true},{id:'alt-b',included:true}];matchReview={...matchReview,candidates:[a,b],candidateCount:4};renderMatchReview();});
   await row('primary-a').locator('.confirm-button').click();await row('primary-b').locator('.deny-button').click();await page.waitForFunction(()=>saves.length===7);
   await page.evaluate(()=>saves[6].resolve({saved:true}));await page.waitForFunction(()=>saves.length===8);await page.evaluate(()=>saves[7].resolve({saved:true}));
   await page.waitForFunction(()=>pendingDecisions.size===0);assert.equal(await page.locator('#match-alternative-title').textContent(),'Other matches for primary-a');

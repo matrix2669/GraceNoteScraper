@@ -1173,6 +1173,7 @@
     function invalidateDispatchReview() {
       clearTimeout(matchReconcileTimer);
       pendingAlternativeReviews.length = 0;
+      reviewOrder = new Map();
       renderAutomaticExclusions(null);
       ++dispatchReviewEpoch;
       ++matchReviewRequest;
@@ -1349,6 +1350,7 @@
         const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         matchReview = review;
+        reviewOrder = new Map();
         workflowRemote.dispatch = review;
         workflowRemote.dispatchReady = true;
         matchReviewLimit = review.visibleLimit || requestedLimit;
@@ -1530,13 +1532,10 @@
       return save;
     }
 
-    let reviewOrderEpoch = -1;
     let reviewOrder = new Map();
     function rememberReviewOrder() {
-      if (reviewOrderEpoch !== dispatchReviewEpoch) {
-        reviewOrderEpoch = dispatchReviewEpoch;
-        reviewOrder = new Map();
-      }
+      // Removal-only input changes retain this visible page, including pending
+      // rows. Only a new authoritative window/source replaces its order map.
       for (const item of matchReview.candidates || []) if (!reviewOrder.has(item.key)) reviewOrder.set(item.key, reviewOrder.size);
       return reviewOrder;
     }
@@ -1589,7 +1588,8 @@
     function offerMatchAlternatives(candidate) {
       if (candidate.reviewEpoch !== undefined && candidate.reviewEpoch !== dispatchReviewEpoch) return;
       const decided = new Set((matchReview?.decisions || []).map(d => d.key));
-      candidate = {...candidate, reviewEpoch:dispatchReviewEpoch, alternatives:(candidate.alternatives || []).filter(a => !pendingDecisions.has(a.key) && !decided.has(a.key))};
+      const included = new Set(draft.channels.filter(c => c.included).map(c => c.id));
+      candidate = {...candidate, reviewEpoch:dispatchReviewEpoch, alternatives:(candidate.alternatives || []).filter(a => included.has(a.channelId) && !pendingDecisions.has(a.key) && !decided.has(a.key))};
       if (!candidate.alternatives.length) return;
       if (els.alternativeDialog.hasAttribute('open')) pendingAlternativeReviews.push(candidate);
       else openMatchAlternatives(candidate);
@@ -1639,6 +1639,7 @@
           const currentTarget = source === draft.sourceFingerprint && matchReview.reviewStatus === 'current' && draft.channels.some(c => c.id === candidate.channelId && c.included);
           if (decisionEpoch === dispatchReviewEpoch || currentTarget) {
             candidate.saveError = `Save not acknowledged: ${error.message}. Retry or reload to check saved state.`;
+            candidate.alternatives = (candidate.alternatives || []).filter(a => draft.channels.some(c => c.id === a.channelId && c.included));
             const nextIndex = matchReview.candidates.findIndex(c => (order.get(c.key) ?? Infinity) > order.get(key));
             matchReview.candidates.splice(nextIndex < 0 ? matchReview.candidates.length : nextIndex, 0, candidate);
             matchReview.candidateCount++;
@@ -1837,6 +1838,7 @@
           matchReview = {...matchReview, candidates, candidateCount:candidates.length,
             candidateStreamCount:candidates.reduce((sum,c) => sum+c.streamCount,0)};
         } else {
+          reviewOrder = new Map();
           matchReview = {...matchReview, automatic:{status:'refresh-required',rows:[]}, reviewStatus:'refresh-required', streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
             warning:'Refresh required to match streams to the included channels. Press Refresh streams.'};
         }

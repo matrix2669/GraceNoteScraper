@@ -14,7 +14,10 @@ persistence schema is introduced. Only a duplicate pending key is suppressed.
 Errors restore that item's original relative position without reverting newer
 choices. Input changes cancel unsent writes, remove only their own optimistic
 history, restore still-applicable rows and release current-view controls. Failed
-rows retain a retry warning even if another save completes. Pending history is marked Saving, navigation warns, and generation,
+rows retain their page order across removal-only input changes, and restored
+alternatives are filtered against the currently included targets. Failed rows
+retain a retry warning even if another save completes. Pending history is marked
+Saving, navigation warns, and generation,
 Undo, reset and connection changes cannot race unsaved choices.
 
 A single delayed draft reconciliation follows a settled burst. Source epoch,

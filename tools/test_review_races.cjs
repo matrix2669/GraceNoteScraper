@@ -31,6 +31,14 @@ function fixture(keys) {
  c.saves[0].resolve({saved:true});await Promise.all([a,b]);
  assert.equal(c.saves.length,1);assert.deepEqual(Array.from(c.matchReview.decisions,d=>d.key),['A']);
  assert.deepEqual(Array.from(c.matchReview.candidates,d=>d.key),['B']);assert.equal(c.pendingDecisions.size,0);assert.equal(c.disabled,false);assert.equal(c.status,'settled');assert.match(c.messages.at(-1),/not acknowledged.*B/);
+ // R1 follow-up: a restored fuzzy group cannot reintroduce an excluded
+ // alternative target, including when the restored primary is retried.
+ const g=fixture(['A','B','other']);g.matchReview.candidates[1].minimumScore=82;g.matchReview.candidates[1].alternatives=[g.candidate('other')];g.invalidateChangedMatchInputs();
+ const ga=g.decideMatch('A','confirmed'),gb=g.decideMatch('B','denied');await tick();g.draft.channels[2].included=false;g.invalidateChangedMatchInputs();g.saves[0].resolve({saved:true});await Promise.all([ga,gb]);
+ assert.equal(g.matchReview.candidates[0].alternatives.length,0);const retry=g.decideMatch('B','confirmed');await tick();g.saves[1].resolve({saved:true});await retry;assert.equal(g.opened.length,0);
+ // R3 follow-up: a new choice made during old-epoch cancellation must retain
+ // the pending rows' page ranks, not reconstruct order from visible rows alone.
+ const h=fixture(['A','B','C','other']);h.invalidateChangedMatchInputs();const ha=h.decideMatch('A','confirmed'),hb=h.decideMatch('B','denied');await tick();h.draft.channels[3].included=false;h.invalidateChangedMatchInputs();const hc=h.decideMatch('C','denied');h.saves[0].resolve({saved:true});await tick();assert.equal(h.saves.length,2);h.saves[1].reject(Error('C failed'));await Promise.all([ha,hb,hc]);assert.deepEqual(Array.from(h.matchReview.candidates,c=>c.key),['B','C']);assert.deepEqual(Array.from(h.matchReview.decisions,d=>d.key),['A']);
  // R3: failure order cannot change the original visible ordering.
  const d=fixture(['A','B','C']);const pb=d.decideMatch('B','denied'),pa=d.decideMatch('A','confirmed');await tick();
  d.saves[0].reject(Error('B failed'));await tick();d.saves[1].reject(Error('A failed'));await Promise.all([pa,pb]);
@@ -38,7 +46,7 @@ function fixture(keys) {
  // R2: use actual refill and loadMatchReview (including epoch changes), and
  // deliver the dialog close event asynchronously, as a browser does.
  const e=fixture(['P1','P2','P3']);e.matchReview.candidateCount=7;
- for(const p of e.matchReview.candidates){p.minimumScore=82;p.maximumScore=82;p.alternatives=[e.candidate('alt-'+p.key)]}
+ for(const p of e.matchReview.candidates){p.minimumScore=82;p.maximumScore=82;p.alternatives=[e.candidate('alt-'+p.key)];e.draft.channels.push({id:'alt-'+p.key,included:true,name:'alternative',number:'1'})}
  const saves=['P1','P2','P3'].map(key=>e.decideMatch(key,'confirmed'));await tick();
  for(let i=0;i<3;i++){e.saves[i].resolve({saved:true});await tick()}await Promise.all(saves);
  assert.equal(e.opened.length,1);assert.equal(e.pendingAlternativeReviews.length,2);
