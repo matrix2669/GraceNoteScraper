@@ -268,10 +268,12 @@ func (s *StateStore) setMatchDecisions(fingerprint, inputToken string, decisions
 		}
 		// A different admitted group cannot reverse a settled literal pair. Keep
 		// the same literal equality used by FilterSnapshotCandidates.
-		for _, decision := range decisions {
-			for _, old := range s.state.MatchDecisions {
-				if old.ChannelID == decision.ChannelID && (old.StreamFingerprint == decision.StreamFingerprint && old.StreamFingerprint != "" || strings.EqualFold(strings.Join(strings.Fields(old.StreamName), " "), strings.Join(strings.Fields(decision.StreamName), " "))) {
-					return ErrStaleReview
+		if s.state.SourceFingerprint == fingerprint {
+			for _, decision := range decisions {
+				for _, old := range s.state.MatchDecisions {
+					if old.ChannelID == decision.ChannelID && (old.StreamFingerprint == decision.StreamFingerprint && old.StreamFingerprint != "" || strings.EqualFold(strings.Join(strings.Fields(old.StreamName), " "), strings.Join(strings.Fields(decision.StreamName), " "))) {
+						return ErrStaleReview
+					}
 				}
 			}
 		}

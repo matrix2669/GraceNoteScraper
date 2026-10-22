@@ -77,3 +77,21 @@ func TestAdmittedRetryIsDurableAndCannotReverseChoice(t *testing.T) {
 		t.Fatal("conflicting retry accepted", err)
 	}
 }
+
+func TestNewSourceAdmissionDoesNotInheritPreviousSourceConflicts(t *testing.T) {
+	s := newTestService(t, "", "")
+	d := MatchDecision{Key: "one", Decision: "denied", DispatcharrFingerprint: "conn", StreamFingerprint: "raw-one", StreamKey: "1:1", ChannelID: "one", StreamName: "Raw One", Score: 100, NameScore: 100}
+	if err := s.SetMatchDecision("previous-source", d); err != nil {
+		t.Fatal(err)
+	}
+	d.Decision = "confirmed"
+	if err := s.SetAdmittedMatchDecisions("current-source", s.ReviewInputToken(), []MatchDecision{d}, nil); err != nil {
+		t.Fatal("old source blocked current admission", err)
+	}
+	if got := s.MatchDecisions("current-source")["one"]; got.Decision != "confirmed" {
+		t.Fatal("current choice missing")
+	}
+	if len(s.MatchDecisions("previous-source")) != 0 {
+		t.Fatal("old source decisions leaked")
+	}
+}
