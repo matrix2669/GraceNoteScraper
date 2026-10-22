@@ -13,6 +13,7 @@ func (s *StateStore) reviewInputTokenLocked() string {
 	state := s.state
 	state.SourceFingerprint = ""
 	state.MatchDecisions = nil
+	state.SupplementalDecisions = nil
 	state.Workflow = WorkflowProgress{}
 	data, _ := json.Marshal(state)
 	return fmt.Sprintf("%x", sha256.Sum256(data))

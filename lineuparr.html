@@ -652,6 +652,13 @@
         </div>
         <div class="match-status" id="match-status"></div>
         <div id="match-save-recovery" role="status" hidden></div>
+        <div id="supplemental-impact-panel">
+          <p>Supplemental candidates have retrieval ranks, not LineupARR scores. Confirm adds full raw aliases; Deny adds literal channel exclusions. Review their effects after a batch.</p>
+          <button type="button" id="supplemental-impact-check">Check supplemental export impact</button>
+          <button type="button" id="supplemental-impact-cancel" hidden>Cancel impact check</button>
+          <p id="supplemental-impact-status" role="status">No impact checked. Generation remains available; equal names cannot split account outcomes and future inventory is not protected.</p>
+          <div id="supplemental-impact-results"></div>
+        </div>
         <details id="automatic-exclusions">
           <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
@@ -721,7 +728,7 @@
           <button type="button" id="restore-all">Restore all</button>
           <button type="button" id="builder-reset">Start builder fresh</button>
           <button type="button" id="builder-reset-undo" hidden>Restore pre-reset choices</button>
-          <button type="button" class="export-button" id="export-open">Generate Lineup File</button>
+          <button type="button" class="export-button" id="export-open">Generate Lineup File</button><p id="supplemental-export-warning" class="warning">Supplemental aliases can bring in extra names. An unchecked or stale impact does not block generation; check impact explicitly after review. A past check does not cover future inventory.</p>
         </div>
       </div>
       <div class="batch-bar" id="batch-bar" hidden>
@@ -1365,13 +1372,15 @@
         if (force) query.set('refresh', 'true');
         let review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+        if (review.supplemental) review = mergeSupplementalReview(review);
         matchReview = review;
         const refreshAdmission = await reconcileMatchActionStates(review);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         if (refreshAdmission) {
           review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
           if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
-          matchReview = review;
+          if (review.supplemental) review = mergeSupplementalReview(review);
+        matchReview = review;
         }
         reviewOrder = new Map();
         workflowRemote.dispatch = review;
@@ -1405,6 +1414,51 @@
         }
         renderGuidedWorkflow();
       }
+    }
+
+    let supplementalImpactRequest = 0;
+    let supplementalImpactResult = null;
+    function renderSupplementalImpact(result) {
+      if (!result) return;
+      supplementalImpactResult=result;
+      if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact=result;
+      const status=document.getElementById('supplemental-impact-status'); if (!status) return;
+      status.textContent=`${result.state || 'unchecked'}: ${result.message || ''}${result.state === 'running' ? ` (${result.completed || 0}/${result.total || '?'})` : ''}`;
+      const cancel=document.getElementById('supplemental-impact-cancel'); cancel.hidden=result.state !== 'running';
+      const container=document.getElementById('supplemental-impact-results');container.replaceChildren();
+      for (const row of result.rows || []) {
+        const details=document.createElement('details'); const summary=document.createElement('summary');
+        summary.textContent=`${row.channelNumber} ${row.channelName}: ${row.selected.length} selected, ${row.extra.length} extra, ${row.missed.length} missed, ${row.protectedConflicts.length} protected conflicts`;details.append(summary);
+        for (const [label,values] of [['Selected',row.selected],['Matched',row.matched],['Extra',row.extra],['Missed',row.missed],['Protected conflicts',row.protectedConflicts],['Same-name/account limits',row.sameNameConflicts]]) {
+          const p=document.createElement('p');p.textContent=`${label}: ${values.map(v => typeof v === 'string' ? v : `${v.name} [account ${v.accountId}, stream ${v.streamId}]`).join('; ') || 'none'}`;details.append(p);
+        }
+        container.append(details);
+      }
+    }
+    async function checkSupplementalImpact() {
+      if (pendingDecisions.size || hasUncertainMatchActions()) { showMessage('Finish or recover queued choices, then check this batch.');return; }
+      const request=++supplementalImpactRequest, epoch=dispatchReviewEpoch, revision=decisionRevision, source=draft?.sourceFingerprint;
+      const current=()=>request===supplementalImpactRequest && epoch===dispatchReviewEpoch && revision===decisionRevision && source===draft?.sourceFingerprint;
+      try {
+        let result=await api('/api/lineuparr/dispatcharr/supplemental-impact',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+        if (!current()) { if (request===supplementalImpactRequest) renderSupplementalImpact({state:'stale',message:'Review changed while starting impact. Check again after your batch.'});return; }
+        renderSupplementalImpact(result);
+        while (result.state === 'running') {
+          await new Promise(resolve=>setTimeout(resolve,500));
+          if (!current()) { if (request===supplementalImpactRequest) renderSupplementalImpact({state:'stale',message:'Review changed; this result is stale. Check again after your batch.'});return; }
+          result=await api('/api/lineuparr/dispatcharr/supplemental-impact');
+          if (!current()) return;
+          renderSupplementalImpact(result);
+        }
+        if (matchReview) matchReview.supplementalImpact=result;
+        if (result.state === 'complete' && current()) await loadMatchReview(false,false,matchReviewLimit);
+      } catch(error) { if (current()) renderSupplementalImpact({state:'failed',message:`${error.message}. Retry the explicit impact check.`}); }
+    }
+    async function cancelSupplementalImpact() {
+      const result=supplementalImpactResult;if (!result?.id) return;
+      const request=++supplementalImpactRequest;
+      try {const cancelled=await api('/api/lineuparr/dispatcharr/supplemental-impact',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:result.id})});if(request===supplementalImpactRequest)renderSupplementalImpact(cancelled);}
+      catch(error){if(request===supplementalImpactRequest)showMessage(`Cancellation not acknowledged: ${error.message}. Check impact status.`,true);}
     }
 
     function renderAutomaticExclusions(view, limit = 200) {
@@ -1522,11 +1576,22 @@
       }
     }
 
+    function mergeSupplementalReview(review) {
+      if (review.supplementalMerged) return review;
+      const extra = review.supplemental || {};
+      return {...review, supplementalMerged:true, primaryCandidateCount:review.candidateCount,
+        candidateCount:review.candidateCount+(extra.candidateCount || 0),
+        candidateStreamCount:(review.candidateStreamCount || 0)+(extra.candidateStreamCount || 0),
+        confirmedCount:review.confirmedCount+(extra.confirmedCount || 0), deniedCount:review.deniedCount+(extra.deniedCount || 0),
+        candidates:[...(review.candidates || []),...(extra.candidates || [])], decisions:[...(review.decisions || []),...(extra.decisions || [])]};
+    }
+
     function renderMatchReview() {
       renderMatchRecovery();
       renderAutomaticExclusions(matchReview?.automatic);
       renderMatchCoverage(matchReview?.coverage);
       if (!matchReview) return;
+      if (typeof renderSupplementalImpact === 'function') renderSupplementalImpact(matchReview.supplementalImpact);
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
       els.matchStreams.textContent = matchReview.streamCount.toLocaleString();
@@ -1537,7 +1602,8 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
-      if (!matchReview.warning) els.matchStatus.textContent += ' Review all proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
+      if (matchReview.supplemental) els.matchStatus.textContent += ` Primary: ${(matchReview.candidates || []).filter(c => !c.origin).length} visible; supplemental: ${(matchReview.candidates || []).filter(c => c.origin).length} visible. ${matchReview.supplemental.message || ''}`;
+      if (!matchReview.warning) els.matchStatus.textContent += ' Review all primary proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
       if (pendingDecisions.size) els.matchStatus.textContent += ` Saving ${pendingDecisions.size} choice(s)… You can continue reviewing.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
@@ -1549,7 +1615,12 @@
           : 'No current proposals remain. Unmatched streams stay unchanged.';
         els.matchList.append(emptyMessage(message));
       }
-      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
+      for (const origin of ['', 'supplemental-v1']) {
+        const rows = candidates.filter(c => (c.origin || '') === origin);
+        if (!rows.length) continue;
+        const heading=document.createElement('h4'); heading.textContent=origin ? 'Supplemental candidates · retrieval only' : 'Primary LineupARR predictions'; els.matchList.append(heading);
+        for (const candidate of rows) els.matchList.append(matchCard(candidate));
+      }
       if (hasMore) {
         const remaining = matchReview.candidateCount - candidates.length;
         const amount = Math.min(100, remaining);
@@ -1592,6 +1663,7 @@
       const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = `View ${(candidate.streamNames || []).length} raw name variant${(candidate.streamNames || []).length === 1 ? '' : 's'}`;
       const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
       for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
+      for (const member of candidate.constituents || []) { const item=document.createElement('div'); item.textContent=`Account ${member.m3uAccountId}, stream ${member.streamId}: ${member.streamName}. ${(member.evidenceRefs || []).join('; ')}`; evidenceList.append(item); }
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
@@ -1600,7 +1672,8 @@
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
       const scoreText = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
-      score.textContent = scoreText;
+      score.textContent = candidate.origin ? `Retrieval rank ${candidate.retrievalRank}` : scoreText;
+      if (candidate.origin) { tier.textContent='Supplemental'; score.className='match-meta'; }
       channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
@@ -1622,7 +1695,7 @@
       const row = document.createElement('div'); row.className = 'decision-row'; row.dataset.key = decision.key;
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
-      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "Supplemental · no primary score" : `${decision.score}%`}`;
       copy.append(title, meta);
       const action = matchActionState(decision.key).state;
       if (action) meta.textContent += ` · ${action[0].toUpperCase() + action.slice(1)}${action === 'queued' || action === 'saving' ? '…' : ''}`;
@@ -1732,7 +1805,8 @@
       const order = rememberReviewOrder();
       const decisionEpoch = dispatchReviewEpoch;
       const source = draft.sourceFingerprint;
-      const optimistic = {key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore};
+      if (matchReview.supplementalImpact && matchReview.supplementalImpact.state !== 'unchecked') matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'stale',message:'Review is changing. Check supplemental export impact after this batch.'};
+      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore};
       beginMatchDecision(key);
       matchReview = {
         ...matchReview,
@@ -1755,7 +1829,7 @@
           offerMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
-          showMessage(decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
+          showMessage(candidate.origin ? `Supplemental ${decision}. Full raw ${decision === 'confirmed' ? 'aliases' : 'exclusions'} saved; check export impact after your batch.` : decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
         if (saved) return;
@@ -1956,7 +2030,7 @@
     function invalidateChangedMatchInputs() {
       const signature = JSON.stringify(draft.channels.filter(c => c.included).map(c => [
         c.id, c.name, c.number,
-        (c.aliasEvidence || []).filter(e => (e.sources || []).some(s => s !== 'dispatcharr-confirmed' && s !== 'dispatcharr-denied')).map(e => e.value).sort()
+        (c.aliasEvidence || []).filter(e => (e.sources || []).some(s => s !== 'dispatcharr-confirmed' && s !== 'dispatcharr-denied' && s !== 'dispatcharr-supplemental')).map(e => e.value).sort()
       ]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
       if (matchInputSignature !== null && signature !== matchInputSignature) {
         ++dispatchReviewEpoch;
@@ -2801,7 +2875,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false}
       ].filter(state => state.panel);
     }
 
@@ -2966,7 +3040,7 @@
         if (result.signatures) draft.exportSignatures = result.signatures;
         localExportChanges.clear();
         await refreshExportSummary();
-        showMessage('Lineup file generated. Its URLs now serve this saved version.');
+        showMessage('Lineup file generated. Its URLs now serve this saved version.' + (draft.supplementalMessage ? ` ${draft.supplementalMessage}` : ''));
       } catch (error) { showMessage(saved ? `Lineup file generated. Could not update its summary: ${error.message}` : error.message, true); }
       finally { publishing = false; renderSummary(); }
     }
@@ -3074,6 +3148,9 @@
     loadDispatchConfig();
     document.getElementById('customization-complete').addEventListener('click', completeCustomizationWorkflow);
     loadDraft();
+    document.getElementById('supplemental-impact-check').addEventListener('click',checkSupplementalImpact);
+    document.getElementById('supplemental-impact-cancel').addEventListener('click',cancelSupplementalImpact);
+
     const marketStart = document.getElementById('major-market-start');
     const marketStatus = document.getElementById('major-market-status');
     let majorMarketPoll;
@@ -3133,6 +3210,8 @@
       try {await api('/api/lineuparr/alias-index/stop',{method:'POST'});marketStatus.textContent='Stop requested; completed evidence remains saved.';await loadMajorMarkets();}
       catch(error){marketStatus.textContent=error.message;}
     });
-  </script>
+
+
+</script>
 </body>
 </html>

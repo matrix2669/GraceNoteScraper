@@ -179,6 +179,8 @@ func TestRetainedDryRunReplay(t *testing.T) {
 			}
 		}
 	}
+	out.SourceFingerprint = in.Draft.SourceFingerprint
+	runRetainedSupplementalReplay(t, svc, out, in.Streams, matches.All, cfg)
 	output := os.Getenv("DRYRUN_REPLAY_OUTPUT")
 	if output == "" {
 		t.Fatal("explicit output path required")

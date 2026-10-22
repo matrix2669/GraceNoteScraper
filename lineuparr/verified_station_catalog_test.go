@@ -26,9 +26,16 @@ func TestVerifiedCatalogCompleteProvenanceAndConflictCensus(t *testing.T) {
 			t.Fatalf("conflicting ID %s", r.StationID)
 		}
 		names[r.StationID] = r.Name
-		in := []InputChannel{{StationID: r.StationID}, {StationID: "not-" + r.StationID, Number: r.StationID, CallSign: r.Name}}
+		callsign := ""
+		if r.Attestation == "USER-ATTESTED" {
+			if len(r.CallSigns) == 0 {
+				t.Fatalf("unbound user assertion: %+v", r)
+			}
+			callsign = r.CallSigns[0]
+		}
+		in := []InputChannel{{StationID: r.StationID, CallSign: callsign}, {StationID: "not-" + r.StationID, Number: r.StationID, CallSign: r.Name}}
 		ApplyVerifiedStationCatalogs(in)
-		if len(in[0].ExternalAliases) == 0 || len(in[1].ExternalAliases) != 0 {
+		if (len(in[0].ExternalAliases) == 0 && len(in[0].SupplementalEvidence) == 0) || len(in[1].ExternalAliases) != 0 || len(in[1].SupplementalEvidence) != 0 {
 			t.Fatalf("exact-ID boundary: %+v", r)
 		}
 		for _, a := range in[0].ExternalAliases {
@@ -185,5 +192,51 @@ func TestVerifiedCatalogCategoryCannotOverrideUserChoice(t *testing.T) {
 	draft, err := svc.Build(context.Background(), LineupContext{SourceFingerprint: "source", Country: "US"}, inputs)
 	if err != nil || len(draft.Channels) != 1 || draft.Channels[0].Category != "Sports" {
 		t.Fatalf("catalog overrode saved choice: %+v %v", draft, err)
+	}
+}
+
+func TestUserAttestedEightRenamesRequireExactCurrentStationFeed(t *testing.T) {
+	rows := []struct{ id, call, alias, feed string }{
+		{"59368", "HBOHTHD", "HBO2 East", "east"}, {"59355", "HBOHHDP", "HBO 2 West", "west"},
+		{"59363", "HBODRHD", "HBO Signature East", "east"}, {"59366", "HBODHDP", "HBO Signature West", "west"},
+		{"59845", "HBOMVHD", "HBO Zone East", "east"}, {"59847", "HBOMHDP", "HBO Zone West", "west"},
+		{"59373", "CINEHHD", "MoreMAX East", "east"}, {"59375", "CINHHDP", "More Max West", "west"},
+	}
+	for _, row := range rows {
+		t.Run(row.id, func(t *testing.T) {
+			inputs := []InputChannel{{StationID: row.id, CallSign: row.call}, {StationID: row.id, CallSign: "WRONG"}, {StationID: "wrong", CallSign: row.call, Number: row.id}}
+			ApplyVerifiedStationCatalogs(inputs)
+			found := false
+			for _, alias := range inputs[0].ExternalAliases {
+				if alias.Value == row.alias {
+					found = true
+					if alias.Identity == nil || alias.Identity.BindingKind != "user-attested-station-v1" || alias.Identity.Feed != row.feed || alias.Identity.RootStationID != row.id || !strings.Contains(alias.Method, "USER-ATTESTED") {
+						t.Fatalf("false/absent provenance: %+v", alias)
+					}
+				}
+			}
+			if !found {
+				t.Fatalf("missing %s", row.alias)
+			}
+			for _, bad := range inputs[1:] {
+				for _, a := range bad.ExternalAliases {
+					if a.Source == "user-attested-renames" {
+						t.Fatalf("wrong identity inherited rename: %+v", bad)
+					}
+				}
+			}
+		})
+	}
+}
+func TestSupplementalDescriptorsDoNotAlterPrimaryAliases(t *testing.T) {
+	in := []InputChannel{{StationID: "37551", CallSign: "NICKTOO"}}
+	ApplyVerifiedStationCatalogs(in)
+	if len(in[0].SupplementalEvidence) == 0 {
+		t.Fatal("review descriptor absent")
+	}
+	for _, a := range in[0].ExternalAliases {
+		if a.Source == "user-attested-review-identities" {
+			t.Fatal("supplemental descriptor altered primary")
+		}
 	}
 }

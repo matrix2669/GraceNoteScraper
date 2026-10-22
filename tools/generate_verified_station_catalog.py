@@ -106,6 +106,13 @@ def generate(prism, stations, mapping):
 def main():
     p=argparse.ArgumentParser();p.add_argument('--prismcast',required=True);p.add_argument('--pbs-stations',required=True);p.add_argument('--pbs-mapping',required=True);p.add_argument('--output',required=True);a=p.parse_args()
     result=generate(pinned_text('prismcast',a.prismcast),pinned_text('pbsStations',a.pbs_stations),pinned_text('pbsMapping',a.pbs_mapping))
+    # User-authored assertions live in this same registry but are not generated
+    # from public provider rows. Preserve their exact labelled provenance.
+    existing = Path(a.output)
+    if existing.exists():
+        authored = json.loads(existing.read_text())
+        result['channels'].extend(r for r in authored.get('channels', []) if r.get('attestation') == 'USER-ATTESTED')
+        result['sources'].extend(r for r in authored.get('sources', []) if r.get('attestation') == 'USER-ATTESTED')
     result['inputGitBlobSHA256'] = PINNED_INPUT_SHA256
     Path(a.output).write_text(json.dumps(result,indent=2,ensure_ascii=False)+'\n')
 if __name__=='__main__':main()
