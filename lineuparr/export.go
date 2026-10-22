@@ -41,12 +41,16 @@ func ExportFromDraft(draft *Draft) ExportFile {
 			sourceNames = append(sourceNames, source.Label)
 		}
 	}
+	notes := "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr name groups below 95% are exported as aliases; distinct denied full names with independent name scores at 95% or above are exported as literal escaped excluded_aliases. Exclusions require Lineuparr PR #26 commit c766a6bb582ca8ef28ae9548d83af1e61f6cde5d or a verified compatible successor; published beta.4 does not support this contract. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices."
+	if draft.SupplementalDecisionCount > 0 {
+		notes += " Supplemental decisions are separate: confirmed full raw names become aliases and reviewed denied literal names may be excluded without a primary score. Check supplemental export impact explicitly; unchecked, stale or unresolved effects remain advisory. Identical names cannot split account outcomes, and future inventory is not protected."
+	}
 	return ExportFile{
 		Package:     draft.Package,
 		Date:        time.Now().UTC().Format("2006-01-02"),
 		Description: fmt.Sprintf("Lineuparr-compatible export for the active %s Gracenote lineup.", draft.ProviderName),
 		Source:      strings.Join(sourceNames, "; "),
-		Notes:       "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr name groups below 95% are exported as aliases; distinct denied full names with independent name scores at 95% or above are exported as literal escaped excluded_aliases. Exclusions require Lineuparr PR #26 commit c766a6bb582ca8ef28ae9548d83af1e61f6cde5d or a verified compatible successor; published beta.4 does not support this contract. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices.",
+		Notes:       notes,
 		Categories:  categories,
 	}
 }
