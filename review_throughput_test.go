@@ -188,7 +188,13 @@ func retainedReviewBurstFixture(t *testing.T) (*dispatcharrServer, []string, map
 	return ds, keys, map[string]any{"inventoryStreams": len(captured.Streams), "guidePrograms": len(envelope.Guide.Programs), "includedTargets": len(channels), "capturedScoredSubset": len(cands) - 150, "syntheticCandidates": 150, "retainedDecisionsBefore": 820}
 }
 func postReviewChoice(s *dispatcharrServer, key, decision string) *httptest.ResponseRecorder {
-	body, _ := json.Marshal(map[string]any{"key": key, "decision": decision, "tvgIds": []string{}})
+	s.reviewMu.RLock()
+	operation := s.admission.tokens[key]
+	s.reviewMu.RUnlock()
+	return postReviewOperation(s, key, decision, operation)
+}
+func postReviewOperation(s *dispatcharrServer, key, decision, operation string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(map[string]any{"key": key, "operation": operation, "decision": decision, "tvgIds": []string{}})
 	r := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(string(body)))
 	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("X-Builder-Generation", fmt.Sprint(s.lineup.builder.ResetGeneration()))

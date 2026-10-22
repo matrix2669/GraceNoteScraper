@@ -107,7 +107,7 @@ func TestAffiliateBulkPreviewApplyExportRestartUndo(t *testing.T) {
 	r := httptest.NewRequest(http.MethodDelete, "/", strings.NewReader(`{"key":"`+key+`"}`))
 	r.Header.Set("Content-Type", "application/json")
 	undo := httptest.NewRecorder()
-	s.handleDecision(undo, r)
+	s.handleDecision(undo, withTestReviewOperation(s, r))
 	if undo.Code != 200 {
 		t.Fatal(undo.Body.String())
 	}
@@ -158,10 +158,21 @@ func TestAffiliateBulkRejectsManualChangeAndInvalidSelection(t *testing.T) {
 	if len(s.lineup.builder.MatchDecisions(config.Fingerprint())) != 0 {
 		t.Fatal("partial invalid save")
 	}
-	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"key":"`+p.Rows[0].Key+`","decision":"confirmed"}`))
+	manualKey := ""
+	for key, members := range s.admission.groups {
+		for _, member := range members {
+			if member == p.Rows[0].Key {
+				manualKey = key
+			}
+		}
+	}
+	if manualKey == "" {
+		t.Fatal("missing admitted manual group")
+	}
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(`{"key":"`+manualKey+`","decision":"confirmed"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, r)
+	s.handleDecision(w, withTestReviewOperation(s, r))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

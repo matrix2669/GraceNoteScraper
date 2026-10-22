@@ -651,6 +651,7 @@
           <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
         </div>
         <div class="match-status" id="match-status"></div>
+        <div id="match-save-recovery" role="status" hidden></div>
         <details id="automatic-exclusions">
           <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
@@ -1362,10 +1363,14 @@
       try {
         const query = new URLSearchParams({limit: String(requestedLimit)});
         if (force) query.set('refresh', 'true');
-        const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
+        let review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         matchReview = review;
-        reconcileMatchActionStates(review);
+        if (await reconcileMatchActionStates(review)) {
+          review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
+          if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+          matchReview = review;
+        }
         reviewOrder = new Map();
         workflowRemote.dispatch = review;
         workflowRemote.dispatchReady = true;
@@ -1453,13 +1458,53 @@
       return [...(matchActionState.states || new Map()).values()].some(action => action.state === 'uncertain' && action.source === draft?.sourceFingerprint);
     }
 
-    function reconcileMatchActionStates(review) {
+    async function reconcileMatchActionStates(review) {
+      let refreshAdmission = false;
       for (const [key, action] of matchActionState.states || []) {
         if (action.state !== 'uncertain') continue;
-        const saved = (review.decisions || []).find(d => d.key === key && d.decision === action.decision);
-        if (saved) matchActionState(key, 'saved');
-        else if ((review.candidates || []).some(c => c.key === key)) matchActionState(key, 'failed');
+        if (action.source !== draft?.sourceFingerprint || (review?.operationScope && action.scope !== review.operationScope) || !action.operation) {
+          matchActionState(key, 'cancelled');
+          showMessage('The earlier review was superseded. Its unacknowledged choice will not be retried; review the current saved state.');
+          continue;
+        }
+        const receipt = await api(`/api/lineuparr/dispatcharr/decision?operation=${encodeURIComponent(action.operation)}`);
+        if (matchActionState(key).operation !== action.operation || matchActionState(key).state !== 'uncertain') continue;
+        if (receipt.operation !== action.operation) throw new Error('The save receipt did not match this choice. Check saved state again.');
+        if (receipt.state === 'saved' && receipt.key === key && receipt.decision === action.decision) matchActionState(key, 'saved');
+        else if (receipt.state === 'not-saved') { matchActionState(key, 'failed'); refreshAdmission = true; }
+        else if (receipt.state === 'undone' || receipt.state === 'superseded') {
+          matchActionState(key, 'cancelled');
+          showMessage('The earlier choice was undone or its review was superseded. Review the current saved state before choosing again.');
+        } else { throw new Error('The save receipt could not verify this choice. Check saved state again.'); }
       }
+      return refreshAdmission;
+    }
+
+    async function recoverMatchActions() {
+      if (pendingDecisions.size || dispatchBusy || recoverMatchActions.pending) { showMessage('Wait for the current review operation, then check saved state.'); return; }
+      recoverMatchActions.pending = true; renderMatchRecovery(); showMessage('Checking saved state…');
+      try {
+        await reconcileMatchActionStates(null);
+        await loadMatchReview(false, true);
+        if (!hasUncertainMatchActions()) showMessage('Save state checked. Current choices are shown below.');
+      } catch (error) { showMessage(`Could not check saved state: ${error.message}. Try Check saved state again.`, true); }
+      recoverMatchActions.pending = false;
+      renderMatchReview(); setDispatchControls(); renderGuidedWorkflow();
+    }
+
+    function renderMatchRecovery() {
+      let panel = document.getElementById('match-save-recovery');
+      if (!panel) { panel = document.createElement('div'); panel.id = 'match-save-recovery'; panel.setAttribute('role', 'status'); els.matchReview.append(panel); }
+      panel.replaceChildren();
+      const uncertain = [...(matchActionState.states || new Map()).values()].filter(action => action.state === 'uncertain');
+      panel.hidden = !uncertain.length;
+      if (!uncertain.length) return;
+      els.matchReview.hidden = false;
+      panel.append(emptyMessage(`${uncertain.length} save acknowledgement(s) need checking. Recovery remains available even when the proposal is on another page.`));
+      const check = document.createElement('button'); check.type = 'button'; check.textContent = 'Check saved state';
+      check.disabled = dispatchBusy || pendingDecisions.size > 0 || !!recoverMatchActions.pending;
+      if (recoverMatchActions.pending) check.textContent = 'Checking saved state…';
+      check.addEventListener('click', recoverMatchActions); panel.append(check);
     }
 
     function renderMatchCoverage(view) {
@@ -1473,6 +1518,7 @@
     }
 
     function renderMatchReview() {
+      renderMatchRecovery();
       renderAutomaticExclusions(matchReview?.automatic);
       renderMatchCoverage(matchReview?.coverage);
       if (!matchReview) return;
@@ -1561,7 +1607,7 @@
       buttons.append(denyButton);
       if (matchActionState(candidate.key).state === 'uncertain') {
         const check = document.createElement('button'); check.type = 'button'; check.textContent = 'Check saved state';
-        check.addEventListener('click', () => loadMatchReview(false, true, 5000)); buttons.append(check);
+        check.addEventListener('click', recoverMatchActions); buttons.append(check);
       }
       card.append(stream, arrow, channel, buttons);
       return card;
@@ -1584,7 +1630,9 @@
     // server validates a source/state lease per save; do not race that lease with
     // another local write. This is not a batch or an automatic review decision.
     function saveMatchDecision(key, decision, epoch) {
-      matchActionState(key, 'queued', {decision, epoch, source:draft?.sourceFingerprint});
+      const previous = matchActionState(key);
+      const operation = previous.state === 'uncertain' ? previous.operation : (typeof matchReview !== 'undefined' ? matchReview?.decisionTokens?.[key] : undefined);
+      matchActionState(key, 'queued', {decision, epoch, operation, scope:typeof matchReview !== 'undefined' ? matchReview?.operationScope : undefined, source:draft?.sourceFingerprint});
       const save = decisionSaveQueue.then(async () => {
         if (epoch !== dispatchReviewEpoch) {
           matchActionState(key, 'cancelled');
@@ -1594,7 +1642,7 @@
         renderMatchReview();
         try {
           const result = await api('/api/lineuparr/dispatcharr/decision', {
-            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, operation, decision, tvgIds:[]})
           });
           matchActionState(key, 'saved');
           return result;
@@ -1622,7 +1670,6 @@
     }
 
     function beginMatchDecision(key) {
-      matchActionState(key, 'queued');
       pendingDecisions.add(key);
       decisionRevision++;
       clearTimeout(matchReconcileTimer);

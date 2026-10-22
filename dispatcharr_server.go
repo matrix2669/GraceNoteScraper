@@ -42,6 +42,8 @@ type dispatcharrServer struct {
 	automaticMu    sync.Mutex
 	automaticCache cachedAutomaticView
 	admission      reviewAdmission
+	operationScope string
+	operations     map[string]reviewOperation
 	review         dispatcharrCandidateCache
 	refreshMu      sync.Mutex
 	progressMu     sync.Mutex
@@ -134,6 +136,8 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	OperationScope       string                       `json:"operationScope"`
+	DecisionTokens       map[string]string            `json:"decisionTokens"`
 	Coverage             dispatcharrCoverage          `json:"coverage"`
 	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
@@ -262,8 +266,12 @@ func (s *dispatcharrServer) handleReview(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.handleDecisionReceipt(w, r)
+		return
+	}
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		w.Header().Set("Allow", "POST, DELETE")
+		w.Header().Set("Allow", "GET, POST, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -271,9 +279,10 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var body struct {
-		Key      string   `json:"key"`
-		Decision string   `json:"decision,omitempty"`
-		TVGIDs   []string `json:"tvgIds"`
+		Key       string   `json:"key"`
+		Operation string   `json:"operation"`
+		Decision  string   `json:"decision,omitempty"`
+		TVGIDs    []string `json:"tvgIds"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -321,6 +330,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		}, w) {
 			return
 		}
+		s.retireDecisionOperations(keys)
 		writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 		return
 	}
@@ -340,14 +350,22 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Choose a provider first", 409)
 		return
 	}
+	if body.Operation == "" {
+		http.Error(w, "This review client is out of date; reload the page before choosing again", 409)
+		return
+	}
 	candidates, admission, found := s.admittedCandidates(body.Key)
-	if !found || !s.lineup.reusableEvidence() {
+	if !found || admission.operation != body.Operation {
+		http.Error(w, "match candidate is no longer current; reload match review", 409)
+		return
+	}
+	if !s.lineup.reusableEvidence() {
 		if _, built := s.buildReview(w, r, false); !built {
 			return
 		}
 		candidates, admission, found = s.admittedCandidates(body.Key)
 	}
-	if !found {
+	if !found || admission.operation != body.Operation {
 		http.Error(w, "match candidate is no longer current; reload match review", 409)
 		return
 	}
@@ -394,7 +412,11 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 	}, w) {
 		return
 	}
-	s.recordDecisionReceipt(body.Key, committedInputs, admission, candidates)
+	members := make([]string, len(decisions))
+	for i, d := range decisions {
+		members[i] = d.Key
+	}
+	s.recordDecisionReceipt(body.Key, body.Decision, committedInputs, admission, candidates, members)
 
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
@@ -513,6 +535,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		s.snapshot = snapshot
 		s.reviewMu.Unlock()
 	}
+	capturedSnapshot := snapshotIdentity(snapshot)
+	capturedInventory := s.inventoryObservationToken()
+	resetGeneration := s.lineup.builder.ResetGeneration()
 	currentDispatch, connected := s.config.Get()
 	if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() {
 		http.Error(w, "The Dispatcharr connection changed; reload match review", http.StatusConflict)
@@ -600,22 +625,6 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
-	// A background read may overlap a warm save. Never publish a candidate
-	// cache assembled across different saved-choice revisions.
-	if admissionInputs != s.lineup.reviewInputsRevision() {
-		http.Error(w, "Review evidence changed while reading; reload match review", 409)
-		return dispatcharrReviewBuild{}, false
-	}
-	if err := s.lineup.builder.WhileReviewState(reviewState, func() error {
-		s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
-		if validSnapshot && !s.inventoryDrift(snapshot) {
-			s.publishAdmission(admissionInputs, snapshot, matches.All)
-		}
-		return nil
-	}); err != nil {
-		http.Error(w, "Review choices changed while reading; reload match review", 409)
-		return dispatcharrReviewBuild{}, false
-	}
 
 	visible := groups
 	if len(visible) > visibleLimit {
@@ -637,14 +646,37 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if refreshing && !force {
 		status = "refreshing"
 	}
-	return dispatcharrReviewBuild{
-		response: dispatcharrReviewResponse{
-			Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
-			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
-			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
-		},
-		candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
-	}, true
+	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
+	response := dispatcharrReviewResponse{
+		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
+		StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
+		FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
+	}
+	// Validate all captured generations together, after expensive computation.
+	// Response data and admission become current at this publication point.
+	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
+		return s.commitAdmittedDecision(reviewAdmission{inputs: admissionInputs}, func() error {
+			return s.lineup.builder.WhileReviewState(reviewState, func() error {
+				s.reviewMu.Lock()
+				defer s.reviewMu.Unlock()
+				s.cache.mu.Lock()
+				defer s.cache.mu.Unlock()
+				if snapshotIdentity(s.snapshot) != capturedSnapshot || s.cache.observationTokenLocked() != capturedInventory {
+					return lineuparrbuilder.ErrStaleReview
+				}
+				s.cacheCandidatesLocked(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
+				scope := reviewOperationScope(configurationToken(lineupConfig), dispatchConfig.Fingerprint(), capturedSnapshot, capturedInventory, resetGeneration, currentGuide)
+				response.OperationScope = scope
+				if admitCurrent {
+					response.DecisionTokens = s.publishAdmissionLocked(admissionInputs, capturedSnapshot, capturedInventory, scope, matches.All)
+				}
+				return nil
+			})
+		})
+	}, w) {
+		return dispatcharrReviewBuild{}, false
+	}
+	return dispatcharrReviewBuild{response: response, candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig}, true
 }
 
 func dispatcharrVisibleLimit(r *http.Request) (int, error) {
@@ -760,6 +792,11 @@ func appendUniqueReviewInt64(values []int64, value int64) []int64 {
 }
 
 func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
+	s.reviewMu.Lock()
+	defer s.reviewMu.Unlock()
+	s.cacheCandidatesLocked(dispatchFingerprint, lineupFingerprint, candidates)
+}
+func (s *dispatcharrServer) cacheCandidatesLocked(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
 	byKey := make(map[string]dispatcharr.Candidate, len(candidates))
 	for _, candidate := range candidates {
 		byKey[candidate.Key] = candidate
@@ -768,9 +805,7 @@ func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerpri
 	for _, group := range dispatcharr.GroupCandidates(candidates) {
 		groups[group.Key] = append([]string(nil), group.CandidateKeys...)
 	}
-	s.reviewMu.Lock()
 	s.review = dispatcharrCandidateCache{dispatcharrFingerprint: dispatchFingerprint, lineupFingerprint: lineupFingerprint, candidates: byKey, groups: groups}
-	s.reviewMu.Unlock()
 }
 
 func (s *dispatcharrServer) cachedCandidate(dispatchFingerprint, lineupFingerprint, key string) (dispatcharr.Candidate, bool) {
@@ -829,6 +864,8 @@ func (s *dispatcharrServer) clearCandidateCache() {
 	s.review = dispatcharrCandidateCache{}
 	s.admission = reviewAdmission{}
 	s.snapshot = dispatcharrMatchSnapshot{}
+	s.operations = nil
+	s.operationScope = ""
 	s.reviewMu.Unlock()
 }
 

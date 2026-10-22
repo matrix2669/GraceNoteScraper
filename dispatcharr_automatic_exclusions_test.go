@@ -401,7 +401,7 @@ func TestAutomaticPendingRawNameSurvivesOldGroupConfirmation(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, req)
+	s.handleDecision(w, withTestReviewOperation(s, req))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

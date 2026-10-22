@@ -34,7 +34,7 @@ func TestOneStreamCanBeConfirmedForEveryIncludedTarget(t *testing.T) {
 		w := httptest.NewRecorder()
 		r := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+candidate.Key+`","decision":"confirmed"}`))
 		r.Header.Set("Content-Type", "application/json")
-		s.handleDecision(w, r)
+		s.handleDecision(w, withTestReviewOperation(s, r))
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -46,7 +46,7 @@ func TestOneStreamCanBeConfirmedForEveryIncludedTarget(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("DELETE", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+initial.Candidates[0].Key+`"}`))
 	r.Header.Set("Content-Type", "application/json")
-	s.handleDecision(w, r)
+	s.handleDecision(w, withTestReviewOperation(s, r))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -104,7 +104,7 @@ func TestCachedDecisionCannotSaveExcludedTarget(t *testing.T) {
 			w := httptest.NewRecorder()
 			r := httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+c.Key+`","decision":"`+action+`"}`))
 			r.Header.Set("Content-Type", "application/json")
-			s.handleDecision(w, r)
+			s.handleDecision(w, withTestReviewOperation(s, r))
 			if w.Code != http.StatusConflict {
 				t.Fatal(w.Code, w.Body.String())
 			}
@@ -122,7 +122,7 @@ func TestExcludedConfirmationDoesNotReserveStreamAndRemainsUndoable(t *testing.T
 	r := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+c.Key+`","decision":"confirmed"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, r)
+	s.handleDecision(w, withTestReviewOperation(s, r))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}
@@ -144,7 +144,7 @@ func TestExcludedConfirmationDoesNotReserveStreamAndRemainsUndoable(t *testing.T
 	r = httptest.NewRequest("DELETE", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+c.Key+`"}`))
 	r.Header.Set("Content-Type", "application/json")
 	w = httptest.NewRecorder()
-	s.handleDecision(w, r)
+	s.handleDecision(w, withTestReviewOperation(s, r))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

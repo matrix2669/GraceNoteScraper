@@ -55,7 +55,7 @@ func TestGroupedDenialRetainsEveryNameAcrossRestartAndGroupUndo(t *testing.T) {
 		r := httptest.NewRequest(method, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"denied"}`))
 		r.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		server.handleDecision(w, r)
+		server.handleDecision(w, withTestReviewOperation(server, r))
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
