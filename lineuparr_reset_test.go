@@ -2,8 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -57,7 +61,7 @@ func TestResetGenerationFencesQueuedRefreshGET(t *testing.T) {
 	server, _ := newDispatcharrTestServer(t, true)
 	s := server.lineup
 	config, _, _ := s.store.Get()
-	if _, err := s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), ""); err != nil {
+	if _, err := s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), "", false); err != nil {
 		t.Fatal(err)
 	}
 	calls := 0
@@ -85,28 +89,61 @@ func TestResetGenerationFencesQueuedRefreshGET(t *testing.T) {
 	}
 }
 
-func TestResetInvalidatesPublishedExportWithoutDeletingIt(t *testing.T) {
-	s := newLineuparrTestServer(t, true)
-	s.exportDir = t.TempDir()
-	path := publishLineuparrForTest(t, s)
-	before := readLineuparrExport(s, "GET", path)
-	if before.Code != 200 {
-		t.Fatal("fixture export unavailable")
-	}
-	config, _, _ := s.store.Get()
-	if _, err := s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), ""); err != nil {
-		t.Fatal(err)
-	}
-	for _, method := range []string{"GET", "HEAD"} {
-		if got := readLineuparrExport(s, method, path); got.Code != 409 {
-			t.Fatalf("old export served after reset: %s %d", method, got.Code)
+func TestResetAndRestorePublicationChoices(t *testing.T) {
+	for _, withdrawReset := range []bool{false, true} {
+		for _, withdrawRestore := range []bool{false, true} {
+			t.Run(fmt.Sprintf("reset-withdraw-%v/restore-withdraw-%v", withdrawReset, withdrawRestore), func(t *testing.T) {
+				s := newLineuparrTestServer(t, true)
+				s.exportDir = t.TempDir()
+				path := publishLineuparrForTest(t, s)
+				recordPath := filepath.Join(s.exportDir, strings.TrimPrefix(path, lineuparrPublishedPrefix))
+				before, err := os.ReadFile(recordPath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				config, _, _ := s.store.Get()
+				include := true
+				if err := s.builder.UpdateChannel(config.Fingerprint(), "fixture", builder.ChannelUpdate{Included: &include}); err != nil {
+					t.Fatal(err)
+				}
+				backup, err := s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), "", withdrawReset)
+				if err != nil {
+					t.Fatal(err)
+				}
+				check := func(withdrawn bool) {
+					t.Helper()
+					want := 200
+					if withdrawn {
+						want = 409
+					}
+					for _, method := range []string{"GET", "HEAD"} {
+						if got := readLineuparrExport(s, method, path); got.Code != want {
+							t.Fatalf("%s: got %d want %d", method, got.Code, want)
+						}
+					}
+					after, err := os.ReadFile(recordPath)
+					if err != nil || string(after) != string(before) {
+						t.Fatal("reset/restore rewrote retained published JSON")
+					}
+				}
+				check(withdrawReset)
+				if _, err = s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), backup, withdrawRestore); err != nil {
+					t.Fatal(err)
+				}
+				check(withdrawReset || withdrawRestore)
+				// Keep after withdrawal never resurrects a file, including after restart.
+				if _, err = s.builder.ResetBuilder(config.Fingerprint(), s.builder.ReviewStateToken(), "", false); err != nil {
+					t.Fatal(err)
+				}
+				check(withdrawReset || withdrawRestore)
+				if next := publishLineuparrForTest(t, s); next != path {
+					t.Fatal("regeneration changed URL")
+				}
+				if got := readLineuparrExport(s, "GET", path); got.Code != 200 {
+					t.Fatal("fresh generation rejected")
+				}
+			})
 		}
-	}
-	if next := publishLineuparrForTest(t, s); next != path {
-		t.Fatal("explicit regeneration changed URL")
-	}
-	if got := readLineuparrExport(s, "GET", path); got.Code != 200 {
-		t.Fatal("fresh generation rejected")
 	}
 }
 

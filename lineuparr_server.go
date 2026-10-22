@@ -655,6 +655,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	}
 	draft.SourceFingerprint = config.Fingerprint()
 	draft.ResetGeneration = s.builder.ResetGeneration()
+	draft.PublicationGeneration = s.builder.PublicationGeneration()
 	if s.automaticProjection != nil {
 		if originalGuide != s.state.GetForSource(config.Fingerprint()) || originalState != s.builder.ReviewStateToken() {
 			http.Error(w, "Matching inputs changed while building; reload the draft", 409)

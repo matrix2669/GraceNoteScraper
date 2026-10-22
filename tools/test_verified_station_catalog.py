@@ -46,6 +46,13 @@ class VerifiedCatalogTests(unittest.TestCase):
         self.assertEqual(rows[0]['stationId'],'101')
         self.assertEqual(rows[0]['aliases'],['Alpha'])
 
+    def test_category_only_from_root_station_row(self):
+        prism = 'const BASE_CHANNEL_DEFINITIONS = {\n  alpha: {\n    name: "Alpha",\n    stationId: "101",\n    tags: ["Sports"],\n    services: {x: {tags: ["Kids"], channelSelector: "Alpha HD 635"}},\n  },\n}'
+        rows = generate(prism,'channel_id\n','channel_id\n')['channels']
+        self.assertEqual(rows[0]['category'], 'Sports')
+        self.assertEqual(rows[0]['stationId'], '101')
+        self.assertNotIn('635', ' '.join(rows[0]['aliases']))
+
     def test_quarantine_does_not_turn_shared_alias_into_unique_proof(self):
         prism='const BASE_CHANNEL_DEFINITIONS = {\n'
         for key,name,sid in [('one','One','1'),('two','Two','2'),('conflict','Another','2')]:

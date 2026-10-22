@@ -6,6 +6,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	"sort"
 	"strings"
+	"time"
 )
 
 type dispatcharrCoverageChannel struct {
@@ -56,6 +57,16 @@ func (s *dispatcharrServer) inventoryDrift(snapshot dispatcharrMatchSnapshot) bo
 	s.cache.mu.Lock()
 	defer s.cache.mu.Unlock()
 	return s.cache.fingerprint == snapshot.dispatcharrFingerprint && s.cache.fetchedAt.After(snapshot.fetchedAt) && snapshot.inventoryDigest != "" && streamInventoryDigest(s.cache.streams) != snapshot.inventoryDigest
+}
+
+func (c *dispatcharrStreamCache) observationTokenLocked() string {
+	return fmt.Sprintf("%s\x00%s\x00%s", c.fingerprint, c.fetchedAt.UTC().Format(time.RFC3339Nano), streamInventoryDigest(c.streams))
+}
+
+func (s *dispatcharrServer) inventoryObservationToken() string {
+	s.cache.mu.Lock()
+	defer s.cache.mu.Unlock()
+	return s.cache.observationTokenLocked()
 }
 
 // Absence from a new complete candidate snapshot is a review warning, never

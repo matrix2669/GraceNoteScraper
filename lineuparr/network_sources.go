@@ -55,7 +55,7 @@ func (s *Service) ApplyEmbeddedCatalogs(inputs []InputChannel) []SourceStatus {
 	}
 	// Verified portable assertions are independent of the historical all-or-none
 	// compatibility switch. Unsafe old snapshots remain available for audit only.
-	return ApplyVerifiedStationCatalogs(inputs)
+	return applyVerifiedStationCatalogs(inputs, s.options.UseEmbeddedCatalogs)
 }
 
 func applyExactStationCatalog(data []byte, fallbackID, fallbackLabel string, inputs []InputChannel) []SourceStatus {

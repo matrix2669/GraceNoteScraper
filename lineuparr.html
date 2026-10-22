@@ -741,6 +741,21 @@
     </details>
   </main>
 
+  <dialog class="source-evidence-dialog" id="builder-reset-dialog" aria-labelledby="builder-reset-title">
+    <form id="builder-reset-form">
+      <h2 id="builder-reset-title">Start builder fresh</h2>
+      <p id="builder-reset-summary" style="white-space:pre-wrap"></p>
+      <fieldset>
+        <legend>Published lineup JSON</legend>
+        <p><label><input type="radio" name="builder-publication" value="keep" checked> Keep serving the last valid published JSON while rebuilding (default)</label></p>
+        <p><label><input type="radio" name="builder-publication" value="withdraw"> Withdraw published JSON until I generate it again</label></p>
+      </fieldset>
+      <p>Keep preserves the existing publication state; it does not reactivate an already withdrawn file. Withdraw makes the download/import URL unavailable until regeneration. Neither option changes JSON already imported into Dispatcharr.</p>
+      <button type="button" id="builder-reset-cancel">Cancel</button>
+      <button type="submit" id="builder-reset-confirm">Start builder fresh</button>
+    </form>
+  </dialog>
+
   <dialog class="source-evidence-dialog" id="source-evidence-dialog">
     <div class="source-evidence-header">
       <div><h2 id="source-evidence-title">Source evidence</h2><p id="source-evidence-summary"></p></div>
@@ -902,6 +917,30 @@
     }
 
     let builderResetBackup = null;
+    let builderResetPending = false;
+    function confirmBuilderReset(summary, restore) {
+      const dialog = document.getElementById('builder-reset-dialog');
+      document.getElementById('builder-reset-title').textContent = restore ? 'Restore pre-reset builder choices' : 'Start builder fresh';
+      document.getElementById('builder-reset-confirm').textContent = restore ? 'Restore builder choices' : 'Start builder fresh';
+      document.getElementById('builder-reset-summary').textContent = restore
+        ? 'Restore the most recent saved choices for this lineup? Current choices will also be backed up. Guide, TMDB data, source settings and connection credentials remain unchanged. Refresh streams before continuing review.'
+        : `Clear:\n${summary.clears.join('\n')}\n\nKeep:\n${summary.preserves.join('\n')}\n\nA private builder-only recovery backup will be retained. Dispatcharr itself is not changed.`;
+      dialog.querySelector('input[value="keep"]').checked = true;
+      dialog.returnValue = '';
+      return new Promise(resolve => {
+        const form = document.getElementById('builder-reset-form');
+        const cancel = document.getElementById('builder-reset-cancel');
+        form.onsubmit = event => {event.preventDefault(); dialog.close('apply');};
+        cancel.onclick = () => dialog.close('cancel');
+        dialog.onclose = () => {
+          const choice = dialog.returnValue === 'apply'
+            ? {withdrawPublished: dialog.querySelector('input[value="withdraw"]').checked} : null;
+          form.onsubmit = null; cancel.onclick = null; dialog.onclose = null;
+          resolve(choice);
+        };
+        dialog.showModal();
+      });
+    }
     async function refreshResetRecovery() {
       const source = draft?.sourceFingerprint;
       try {
@@ -913,7 +952,8 @@
     }
 
     async function resetBuilder(restore = false) {
-      if (dispatchBusy || saving || pendingDecisions.size || !draft) return;
+      if (builderResetPending || dispatchBusy || saving || pendingDecisions.size || !draft) return;
+      builderResetPending = true;
       const button = document.getElementById(restore ? 'builder-reset-undo' : 'builder-reset');
       button.disabled = true;
       try {
@@ -922,21 +962,19 @@
           builderResetBackup = summary.recovery?.id || null;
           if (!builderResetBackup) throw new Error('No recovery backup is available for this lineup.');
         }
-        const message = restore
-          ? 'Restore the most recent saved builder choices from before a reset or restore? Current builder choices will also be backed up. Streams must be refreshed and JSON regenerated. Guide and TMDB data remain unchanged.'
-          : `Start this builder fresh?\n\nClear:\n${summary.clears.join('\n')}\n\nKeep:\n${summary.preserves.join('\n')}\n\nA private builder-only recovery backup will be retained. Dispatcharr itself is not changed. Previously imported JSON in Dispatcharr is not removed. Continue?`;
-        if (!confirm(message)) return;
+        const publication = await confirmBuilderReset(summary, restore);
+        if (!publication) return;
         dispatchBusy = true;
         invalidateDispatchReview(); closeMatchAlternatives(); setDispatchControls();
-        const result = await api('/api/lineuparr/reset', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,...(restore ? {restore:builderResetBackup} : {})})});
+        const result = await api('/api/lineuparr/reset', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,...publication,...(restore ? {restore:builderResetBackup} : {})})});
         builderResetBackup = result.backup;
         matchReview = null; matchReviewLimit = 100; matchInputSignature = null;
         document.getElementById('builder-reset-undo').hidden = result.restoreAvailable === false;
         await reloadDraft();
         await loadMatchReview(false, false);
-        showMessage(restore ? 'Builder choices restored. Refresh streams and regenerate JSON when ready.' : 'Builder reset. Guide, TMDB data and connections preserved. Refresh streams and regenerate JSON when ready.');
+        showMessage(`${restore ? 'Builder choices restored.' : 'Builder reset.'} Guide, TMDB data and connections preserved. Refresh streams before continuing review. ${publication.withdrawPublished ? 'Published JSON is withdrawn until regeneration.' : 'Existing publication state is preserved; regenerate JSON when ready.'}`);
       } catch (error) { showMessage(error.message, true); }
-      finally {button.disabled=false;dispatchBusy=false;setDispatchControls();scheduleWorkflowRefresh(0);}
+      finally {builderResetPending=false;button.disabled=false;dispatchBusy=false;setDispatchControls();scheduleWorkflowRefresh(0);}
     }
 
     function setProviderAddressStatus(text, kind = '') {

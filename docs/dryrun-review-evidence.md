@@ -19,7 +19,9 @@ does not mean that every channel has a stream.
 Coverage describes the last explicit Refresh streams only. New or renamed streams
 require another refresh and explicit JSON regeneration. There is no background
 inventory request or guarantee for unseen names. A later observed changed inventory,
-even with the same count, makes review stale and fences automatic/export leases.
+even with the same count, makes review stale and removes current automatic evidence. A newly requested export
+remains available with a refresh warning; a changed inventory observation after
+draft construction rejects only that stale in-flight export.
 Navigation remains advisory; loading, failed refresh and restart still use the
 existing authoritative completion rules.
 
@@ -35,7 +37,7 @@ quality glyphs, including superscript RAW/HD, without changing raw exclusions.
 Service family, feed region and quality remain separate. Opposing proved feeds
 produce per-name negatives at every admitted score, including 70–94. Unknown Pacific
 identities remain visible for manual review/held until confirmed. Unknown East
-labels retain ordinary score-based review; they do not acquire a Pacific hold. Existing confirmations win
+labels retain the same established review holds as Pacific/West labels. Existing confirmations win
 and are flagged. There is no new matcher pass or global wildcard.
 
 Positive representations use admitted identity only: terminal `+` gains ` PLUS`,
@@ -54,25 +56,43 @@ wrong-station or ambiguous descriptors do not authorize a representation.
 The portable pinned PrismCast/PBS registry supplies exact-station-ID aliases
 independently of the legacy reference switch. Inputs must match reviewed Git-blob
 hashes. Provider positions, conflicting bindings, local identities on national
-PBS fallback IDs and generic local-subchannel placeholders are withheld. Legacy
+PBS fallback IDs, generic local-subchannel placeholders and aliases shared across
+distinct active station IDs are withheld. When `LINEUPARR_REFERENCE_CATALOGS=on`,
+reviewed categories from those same exact-ID rows are also eligible as attributed
+hints, preserving conflicts and manual choices. Portable aliases do not depend
+on that optional category setting. Legacy
 provider snapshots stay disabled. Diagnostic method text is not identity evidence.
 No Dispatcharr account is restored or used as a reference catalog.
 
 ## Provider admission
 
-Catalog-wide number alignment never proves an individual row. Uncorroborated
-single-number rows no longer add aliases/categories. Exact row identities still
-recover their attributable descriptors. Same-position multi-station rows remain
-transient schedule candidates, not authoritative aliases; schedule agreement does
-not promote all provider labels. Historical `number-policy-provider-alias-v3`
-assertions are inactive through the shared evidence view, including category
-relations, without rewriting retained files or choices. Applicable exact-ID and
-independently justified station facts remain reusable.
+ADR-036's provider-local descriptive alias recovery remains supported. A unique
+applicable official provider position may recover an abbreviated station name
+after the existing 10 percent same-number exact-identity alignment gate passes.
+Ambiguous positions, contradictory recognized identities, event rows and
+cross-provider/lineup joins remain rejected. Required address, headend and source
+applicability checks still apply; bundled catalogs never join by channel number.
+A recovered alias may support a reviewable category relationship, not independent
+category confirmation. Same-position multi-station rows remain transient schedule
+candidates; schedule agreement does not promote every provider label.
 
-The active evidence policy is `station-evidence-eligibility-v2`. On a future
-approved deployment, older published snapshots require explicit regeneration;
-they remain retained for audit/rollback. No provider requests, data cleanup or
-migration are performed by this change.
+The shared source-bound evidence view continues to admit qualified current-scope
+`number-policy-provider-alias-v3` facts with their alignment marker. Old,
+provenance-poor or inapplicable records stay audit-only. The active policy remains
+`station-evidence-eligibility-v1`: this repair does not retire ADR-036, migrate
+retained evidence, or force an unrelated old-policy export invalidation.
+
+## Builder reset and recovery
+
+Start builder fresh clears builder-owned choices only, with a private backup
+before atomic replacement. Reset and restore each offer Keep last valid published
+JSON (default) or Withdraw until regeneration. Both invalidate stale clients and
+review snapshots. A separate monotonic publication generation prevents restoring
+choices or choosing Keep from resurrecting an already withdrawn export. Retained
+JSON bytes and copies already imported by Dispatcharr are unchanged. Guide,
+TMDB data, current-source category completion, reusable evidence, provider/source
+settings and connection credentials survive both options. See README for the
+confirmation and recovery workflow.
 
 ## Verification
 

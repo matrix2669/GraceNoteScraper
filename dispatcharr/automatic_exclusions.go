@@ -73,11 +73,6 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 			row.Reason = "Target feed identity unresolved; manual review required (" + target.Evidence + ")"
 		} else if stream.Region != "" && sameFeedFamily(stream.Family, target) && stream.Region != target.Region {
 			row.Reason = "Explicit " + stream.Region + " feed conflicts with attributed " + target.Region + " target (" + target.Evidence + ")"
-		} else if target.Region == "east" {
-			// The explicit-feed requirement applies to Pacific targets. Unknown
-			// or ambiguous labels for an East target retain normal score-based
-			// review; only the proven opposing-feed branch above excludes them.
-			continue
 		} else if stream.Region == "" || !sameFeedFamily(stream.Family, target) {
 			row.PendingReview = true
 			row.Reason = "Feed identity unresolved; " + target.Region + " target requires explicit matching feed and service-family evidence (" + target.Evidence + ")"

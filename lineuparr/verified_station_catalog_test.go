@@ -128,3 +128,62 @@ func TestVerifiedSubchannelJSONFixture(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestVerifiedCatalogSharedAliasUsesActiveStationIDs(t *testing.T) {
+	for _, ids := range [][]string{{"101364", "101660"}, {"101364", "101364"}} {
+		inputs := []InputChannel{{Key: "one", StationID: ids[0]}, {Key: "two", StationID: ids[1]}}
+		ApplyVerifiedStationCatalogs(inputs)
+		for _, input := range inputs {
+			found := false
+			for _, a := range input.ExternalAliases {
+				if providerNameKey(a.Value) == "PBSKIDS" {
+					found = true
+				}
+			}
+			if found != (ids[0] == ids[1]) {
+				t.Fatalf("shared PBS Kids ownership %v: %+v", ids, input.ExternalAliases)
+			}
+		}
+	}
+}
+
+func TestVerifiedCatalogCategoryOptInAndConflict(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		inputs := []InputChannel{{StationID: "26182", CallSign: "WNETDT"}, {StationID: "not-26182", Number: "26182"}}
+		NewService(nil, ServiceOptions{UseEmbeddedCatalogs: enabled}).ApplyEmbeddedCatalogs(inputs)
+		hint := inputs[0].CategoryHint
+		if enabled && (hint == nil || hint.Value != "Local & Public" || !strings.Contains(hint.Method, "b651b3e")) {
+			t.Fatalf("attributed category missing: %+v", hint)
+		}
+		if !enabled && hint != nil {
+			t.Fatal("disabled category setting ignored")
+		}
+		if inputs[1].CategoryHint != nil || len(inputs[1].ExternalAliases) != 0 {
+			t.Fatal("catalog joined by number")
+		}
+	}
+	input := InputChannel{StationID: "26182", CategoryHint: &AttributedCategory{Value: "Sports", Source: "another-official-source"}}
+	inputs := []InputChannel{input}
+	applyVerifiedStationCatalogs(inputs, true)
+	if !inputs[0].CategoryConflict || inputs[0].CategoryHint != nil {
+		t.Fatal("catalog erased category conflict")
+	}
+}
+
+func TestVerifiedCatalogCategoryCannotOverrideUserChoice(t *testing.T) {
+	store, err := LoadStateStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(store, ServiceOptions{UseEmbeddedCatalogs: true})
+	category := "Sports"
+	if err = svc.UpdateChannel("source", "station", ChannelUpdate{Category: &category}); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []InputChannel{{Key: "station", StationID: "26182", CallSign: "WNETDT"}}
+	svc.ApplyEmbeddedCatalogs(inputs)
+	draft, err := svc.Build(context.Background(), LineupContext{SourceFingerprint: "source", Country: "US"}, inputs)
+	if err != nil || len(draft.Channels) != 1 || draft.Channels[0].Category != "Sports" {
+		t.Fatalf("catalog overrode saved choice: %+v %v", draft, err)
+	}
+}

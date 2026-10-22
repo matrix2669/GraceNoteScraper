@@ -52,6 +52,19 @@ func TestKnownInventoryDriftFencesExportLease(t *testing.T) {
 	if automaticDraft(t, s).AutomaticMatchingStatus != "refresh-required" {
 		t.Fatal("old derived rules remained active")
 	}
+	// Known drift is advisory for a newly requested export, but cannot authorize
+	// an old draft or carry its stale derived exclusions into a fresh one.
+	fresh := automaticDraft(t, s)
+	wrote := false
+	if _, err := s.commitAutomaticDraft(fresh, func() error { wrote = true; return nil }); err != nil || !wrote {
+		t.Fatalf("known drift blocked fresh advisory generation: %v", err)
+	}
+	s.cache.mu.Lock()
+	s.cache.streams[0].Name = "Changed again"
+	s.cache.mu.Unlock()
+	if _, err := s.commitAutomaticDraft(fresh, func() error { t.Fatal("inventory changed mid-export"); return nil }); err == nil {
+		t.Fatal("new drift did not fence old export lease")
+	}
 }
 
 func TestUnsupportedConfirmationsAreFlaggedWithoutOverwriting(t *testing.T) {
@@ -74,5 +87,9 @@ func TestSuccessfulFetchThenMatcherFailureRetainsObservedDrift(t *testing.T) {
 	review := snapshotReview(t, s, true)
 	if review.ReviewStatus != "stale" || review.Coverage.Status != "inventory-changed" || review.Automatic.Status != "refresh-required" {
 		t.Fatal("failed refresh hid observed drift", review.ReviewStatus, review.Coverage, review.Automatic.Status)
+	}
+	fresh := automaticDraft(t, s)
+	if _, err := s.commitAutomaticDraft(fresh, func() error { return nil }); err != nil {
+		t.Fatalf("matcher failure blocked fresh advisory generation: %v", err)
 	}
 }

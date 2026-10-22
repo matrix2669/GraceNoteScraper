@@ -53,7 +53,7 @@ func (s *lineuparrServer) handleExportSummary(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Provider changed; reload", 409)
 		return
 	}
-	if record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint != config.Fingerprint() || (s.builder != nil && record.ResetGeneration != s.builder.ResetGeneration()) {
+	if record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint != config.Fingerprint() || (s.builder != nil && record.PublicationGeneration != s.builder.PublicationGeneration()) {
 		writeLineuparrJSON(w, 200, map[string]any{"exists": false, "retained": true, "requiresRegeneration": true, "message": "Generate the lineup again for the current source and evidence rules."})
 		return
 	}
@@ -71,13 +71,13 @@ var publishedLineuparrFilename = regexp.MustCompile(`^[A-Z]{2}_[\pL\pN-]+_lineup
 // guide availability and subsequent draft edits. Old policy/source records remain
 // retained for audit but cannot serve active imports until explicitly regenerated.
 type publishedLineuparr struct {
-	ResetGeneration   uint64          `json:"resetGeneration,omitempty"`
-	EvidencePolicy    string          `json:"evidencePolicy,omitempty"`
-	SourceFingerprint string          `json:"sourceFingerprint,omitempty"`
-	Version           int             `json:"version"`
-	Filename          string          `json:"filename"`
-	PublishedAt       time.Time       `json:"publishedAt"`
-	Data              json.RawMessage `json:"data"`
+	PublicationGeneration uint64          `json:"publicationGeneration,omitempty"`
+	EvidencePolicy        string          `json:"evidencePolicy,omitempty"`
+	SourceFingerprint     string          `json:"sourceFingerprint,omitempty"`
+	Version               int             `json:"version"`
+	Filename              string          `json:"filename"`
+	PublishedAt           time.Time       `json:"publishedAt"`
+	Data                  json.RawMessage `json:"data"`
 }
 
 func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) {
@@ -117,7 +117,7 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Unable to create Lineuparr JSON", http.StatusInternalServerError)
 		return
 	}
-	record := publishedLineuparr{ResetGeneration: draft.ResetGeneration, EvidencePolicy: lineupindex.ActiveEvidencePolicy, SourceFingerprint: config.Fingerprint(), Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
+	record := publishedLineuparr{PublicationGeneration: draft.PublicationGeneration, EvidencePolicy: lineupindex.ActiveEvidencePolicy, SourceFingerprint: config.Fingerprint(), Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
 	save := func() error { return savePublishedLineuparr(s.exportDir, record) }
 	var current bool
 	if s.commitDraft != nil {
@@ -194,7 +194,7 @@ func (s *lineuparrServer) handlePublishedExport(w http.ResponseWriter, r *http.R
 		http.Error(w, "The saved export could not be read; export the lineup again", http.StatusInternalServerError)
 		return
 	}
-	if s.store == nil || record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint == "" || (s.builder != nil && record.ResetGeneration != s.builder.ResetGeneration()) {
+	if s.store == nil || record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint == "" || (s.builder != nil && record.PublicationGeneration != s.builder.PublicationGeneration()) {
 		http.Error(w, "Generate the lineup again for the current source and evidence rules", http.StatusConflict)
 		return
 	}

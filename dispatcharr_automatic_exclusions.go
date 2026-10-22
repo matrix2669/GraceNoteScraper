@@ -193,6 +193,7 @@ func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig
 
 func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, config appconfig.Config) {
 	stateToken := s.lineup.builder.ReviewStateToken()
+	inventoryToken := s.inventoryObservationToken()
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
 	s.reviewMu.RUnlock()
@@ -202,7 +203,7 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 	if connected {
 		fingerprint = conn.Fingerprint()
 	}
-	draft.AutomaticLease = &builder.AutomaticMatchLease{StateToken: stateToken, SnapshotToken: snapshotIdentity(snapshot), DispatchFingerprint: fingerprint, GuideToken: fmt.Sprintf("%p", s.lineup.state.GetForSource(config.Fingerprint()))}
+	draft.AutomaticLease = &builder.AutomaticMatchLease{StateToken: stateToken, SnapshotToken: snapshotIdentity(snapshot), InventoryToken: inventoryToken, DispatchFingerprint: fingerprint, GuideToken: fmt.Sprintf("%p", s.lineup.state.GetForSource(config.Fingerprint()))}
 	draft.AutomaticMatchingStatus = view.Status
 	draft.AutomaticMatchingMessage = view.Message
 	byID := map[string]*builder.DraftChannel{}
@@ -234,11 +235,14 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 	if stateToken != s.lineup.builder.ReviewStateToken() {
 		draft.AutomaticLease.StateToken = "stale"
 	}
+	if inventoryToken != s.inventoryObservationToken() {
+		draft.AutomaticLease.InventoryToken = "stale"
+	}
 	_ = builder.AttachDraftSignatures(draft)
 }
 
 // Lock order matches existing review writes: refresh -> connection -> source ->
-// guide -> saved builder state -> snapshot. No matcher/provider call occurs here.
+// guide -> saved builder state -> snapshot -> inventory. No matcher/provider call occurs here.
 func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action func() error) (bool, error) {
 	if draft.AutomaticLease == nil {
 		return s.lineup.store.WhileCurrent(draft.SourceFingerprint, action)
@@ -266,7 +270,9 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 			return s.lineup.builder.WhileReviewState(lease.StateToken, func() error {
 				s.reviewMu.RLock()
 				defer s.reviewMu.RUnlock()
-				if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.inventoryDrift(s.snapshot) {
+				s.cache.mu.Lock()
+				defer s.cache.mu.Unlock()
+				if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.cache.observationTokenLocked() != lease.InventoryToken {
 					return errAutomaticStale
 				}
 				return action()

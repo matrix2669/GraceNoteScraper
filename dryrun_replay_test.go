@@ -93,25 +93,11 @@ func TestRetainedDryRunReplay(t *testing.T) {
 			}
 		}
 		// Baseline aliases were captured from the active v1 evidence view.
-		// Replay the policy delta on that exact admitted set rather than using
+		// Retain ADR036's scoped recovery on that exact admitted set rather than using
 		// an older index snapshot as if it contained later scan results.
 		for _, a := range c.AliasEvidence {
-			numberOnly, independent := false, false
-			for _, m := range a.Methods {
-				if strings.Contains(m, "number-policy-provider-alias-v3") {
-					numberOnly = true
-				} else {
-					independent = true
-				}
-			}
-			if numberOnly && !independent {
-				continue
-			}
 			for _, source := range a.Sources {
 				if source == "gracenote" || source == "dispatcharr-confirmed" {
-					continue
-				}
-				if numberOnly && !strings.HasPrefix(source, "gracenote-weekday-epg-") {
 					continue
 				}
 				proofs := []builder.ServiceIdentityEvidence{}

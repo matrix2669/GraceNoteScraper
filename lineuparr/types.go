@@ -162,12 +162,14 @@ type SourceMatch struct {
 type AutomaticMatchLease struct {
 	StateToken          string
 	SnapshotToken       string
+	InventoryToken      string
 	DispatchFingerprint string
 	GuideToken          string
 }
 
 type Draft struct {
 	ResetGeneration          uint64                `json:"resetGeneration"`
+	PublicationGeneration    uint64                `json:"publicationGeneration"`
 	AutomaticLease           *AutomaticMatchLease  `json:"-"`
 	AutomaticMatchingStatus  string                `json:"automaticMatchingStatus,omitempty"`
 	AutomaticMatchingMessage string                `json:"automaticMatchingMessage,omitempty"`
@@ -243,13 +245,14 @@ type MatchDecision struct {
 }
 
 type State struct {
-	ResetGeneration   uint64                     `json:"resetGeneration,omitempty"`
-	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
-	Version           int                        `json:"version"`
-	SourceFingerprint string                     `json:"sourceFingerprint"`
-	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
-	MatchDecisions    map[string]MatchDecision   `json:"matchDecisions,omitempty"`
-	Workflow          WorkflowProgress           `json:"workflow,omitempty"`
+	ResetGeneration       uint64                     `json:"resetGeneration,omitempty"`
+	PublicationGeneration uint64                     `json:"publicationGeneration,omitempty"`
+	TMDBCategoryScan      TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
+	Version               int                        `json:"version"`
+	SourceFingerprint     string                     `json:"sourceFingerprint"`
+	Channels              map[string]ChannelOverride `json:"channels,omitempty"`
+	MatchDecisions        map[string]MatchDecision   `json:"matchDecisions,omitempty"`
+	Workflow              WorkflowProgress           `json:"workflow,omitempty"`
 }
 
 type WorkflowProgress struct {

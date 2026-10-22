@@ -57,7 +57,7 @@ func (s *lineuparrServer) handleBuilderReset(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if r.Method == http.MethodGet {
-		writeLineuparrJSON(w, 200, map[string]any{"sourceFingerprint": config.Fingerprint(), "token": s.builder.ReviewStateToken(), "generation": s.builder.ResetGeneration(), "recovery": s.builder.LatestResetRecovery(config.Fingerprint()), "clears": []string{"builder channel inclusion and category overrides", "duplicate keeper choices and alias suppressions", "stream confirmations, denials and inclusion/exclusion decisions", "stream snapshot and active published exports"}, "preserves": []string{"downloaded guide and schedules", "TMDB lookup/category caches and completion settings", "verified reusable station evidence", "provider/source settings and Dispatcharr connection credentials"}})
+		writeLineuparrJSON(w, 200, map[string]any{"sourceFingerprint": config.Fingerprint(), "token": s.builder.ReviewStateToken(), "generation": s.builder.ResetGeneration(), "recovery": s.builder.LatestResetRecovery(config.Fingerprint()), "clears": []string{"builder channel inclusion and category overrides", "duplicate keeper choices and alias suppressions", "stream confirmations, denials and inclusion/exclusion decisions", "stream snapshot and derived review state"}, "preserves": []string{"downloaded guide and schedules", "TMDB lookup/category caches and completion settings", "verified reusable station evidence", "provider/source settings and Dispatcharr connection credentials"}})
 		return
 	}
 	if !requireJSONContentType(w, r) {
@@ -68,6 +68,7 @@ func (s *lineuparrServer) handleBuilderReset(w http.ResponseWriter, r *http.Requ
 		Token             string `json:"token"`
 		Confirm           bool   `json:"confirm"`
 		Restore           string `json:"restore,omitempty"`
+		WithdrawPublished bool   `json:"withdrawPublished"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -80,7 +81,7 @@ func (s *lineuparrServer) handleBuilderReset(w http.ResponseWriter, r *http.Requ
 	var backup string
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
 		var e error
-		backup, e = s.builder.ResetBuilder(config.Fingerprint(), body.Token, body.Restore)
+		backup, e = s.builder.ResetBuilder(config.Fingerprint(), body.Token, body.Restore, body.WithdrawPublished)
 		return e
 	})
 	if err != nil {
@@ -98,5 +99,5 @@ func (s *lineuparrServer) handleBuilderReset(w http.ResponseWriter, r *http.Requ
 	if s.afterBuilderReset != nil {
 		s.afterBuilderReset()
 	}
-	writeLineuparrJSON(w, 200, map[string]any{"reset": true, "backup": backup, "restoreAvailable": restoreAvailable, "generation": s.builder.ResetGeneration()})
+	writeLineuparrJSON(w, 200, map[string]any{"reset": true, "backup": backup, "restoreAvailable": restoreAvailable, "generation": s.builder.ResetGeneration(), "withdrawPublished": body.WithdrawPublished})
 }

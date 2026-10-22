@@ -623,10 +623,9 @@ func matchEntry(entry catalogEntry, byStationID map[string][]web.JSONChannel, by
 				sort.Slice(result, func(i, j int) bool { return result[i].ChannelID < result[j].ChannelID })
 				return result, "exact provider channel number plus exact identity across same-number variants", entryMatchIdentity
 			}
-			// Unique position alone is not identity evidence. Exact row identities
-			// above still recover every corroborated alias; unmatched single
-			// rows remain unsupported even when catalog alignment passes.
-
+			if allowNumberAliases && len(matches) == 1 && !identityExistsElsewhere(entry, matches, byIdentity) {
+				return matches, "unique provider-local channel number; number-policy-provider-alias-v3", entryMatchAliasOnly
+			}
 			if allowNumberAliases && len(matches) > 1 && !identityExistsElsewhere(entry, matches, byIdentity) {
 				return matches, "one official provider row shared by same-position station variants; number-policy-provider-alias-v3; EPG confirmation required", entryMatchEPGCandidate
 			}

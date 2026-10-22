@@ -77,7 +77,7 @@ func TestMatchCatalogRetainsAlignedAliasCategoryRelation(t *testing.T) {
 	grid := &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "S1", ChannelNo: "1", CallSign: "GRID1"},
 		{ChannelID: "S2", ChannelNo: "2", CallSign: "GRID2"},
-		{ChannelID: "S3", ChannelNo: "101", CallSign: "HLN"},
+		{ChannelID: "S3", ChannelNo: "101", CallSign: "NEWSNET"},
 	}}
 	entries := []catalogEntry{
 		{Numbers: []string{"1"}, Name: "GRID1"},
@@ -87,14 +87,14 @@ func TestMatchCatalogRetainsAlignedAliasCategoryRelation(t *testing.T) {
 	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, LineupKey: "L1", Grid: grid}, catalogSource{
 		ID: "verizon-fios-official-lineup", Label: "Verizon FiOS official lineup", Entries: entries,
 	})
-	if facts := factsForStation(result.Facts, "S3"); len(facts) < 1 || facts[0].Kind != lineupindex.FactAlias || facts[0].Value != "HLN" {
+	if facts := factsForStation(result.Facts, "S3"); len(facts) != 1 || facts[0].Kind != lineupindex.FactAlias || facts[0].Value != "HLN" {
 		t.Fatalf("aligned alias facts = %+v", facts)
 	}
 	if len(result.CategoryRelations) != 1 {
 		t.Fatalf("category relations = %+v", result.CategoryRelations)
 	}
 	relation := result.CategoryRelations[0]
-	if relation.StationID != "S3" || relation.AliasValue != "HLN" || relation.Category != "News & Weather" || relation.SourceID != "verizon-fios-official-lineup" || relation.SourceRowID == "" || !strings.Contains(relation.Method, "identity-policy-v2") {
+	if relation.StationID != "S3" || relation.AliasValue != "HLN" || relation.Category != "News & Weather" || relation.SourceID != "verizon-fios-official-lineup" || relation.SourceRowID == "" || !strings.Contains(relation.Method, lineupindex.ProviderSourceAlignmentV1) {
 		t.Fatalf("aligned category relation = %+v", relation)
 	}
 }
@@ -111,7 +111,7 @@ func TestFetchProviderEvidenceAggregatesCategoryRelationsAcrossCatalogSources(t 
 		channels = append(channels, web.JSONChannel{ChannelID: "S" + number, ChannelNo: number, CallSign: name})
 	}
 	entries = append(entries, catalogEntry{Numbers: []string{"101"}, Name: "HLN", Category: "News"})
-	channels = append(channels, web.JSONChannel{ChannelID: "S10", ChannelNo: "101", CallSign: "HLN"})
+	channels = append(channels, web.JSONChannel{ChannelID: "S10", ChannelNo: "101", CallSign: "OTHER"})
 	service.catalog = catalog{Sources: []catalogSource{{
 		ID: "fixture-provider", Label: "Fixture provider", Providers: []string{"fixture"},
 		Entries: entries,

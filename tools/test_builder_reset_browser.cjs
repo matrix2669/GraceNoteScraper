@@ -9,8 +9,8 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   const code=html.slice(html.indexOf('    async function api('),html.indexOf('    function setProviderAddressStatus')) + html.slice(html.indexOf('    async function loadDraft('),html.indexOf('    function renderAll('));
   await page.evaluate(code=>{
    window.draft={sourceFingerprint:'source',resetGeneration:4};window.dispatchBusy=false;window.saving=false;window.pendingDecisions=new Set();
-   window.matchReview={};window.matchReviewLimit=200;window.matchInputSignature='old';window.posts=[];window.approve=false;window.failure=false;
-   window.confirm=()=>approve;window.message='';window.showMessage=text=>message=text;
+   window.matchReview={};window.matchReviewLimit=200;window.matchInputSignature='old';window.posts=[];window.failure=false;
+   window.message='';window.showMessage=text=>message=text;
    for(const n of ['invalidateDispatchReview','closeMatchAlternatives','setDispatchControls','scheduleWorkflowRefresh'])window[n]=()=>{};
    window.dispatchReviewEpoch=0;window.dispatchConfig={configured:false};window.renders=0;window.renderAll=()=>renders++;window.loadMatchReview=async()=>{};
    window.fetch=async(path,options={})=>{
@@ -28,14 +28,35 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.waitForFunction(()=>!document.getElementById('builder-reset-undo').hidden);
   assert.equal(await page.evaluate(()=>renders),1);
   assert.equal(await page.locator('#builder-reset-undo').evaluate(button=>button.hidden),false);
-  await page.evaluate(()=>resetBuilder());assert.equal(await page.evaluate(()=>posts.length),0);
-  await page.evaluate(()=>{approve=true;failure=true;return resetBuilder(true)});
+  async function open(restore=false) {
+   await page.evaluate(restore=>{window.operation=resetBuilder(restore)},restore);
+   await page.locator('#builder-reset-dialog').waitFor({state:'visible'});
+   assert.equal(await page.locator('#builder-reset-dialog input[value="keep"]').isChecked(),true);
+  }
+  await open();
+  // A second invocation while this confirmation is open must be a no-op.
+  await page.evaluate(()=>resetBuilder());
+  await page.locator('#builder-reset-cancel').click();await page.evaluate(()=>operation);
+  assert.equal(await page.evaluate(()=>posts.length),0);
+  await open();await page.keyboard.press('Escape');await page.evaluate(()=>operation);
+  assert.equal(await page.evaluate(()=>posts.length),0);
+  await page.evaluate(()=>{failure=true});await open(true);
+  await page.locator('#builder-reset-dialog input[value="withdraw"]').check();
+  await page.locator('#builder-reset-confirm').click();await page.evaluate(()=>operation);
   assert.match(await page.evaluate(()=>message),/choices changed/);
   assert.equal(await page.evaluate(()=>draft.resetGeneration),4);
-  await page.evaluate(()=>{failure=false;return resetBuilder(true)});
-  const post=await page.evaluate(()=>posts.at(-1));
+  assert.equal(await page.evaluate(()=>posts.at(-1).body.withdrawPublished),true);
+  await page.evaluate(()=>{failure=false});await open(true);
+  // Each new attempt defaults to keep, including after a failed withdrawal.
+  await page.locator('#builder-reset-confirm').click();await page.evaluate(()=>operation);
+  let post=await page.evaluate(()=>posts.at(-1));
   assert.equal(post.generation,'4');assert.equal(post.body.restore,'restart-recovery');assert.equal(post.body.confirm,true);
-  assert.equal(await page.evaluate(()=>matchReview),null);
-  console.log('Browser reset: actual initial-load recovery, cancel, stale failure, explicit restore and generation header pass');
+  assert.equal(post.body.withdrawPublished,false);assert.equal(await page.evaluate(()=>matchReview),null);
+  await open();await page.locator('#builder-reset-dialog input[value="withdraw"]').check();
+  await page.locator('#builder-reset-confirm').click();await page.evaluate(()=>operation);
+  post=await page.evaluate(()=>posts.at(-1));assert.equal(post.body.withdrawPublished,true);
+  assert.match(await page.evaluate(()=>message),/withdrawn until regeneration/);
+  console.log('Browser reset: initial-load recovery, cancel/Escape, duplicate invocation, stale failure, keep/withdraw, restore and generation header pass');
+
  } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

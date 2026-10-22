@@ -6,7 +6,7 @@ provider/account data or mutable runtime state is read by this generator.
 """
 import argparse, csv, hashlib, io, json, re
 from pathlib import Path
-from generate_prismcast_catalog import top_level_definitions, clean_aliases
+from generate_prismcast_catalog import top_level_definitions, clean_aliases, category_for
 from generate_pbs_catalog import service_identity
 PRISM='0aed952e80ec6a1bd997a7cb16a3abe256bf253c'
 PBS='b651b3e14fb0f8d9b01610cd221b60285b4c2812'
@@ -29,6 +29,10 @@ def root_value(block, field):
     # service's stationId/name as the canonical channel identity.
     match = re.search(rf'(?m)^    {re.escape(field)}: "([^"\n]+)"', block)
     return match[1] if match else ''
+
+def root_list(block, field):
+    match = re.search(rf'(?m)^    {re.escape(field)}:\s*\[([^\]]*)\]', block)
+    return re.findall(r'"([^"\n]+)"', match[1]) if match else []
 
 def generate(prism, stations, mapping):
     rows=[]
@@ -55,7 +59,7 @@ def generate(prism, stations, mapping):
                 # Never inherit ambiguous generic selectors onto a Pacific sibling.
                 if region=='west' and not tagged: continue
                 aliases.append(a)
-            rows.append(dict(stationId=identifier,name=canonical,aliases=sorted(set(aliases)),sourceId='prismcast-network-catalog',revision=PRISM,rowId=key+':'+field,path='src/channels/index.ts'))
+            rows.append(dict(stationId=identifier,name=canonical,aliases=sorted(set(aliases)),category=category_for(root_list(block,'tags')),sourceId='prismcast-network-catalog',revision=PRISM,rowId=key+':'+field,path='src/channels/index.ts'))
     by_station={r['channel_id']:r for r in csv.DictReader(io.StringIO(stations.lstrip('\ufeff')))}
     for row in csv.DictReader(io.StringIO(mapping.lstrip('\ufeff'))):
         key=row['channel_id'].strip(); root=key.split('_ga_',1)[0].split('_kids_',1)[0]
@@ -63,7 +67,7 @@ def generate(prism, stations, mapping):
         # arbitrary local subchannels. A synthesized parent-station label would
         # collapse different digital services into exact positive aliases.
         if '_ga_local_subchannel_' in key: continue
-        name, aliases, _=service_identity(key,by_station.get(root,{}))
+        name, aliases, category=service_identity(key,by_station.get(root,{}))
         # Local OTA positions are display metadata, never reusable aliases.
         values=[v.strip() for v in [name,*aliases] if v.strip() and not re.search(r'\[|\]|\b\d+\.\d+\b',v)]
         if not values: continue
@@ -78,7 +82,7 @@ def generate(prism, stations, mapping):
                 known_service = key.endswith(('_kids_main', '_ga_create', '_ga_nhk', '_ga_world', '_ga_fnx'))
                 admitted = [name] if known_service else []
             if admitted:
-                rows.append(dict(stationId=sid,name=name,aliases=sorted(set(admitted)),sourceId='pbs-gracenote-station-map',revision=PBS,rowId=key+':'+field,path='executables/pbs_gracenote_map.csv'))
+                rows.append(dict(stationId=sid,name=name,aliases=sorted(set(admitted)),category=category,sourceId='pbs-gracenote-station-map',revision=PBS,rowId=key+':'+field,path='executables/pbs_gracenote_map.csv'))
     # Shared national/fallback PBS IDs cannot carry each local market's callsign.
     local_owners={}
     for r in rows:

@@ -17,6 +17,12 @@ func (s *Service) ResetGeneration() uint64 {
 	return s.store.state.ResetGeneration
 }
 
+func (s *Service) PublicationGeneration() uint64 {
+	s.store.mu.RLock()
+	defer s.store.mu.RUnlock()
+	return s.store.state.PublicationGeneration
+}
+
 func (s *Service) ResetRecoveryMatchesSource(fingerprint string) bool {
 	s.store.mu.RLock()
 	defer s.store.mu.RUnlock()
@@ -27,7 +33,7 @@ var resetBackupName = regexp.MustCompile(`^builder-reset-[a-f0-9]{64}\.json$`)
 
 // ResetBuilder changes only its own explicit choices. The full previous state
 // is recoverable; shared guide/TMDB/source/connection stores are never opened.
-func (s *Service) ResetBuilder(fingerprint, token, restore string) (string, error) {
+func (s *Service) ResetBuilder(fingerprint, token, restore string, withdrawPublished bool) (string, error) {
 	s.store.mu.Lock()
 	defer s.store.mu.Unlock()
 	if token != s.store.reviewTokenLocked() {
@@ -71,6 +77,13 @@ func (s *Service) ResetBuilder(fingerprint, token, restore string) (string, erro
 	}
 	next.SourceFingerprint = fingerprint
 	next.ResetGeneration = previous.ResetGeneration + 1
+	// Restoring choices never rolls back a publication revocation. "Keep" keeps
+	// the currently valid publication state; an already withdrawn file needs
+	// explicit regeneration. Neither operation rewrites published JSON bytes.
+	next.PublicationGeneration = previous.PublicationGeneration
+	if withdrawPublished {
+		next.PublicationGeneration++
+	}
 	backup := "builder-reset-" + token + ".json"
 	dir := filepath.Join(filepath.Dir(s.store.path), "builder-reset-backups")
 	if err := os.MkdirAll(dir, 0700); err != nil {

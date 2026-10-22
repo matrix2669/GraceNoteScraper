@@ -1,6 +1,7 @@
 package lineuparr
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,12 @@ import (
 )
 
 func TestBuilderResetBackupRestoreAndPreservedFiles(t *testing.T) {
+	for _, withdraw := range []bool{false, true} {
+		t.Run(fmt.Sprintf("withdraw-%v", withdraw), func(t *testing.T) { testBuilderResetBackupRestoreAndPreservedFiles(t, withdraw) })
+	}
+}
+
+func testBuilderResetBackupRestoreAndPreservedFiles(t *testing.T, withdraw bool) {
 	dir := t.TempDir()
 	store, err := LoadStateStore(filepath.Join(dir, "state.json"))
 	if err != nil {
@@ -25,14 +32,14 @@ func TestBuilderResetBackupRestoreAndPreservedFiles(t *testing.T) {
 	}
 	original, _ := os.ReadFile(store.path)
 	token := svc.ReviewStateToken()
-	backup, err := svc.ResetBuilder("source", token, "")
+	backup, err := svc.ResetBuilder("source", token, "", withdraw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if svc.ResetGeneration() != 1 || len(store.Snapshot("source")) != 0 {
 		t.Fatal("choices were not cleared")
 	}
-	if _, err = svc.ResetBuilder("source", token, ""); err != ErrStaleReview {
+	if _, err = svc.ResetBuilder("source", token, "", withdraw); err != ErrStaleReview {
 		t.Fatalf("stale reset accepted: %v", err)
 	}
 	for _, name := range []string{"guide_cache.json", "tmdb_cache.json", "market-index.json", "config.json", "dispatcharr_config.json"} {
@@ -45,7 +52,7 @@ func TestBuilderResetBackupRestoreAndPreservedFiles(t *testing.T) {
 	store.state.Workflow.TMDBDisposition = "skipped"
 	store.state.Workflow.TMDBCompletedAt = time.Unix(1234, 0)
 	store.mu.Unlock()
-	if _, err = svc.ResetBuilder("source", svc.ReviewStateToken(), backup); err != nil {
+	if _, err = svc.ResetBuilder("source", svc.ReviewStateToken(), backup, withdraw); err != nil {
 		t.Fatal(err)
 	}
 	if store.state.Workflow.TMDBDisposition != "skipped" || !store.state.Workflow.TMDBCompletedAt.Equal(time.Unix(1234, 0)) {
@@ -74,7 +81,7 @@ func TestBuilderResetBackupFailurePreservesState(t *testing.T) {
 	before, _ := os.ReadFile(store.path)
 	token := svc.ReviewStateToken()
 	_ = os.WriteFile(filepath.Join(dir, "builder-reset-backups"), []byte("not a directory"), 0600)
-	if _, err := svc.ResetBuilder("source", token, ""); err == nil {
+	if _, err := svc.ResetBuilder("source", token, "", true); err == nil {
 		t.Fatal("backup failure ignored")
 	}
 	after, _ := os.ReadFile(store.path)
@@ -92,7 +99,7 @@ func TestBuilderResetDoesNotPromoteOldSourceCategoryCache(t *testing.T) {
 	store.state.TMDBCategoryScan = TMDBCategoryScan{Revision: "old-source-schedules"}
 	store.state.Workflow.TMDBDisposition = "complete"
 	store.mu.Unlock()
-	if _, err := svc.ResetBuilder("new-source", svc.ReviewStateToken(), ""); err != nil {
+	if _, err := svc.ResetBuilder("new-source", svc.ReviewStateToken(), "", false); err != nil {
 		t.Fatal(err)
 	}
 	if svc.TMDBCategoryScan("new-source").Revision != "" || store.state.Workflow.TMDBDisposition != "" {
@@ -108,7 +115,7 @@ func TestResetRecoverySurvivesRestartAndIsSourceScoped(t *testing.T) {
 	if err := store.Update("source", "a", ChannelUpdate{Included: &yes}); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := svc.ResetBuilder("source", svc.ReviewStateToken(), "")
+	backup, err := svc.ResetBuilder("source", svc.ReviewStateToken(), "", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +136,7 @@ func TestResetRecoverySurvivesRestartAndIsSourceScoped(t *testing.T) {
 	}
 	restarted.state.TMDBCategoryScan = TMDBCategoryScan{Revision: "other-source"}
 	restarted.state.Workflow.TMDBDisposition = "complete"
-	if _, err = recovered.ResetBuilder("source", recovered.ReviewStateToken(), backup); err != nil {
+	if _, err = recovered.ResetBuilder("source", recovered.ReviewStateToken(), backup, false); err != nil {
 		t.Fatal(err)
 	}
 	if restarted.state.TMDBCategoryScan.Revision != "" || restarted.state.Workflow.TMDBDisposition != "" {
@@ -157,10 +164,10 @@ func TestResetSaveFailureRollsBackMemoryAndRetainsRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	token := svc.ReviewStateToken()
-	if _, err := svc.ResetBuilder("source", token, ""); err == nil {
+	if _, err := svc.ResetBuilder("source", token, "", true); err == nil {
 		t.Fatal("state write unexpectedly succeeded")
 	}
-	if svc.ReviewStateToken() != token || svc.ResetGeneration() != 0 {
+	if svc.ReviewStateToken() != token || svc.ResetGeneration() != 0 || svc.PublicationGeneration() != 0 {
 		t.Fatal("failed persistence altered in-memory state")
 	}
 	recovery := svc.LatestResetRecovery("source")
@@ -170,5 +177,39 @@ func TestResetSaveFailureRollsBackMemoryAndRetainsRecovery(t *testing.T) {
 	bytes, err := os.ReadFile(filepath.Join(dir, "builder-reset-backups", recovery.ID))
 	if err != nil || string(bytes) != string(original) {
 		t.Fatal("recovery does not preserve exact original state")
+	}
+}
+
+func TestPublicationWithdrawalSurvivesRestartAndSourceChanges(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, _ := LoadStateStore(path)
+	svc := NewService(store, ServiceOptions{})
+	yes := true
+	if err := store.Update("source", "a", ChannelUpdate{Included: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	backup, err := svc.ResetBuilder("source", svc.ReviewStateToken(), "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted, err := LoadStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc = NewService(restarted, ServiceOptions{})
+	if svc.PublicationGeneration() != 1 {
+		t.Fatal("restart lost withdrawal")
+	}
+	if err = restarted.Update("other", "a", ChannelUpdate{Included: &yes}); err != nil {
+		t.Fatal(err)
+	}
+	if svc.PublicationGeneration() != 1 {
+		t.Fatal("source change rolled back withdrawal")
+	}
+	if _, err = svc.ResetBuilder("source", svc.ReviewStateToken(), backup, false); err != nil {
+		t.Fatal(err)
+	}
+	if svc.PublicationGeneration() != 1 {
+		t.Fatal("restore resurrected old published JSON")
 	}
 }

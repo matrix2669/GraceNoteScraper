@@ -160,12 +160,14 @@ func TestEastTargetStillExcludesProvenOpposingFeed(t *testing.T) {
 	}
 }
 
-func TestEastFeedUncertaintyDoesNotCreatePacificReviewHold(t *testing.T) {
+func TestEastFeedUncertaintyRetainsEstablishedReviewHold(t *testing.T) {
 	for _, raw := range []string{"TV: A DIFFERENT LABEL RAW", "Generic Brand HD", "Network East West"} {
-		c := Candidate{Key: raw, StreamName: raw, ChannelID: "east", Score: 100}
-		got := DeriveAutomaticExclusions([]Candidate{c}, nil, map[string]FeedIdentity{"east": {Family: "network", Region: "east", Evidence: "typed registry"}}, nil, nil)
-		if len(got.Rows) != 0 {
-			t.Fatalf("East-only uncertainty created a mandatory hold: %+v", got)
+		for _, score := range []int{70, 94, 95, 100} {
+			c := Candidate{Key: raw, StreamName: raw, ChannelID: "east", Score: score, NameScore: score}
+			got := DeriveAutomaticExclusions([]Candidate{c}, nil, map[string]FeedIdentity{"east": {Family: "network", Region: "east", Evidence: "typed registry"}}, nil, nil)
+			if len(got.Rows) != 1 || !got.Rows[0].PendingReview || got.Hidden[c.Key] {
+				t.Fatalf("East uncertainty lost its visible review hold at %d: %+v", score, got)
+			}
 		}
 	}
 }
