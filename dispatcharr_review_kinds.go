@@ -13,13 +13,19 @@ func classifyReviewCandidates(candidates []dispatcharr.Candidate, automatic auto
 	}
 	for i := range candidates {
 		c := &candidates[i]
-		switch {
-		case pending[c.Key]:
-			c.ReviewKind = "feed-review"
-		case c.Score < 95:
-			c.ReviewKind = "inclusion"
-		default:
-			c.ReviewKind = "qualified"
-		}
+		c.ReviewKind = reviewCandidateKind(c.Score, pending[c.Key])
 	}
+}
+
+// Feed uncertainty does not erase the different positive/negative export rules
+// on either side of 95. Keep both classes visible as distinct review decisions.
+func reviewCandidateKind(score int, pendingFeed bool) string {
+	kind := "inclusion"
+	if score >= 95 {
+		kind = "qualified"
+	}
+	if pendingFeed {
+		return "feed-" + kind
+	}
+	return kind
 }

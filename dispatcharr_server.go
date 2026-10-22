@@ -545,7 +545,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		for _, row := range derived.Rows {
 			if row.PendingReview && !row.Conflict && row.ManualDecision == "" && !present[row.Candidate.Key] {
 				c := row.Candidate
-				c.ReviewKind = "feed-review"
+				c.ReviewKind = reviewCandidateKind(c.Score, true)
 				matches.All = append(matches.All, c)
 				present[row.Candidate.Key] = true
 			}

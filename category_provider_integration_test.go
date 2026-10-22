@@ -21,7 +21,7 @@ func TestSoleAlignedCategoryRelationRemainsReviewableThroughBuilder(t *testing.T
 	s := newLineuparrTestServer(t, true)
 	idx := lineupindex.Index{SchemaVersion: lineupindex.CurrentIndexVersion,
 		Stations:          map[string]*lineupindex.Station{"S1": {StationID: "S1", Names: []lineupindex.StationName{{Value: "UNBRANDEDTEST", Normalized: "UNBRANDEDTEST", Kind: lineupindex.NameCallSign}}}},
-		CategoryRelations: []lineupindex.ProviderCategoryRelation{{StationID: "S1", AliasValue: "UNBRANDEDTEST", AliasNormalized: "UNBRANDEDTEST", Category: "News", SourceID: "directv-official-lineup", SourceLabel: "DIRECTV", SourceRowID: "row-1", LineupKeys: []string{"directv"}, Method: "exact provider row identity; identity-policy-v2"}},
+		CategoryRelations: []lineupindex.ProviderCategoryRelation{{StationID: "S1", AliasValue: "UNBRANDEDTEST", AliasNormalized: "UNBRANDEDTEST", Category: "News", SourceID: "directv-official-lineup", SourceLabel: "DIRECTV", SourceRowID: "row-1", LineupKeys: []string{"directv"}, Method: "unique provider-local channel number; number-policy-provider-alias-v3; provider-source-alignment-v1"}},
 	}
 	bindCategoryFixture(&idx, map[string]string{"S1": "UNBRANDEDTEST", "64549": "HLNHD"})
 	data, err := json.Marshal(idx)
