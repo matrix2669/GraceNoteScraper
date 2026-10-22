@@ -13,11 +13,16 @@ type AutomaticExclusion struct {
 	Conflict       bool
 }
 type AutomaticResult struct {
-	Rows   []AutomaticExclusion
-	Hidden map[string]bool
+	Rows          []AutomaticExclusion
+	InventoryRows []InventoryFeedExclusion `json:"inventoryRows,omitempty"`
+	Hidden        map[string]bool
 }
 
 func explicitCandidateDecision(c Candidate, decisions []Decision) string {
+	return explicitStreamDecision(c.ChannelID, c.Source, c.StreamHash, c.StreamName, decisions)
+}
+
+func explicitStreamDecision(channelID, source, streamHash, streamName string, decisions []Decision) string {
 	// Only a retained constituent is an explicit override. A lossy group alias
 	// must not extend a confirmation to a newly seen opposing-feed raw name.
 	// Existing explicit confirmations remain conflicts even after authentication
@@ -25,12 +30,12 @@ func explicitCandidateDecision(c Candidate, decisions []Decision) string {
 	// This preserves choices without reusing prior automatic evidence.
 	denied := false
 	for _, d := range decisions {
-		if d.ChannelID == c.ChannelID &&
-			((d.StreamHash != "" && d.StreamHash == c.StreamHash) || (d.StreamName != "" && equalRawStream(d.StreamName, c.StreamName))) {
+		if d.ChannelID == channelID &&
+			((d.StreamHash != "" && d.StreamHash == streamHash) || (d.StreamName != "" && equalRawStream(d.StreamName, streamName))) {
 			if d.Decision == "confirmed" {
 				return "confirmed"
 			}
-			if d.Decision == "denied" && d.Source == c.Source {
+			if d.Decision == "denied" && d.Source == source {
 				denied = true
 			}
 		}

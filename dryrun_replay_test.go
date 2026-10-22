@@ -153,6 +153,13 @@ func TestRetainedDryRunReplay(t *testing.T) {
 		decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: "retained-copy", StreamHash: d.StreamFingerprint, StreamName: d.StreamName, Decision: d.Decision})
 	}
 	derived := dispatcharr.DeriveAutomaticExclusions(matches.All, targets, feeds, codes, decisions)
+	feedTargets := []dispatcharr.FeedTarget{}
+	for _, c := range out.Channels {
+		if c.Included {
+			feedTargets = append(feedTargets, dispatcharr.FeedTarget{ID: c.ID, Name: c.Name, Number: c.Number, Country: "US", Feed: feeds[c.ID]})
+		}
+	}
+	derived.InventoryRows = dispatcharr.DeriveInventoryFeedExclusions("retained-copy", dispatcharr.ProjectIdentityInventory(in.Streams), feedTargets, codes, decisions, derived.Rows)
 	for _, row := range derived.Rows {
 		if row.Conflict {
 			continue
@@ -160,6 +167,15 @@ func TestRetainedDryRunReplay(t *testing.T) {
 		for i := range out.Channels {
 			if out.Channels[i].ID == row.Candidate.ChannelID {
 				out.Channels[i].ExcludedAliases = append(out.Channels[i].ExcludedAliases, row.Candidate.StreamName)
+			}
+		}
+	}
+	for _, row := range derived.InventoryRows {
+		if !row.Conflict {
+			for i := range out.Channels {
+				if out.Channels[i].ID == row.ChannelID {
+					out.Channels[i].ExcludedAliases = append(out.Channels[i].ExcludedAliases, row.StreamName)
+				}
 			}
 		}
 	}
@@ -179,5 +195,5 @@ func TestRetainedDryRunReplay(t *testing.T) {
 	if err = os.WriteFile(output, b, 0600); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("replayed %d channels/%d physical streams; %d scored pairs; %d derived rows", len(channels), len(in.Streams), len(matches.All), len(derived.Rows))
+	t.Logf("replayed %d channels/%d physical streams; %d scored pairs; %d scored-derived rows; %d inventory-only rows", len(channels), len(in.Streams), len(matches.All), len(derived.Rows), len(derived.InventoryRows))
 }

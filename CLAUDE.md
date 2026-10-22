@@ -33,7 +33,7 @@ See [docs/dryrun-review-evidence.md](docs/dryrun-review-evidence.md). Short revi
 
 ## Automatic stream exclusions
 
-See [docs/automatic-stream-exclusions.md](docs/automatic-stream-exclusions.md). Automatic current-snapshot identity constraints/unknown-feed holds are distinct from manual ADR024 score eligibility; do not apply the manual >=95 Deny threshold to them. Preserve matcher/pin bytes, source-bound evidence, explicit confirmations, raw-name scoping, stale export leases and advisory navigation. No bulk selection is required.
+See [docs/automatic-stream-exclusions.md](docs/automatic-stream-exclusions.md). Definite opposite-feed constraints also cover the immutable safe inventory of the same successful snapshot, without changing matcher inputs or creating scored candidates. Unknown holds and affiliate rules stay candidate-bound. Automatic current-snapshot identity constraints/unknown-feed holds are distinct from manual ADR024 score eligibility; do not apply the manual >=95 Deny threshold to them. Preserve matcher/pin bytes, source-bound evidence, explicit confirmations, raw-name scoping, stale export leases and advisory navigation. No bulk selection is required.
 
 ## Service identity repair
 

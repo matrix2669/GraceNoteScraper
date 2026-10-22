@@ -654,7 +654,7 @@
         <details id="automatic-exclusions">
           <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
-          <p>These are derived rules, separate from your saved Deny decisions. Clear callsign or opposing-feed conflicts are excluded automatically. Uncertain feed names remain below for Confirm/Deny and unresolved names are withheld from JSON until confirmed. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
+          <p>These are derived rules, separate from your saved Deny decisions. Definite opposing feeds are excluded across the successful stream inventory, even when they have no match score. Clear callsign conflicts and uncertain feed holds use scored review candidates. Uncertain feed names remain below for Confirm/Deny. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
           <div id="automatic-rows"></div>
           <div id="match-coverage"></div>
         </details>
@@ -1388,7 +1388,7 @@
       for (const row of [...rows].sort((a,b) => Number(!!b.conflict)-Number(!!a.conflict)).slice(0, limit)) {
         const item = document.createElement('div'); item.className = 'channel-meta automatic-row';
         const state = row.conflict ? 'Saved confirmation preserved' : row.manualDecision === 'denied' ? 'Saved denial preserved; automatic constraint active' : row.pendingReview ? 'Manual review required' : 'Automatically excluded';
-        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}. ${row.reason}`;
+        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}${row.inventoryOnly ? ' (inventory identity; no match score)' : ''}. ${row.reason}`;
         if (row.conflict) {
           const saved = (matchReview?.decisions || []).filter(d => d.decision === 'confirmed' && d.channelId === row.channelId && (d.streamNames || [d.streamName]).some(n => n.trim().toLowerCase() === row.streamName.trim().toLowerCase()));
           for (const decision of saved) item.append(decisionRow(decision));

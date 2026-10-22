@@ -35,7 +35,7 @@ they may be unsupported or the stream may have disappeared. No choice is reverse
 Stream feed parsing recognizes the captured TV/account wrappers and presentation
 quality glyphs, including superscript RAW/HD, without changing raw exclusions.
 Service family, feed region and quality remain separate. Opposing proved feeds
-produce per-name negatives at every admitted score, including 70–94. Unknown Pacific
+produce per-name negatives at every admitted score, including 70–94. Definite same-family opposite feeds are also checked across the same successful inventory when no scored pair was returned; these constraints never receive scores or create review items. Unknown Pacific
 identities remain visible for manual review/held until confirmed. Unknown East
 labels retain the same established review holds as Pacific/West labels. Existing confirmations win
 and are flagged. There is no new matcher pass or global wildcard.

@@ -16,7 +16,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/providersource"
 )
 
-const automaticMatchPolicy = "current-snapshot-identity-v1"
+const automaticMatchPolicy = "current-snapshot-identity-v2"
 
 var errAutomaticStale = errors.New("automatic matching inputs changed; reload the draft and refresh streams if required")
 
@@ -33,6 +33,7 @@ type automaticMatchRow struct {
 	Conflict       bool   `json:"conflict,omitempty"`
 	ManualDecision string `json:"manualDecision,omitempty"`
 	Exported       bool   `json:"exported"`
+	InventoryOnly  bool   `json:"inventoryOnly,omitempty"`
 }
 type automaticMatchView struct {
 	Status    string              `json:"status"`
@@ -44,7 +45,7 @@ type automaticMatchView struct {
 }
 
 func snapshotIdentity(snapshot dispatcharrMatchSnapshot) string {
-	data, _ := json.Marshal([]any{snapshot.dispatcharrFingerprint, snapshot.lineupFingerprint, snapshot.version, snapshot.fetchedAt, snapshot.digest, snapshot.warning, fmt.Sprintf("%p", snapshot.guide)})
+	data, _ := json.Marshal([]any{snapshot.dispatcharrFingerprint, snapshot.lineupFingerprint, snapshot.version, snapshot.fetchedAt, snapshot.digest, snapshot.inventoryDigest, snapshot.warning, fmt.Sprintf("%p", snapshot.guide)})
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
 
@@ -179,13 +180,23 @@ func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig
 		decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: d.DispatcharrFingerprint, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, NormalizedAlias: d.NormalizedAlias, Decision: d.Decision})
 	}
 	result := dispatcharr.DeriveAutomaticExclusions(candidates, targets, feeds, codes, decisions)
+	feedTargets := []dispatcharr.FeedTarget{}
+	for _, c := range draft.Channels {
+		if included[c.ID] {
+			feedTargets = append(feedTargets, dispatcharr.FeedTarget{ID: c.ID, Name: c.Name, Number: c.Number, Country: affiliateCountry(config.Gracenote.Country), Feed: feeds[c.ID]})
+		}
+	}
+	result.InventoryRows = dispatcharr.DeriveInventoryFeedExclusions(conn.Fingerprint(), snapshot.identityStreams, feedTargets, codes, decisions, result.Rows)
 	view.Status = "current"
-	view.Message = "Derived automatically from this stream snapshot; no manual Deny records are created. Uncertain feed names remain manual and unresolved names are withheld from JSON until confirmed. Saved confirmations win and conflicts are shown. Recomputed on snapshot, lineup, identity or decision changes; restart requires Refresh streams."
+	view.Message = "Definite opposing feeds are checked across this successful stream inventory; inventory-only exclusions have no match score. Uncertain scored feed names remain manual and withheld from JSON until confirmed. Saved confirmations win and conflicts are shown. No manual Deny records are created. Recomputed on snapshot, lineup, identity or decision changes; restart requires Refresh streams."
 	view.FetchedAt = snapshot.fetchedAt
 	view.Hidden = result.Hidden
 	for _, row := range result.Rows {
 		c := row.Candidate
 		view.Rows = append(view.Rows, automaticMatchRow{Key: c.Key, ChannelID: c.ChannelID, ChannelNumber: c.ChannelNumber, ChannelName: c.ChannelName, StreamName: c.StreamName, AccountID: c.M3UAccountID, Rule: row.Rule, Reason: row.Reason, PendingReview: row.PendingReview, Conflict: row.Conflict, ManualDecision: row.ManualDecision, Exported: !row.Conflict})
+	}
+	for _, row := range result.InventoryRows {
+		view.Rows = append(view.Rows, automaticMatchRow{Key: row.Key, ChannelID: row.ChannelID, ChannelNumber: row.ChannelNumber, ChannelName: row.ChannelName, StreamName: row.StreamName, AccountID: row.AccountID, Rule: row.Rule, Reason: row.Reason, Conflict: row.Conflict, ManualDecision: row.ManualDecision, Exported: !row.Conflict, InventoryOnly: true})
 	}
 	sort.Slice(view.Rows, func(i, j int) bool { return view.Rows[i].Key < view.Rows[j].Key })
 	return view, result
@@ -210,15 +221,15 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 	for i := range draft.Channels {
 		byID[draft.Channels[i].ID] = &draft.Channels[i]
 	}
-	for _, row := range result.Rows {
-		if row.Conflict {
-			continue
+	appendExclusion := func(channelID, rawName string, conflict bool) {
+		if conflict {
+			return
 		}
-		channel := byID[row.Candidate.ChannelID]
+		channel := byID[channelID]
 		if channel == nil {
-			continue
+			return
 		}
-		name := strings.Join(strings.Fields(row.Candidate.StreamName), " ")
+		name := strings.Join(strings.Fields(rawName), " ")
 		exists := false
 		for _, old := range channel.ExcludedAliases {
 			if strings.EqualFold(old, name) {
@@ -230,6 +241,12 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 			channel.AutomaticExcludedAliases = append(channel.AutomaticExcludedAliases, name)
 			draft.AutomaticExclusionCount++
 		}
+	}
+	for _, row := range result.Rows {
+		appendExclusion(row.Candidate.ChannelID, row.Candidate.StreamName, row.Conflict)
+	}
+	for _, row := range result.InventoryRows {
+		appendExclusion(row.ChannelID, row.StreamName, row.Conflict)
 	}
 	// A concurrent decision change makes this projection stale, never publishable.
 	if stateToken != s.lineup.builder.ReviewStateToken() {

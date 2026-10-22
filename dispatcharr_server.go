@@ -79,6 +79,7 @@ type dispatcharrMatchSnapshot struct {
 	lineupFingerprint      string
 	digest                 string
 	candidates             []dispatcharr.Candidate
+	identityStreams        []dispatcharr.IdentityStream
 	streamCount            int
 	inventoryDigest        string
 	fetchedAt              time.Time
@@ -425,7 +426,11 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		failureMessage := "Unable to fetch Dispatcharr streams. Check the connection and retry Refresh streams."
 		var matches dispatcharr.CandidateSet
 		var version string
+		var identityStreams []dispatcharr.IdentityStream
+		var inventoryDigest string
 		if fetchErr == nil {
+			identityStreams = dispatcharr.ProjectIdentityInventory(streams)
+			inventoryDigest = streamInventoryDigest(streams)
 			s.cache.observe(dispatchConfig.Fingerprint(), streams)
 			matcher := s.matcher
 			if matcher == nil {
@@ -471,7 +476,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			}
 			snapshot = dispatcharrMatchSnapshot{
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
-				channels: channels, digest: digest, candidates: matches.All, streamCount: len(streams), inventoryDigest: streamInventoryDigest(streams), fetchedAt: time.Now().UTC(), version: version,
+				channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
 			snapshot.channels = currentChannels
