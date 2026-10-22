@@ -24,7 +24,7 @@ assert(a>=0&&b>a&&c>=0&&d>c);
  // Render a real saved confirmation Undo next to its conflict. Rendering
  // never writes; only the explicit user click invokes the existing action.
  const ds=html.indexOf('    function decisionRow('),de=html.indexOf('    async function decideMatch(',ds);
- await page.addScriptTag({content:`window.undoCalls=[];window.clearDecision=key=>undoCalls.push(key);${html.slice(ds,de)}`});
+ await page.addScriptTag({content:`window.pendingDecisions=new Set();window.undoCalls=[];window.clearDecision=key=>undoCalls.push(key);${html.slice(ds,de)}`});
  await page.evaluate(rows=>{matchReview.decisions=[{key:'saved-review',decision:'confirmed',channelId:'west',streamName:'US: HBO East',channelName:'HBOHDP',channelNumber:'901',streamCount:1,score:100}];rows[2].channelId='west';renderAutomaticExclusions({rows});},rows);
  assert.equal(await page.locator('#automatic-rows button').count(),1);
  assert.deepEqual(await page.evaluate(()=>undoCalls),[]);
