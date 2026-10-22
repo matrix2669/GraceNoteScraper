@@ -154,7 +154,7 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 	return feeds, codes
 }
 
-func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot) (automaticMatchView, dispatcharr.AutomaticResult) {
+func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot) (automaticMatchView, dispatcharr.AutomaticResult) {
 	view := automaticMatchView{Status: "refresh-required", Message: "Refresh streams to derive current channel-scoped exclusions. Saved manual decisions remain unchanged.", Policy: automaticMatchPolicy, Rows: []automaticMatchRow{}, Hidden: map[string]bool{}}
 	empty := dispatcharr.AutomaticResult{Hidden: map[string]bool{}}
 	conn, connected := s.config.Get()
@@ -203,6 +203,7 @@ func (s *dispatcharrServer) automaticView(draft *builder.Draft, config appconfig
 }
 
 func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, config appconfig.Config) {
+	evidence := s.lineup.reviewInputsRevision()
 	stateToken := s.lineup.builder.ReviewStateToken()
 	inventoryToken := s.inventoryObservationToken()
 	s.reviewMu.RLock()
@@ -214,7 +215,7 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 	if connected {
 		fingerprint = conn.Fingerprint()
 	}
-	draft.AutomaticLease = &builder.AutomaticMatchLease{StateToken: stateToken, SnapshotToken: snapshotIdentity(snapshot), InventoryToken: inventoryToken, DispatchFingerprint: fingerprint, GuideToken: fmt.Sprintf("%p", s.lineup.state.GetForSource(config.Fingerprint()))}
+	draft.AutomaticLease = &builder.AutomaticMatchLease{EvidenceBound: true, IndexRevision: evidence.index, TMDBRevision: evidence.tmdb, ConfigurationToken: configurationToken(config), StateToken: stateToken, SnapshotToken: snapshotIdentity(snapshot), InventoryToken: inventoryToken, DispatchFingerprint: fingerprint, GuideToken: fmt.Sprintf("%p", s.lineup.state.GetForSource(config.Fingerprint()))}
 	draft.AutomaticMatchingStatus = view.Status
 	draft.AutomaticMatchingMessage = view.Message
 	byID := map[string]*builder.DraftChannel{}
@@ -249,7 +250,7 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 		appendExclusion(row.ChannelID, row.StreamName, row.Conflict)
 	}
 	// A concurrent decision change makes this projection stale, never publishable.
-	if stateToken != s.lineup.builder.ReviewStateToken() {
+	if evidence != s.lineup.reviewInputsRevision() || stateToken != s.lineup.builder.ReviewStateToken() {
 		draft.AutomaticLease.StateToken = "stale"
 	}
 	if inventoryToken != s.inventoryObservationToken() {
@@ -269,6 +270,10 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 	}
 	defer s.refreshMu.Unlock()
 	lease := draft.AutomaticLease
+	lineupConfig, configured, _ := s.lineup.store.Get()
+	if !configured || lease.EvidenceBound && configurationToken(lineupConfig) != lease.ConfigurationToken {
+		return false, errAutomaticStale
+	}
 	conn, connected := s.config.Get()
 	fp := ""
 	if connected {
@@ -278,22 +283,28 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 		return false, errAutomaticStale
 	}
 	commit := func() error {
-		current, err := s.lineup.store.WhileCurrent(draft.SourceFingerprint, func() error {
-			s.lineup.state.mu.RLock()
-			defer s.lineup.state.mu.RUnlock()
-			if fmt.Sprintf("%p", s.lineup.state.guide) != lease.GuideToken || s.lineup.state.sourceFingerprint != draft.SourceFingerprint {
-				return errAutomaticStale
-			}
-			return s.lineup.builder.WhileReviewState(lease.StateToken, func() error {
-				s.reviewMu.RLock()
-				defer s.reviewMu.RUnlock()
-				s.cache.mu.Lock()
-				defer s.cache.mu.Unlock()
-				if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.cache.observationTokenLocked() != lease.InventoryToken {
+		current, err := s.lineup.store.WhileConfiguration(lineupConfig, func() error {
+			guarded := func() error {
+				s.lineup.state.mu.RLock()
+				defer s.lineup.state.mu.RUnlock()
+				if fmt.Sprintf("%p", s.lineup.state.guide) != lease.GuideToken || s.lineup.state.sourceFingerprint != draft.SourceFingerprint {
 					return errAutomaticStale
 				}
-				return action()
-			})
+				return s.lineup.builder.WhileReviewState(lease.StateToken, func() error {
+					s.reviewMu.RLock()
+					defer s.reviewMu.RUnlock()
+					s.cache.mu.Lock()
+					defer s.cache.mu.Unlock()
+					if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.cache.observationTokenLocked() != lease.InventoryToken {
+						return errAutomaticStale
+					}
+					return action()
+				})
+			}
+			if lease.EvidenceBound {
+				return s.lineup.whileEvidence(lease.IndexRevision, lease.TMDBRevision, guarded)
+			}
+			return guarded()
 		})
 		if !current && err == nil {
 			return errAutomaticStale

@@ -160,6 +160,10 @@ type SourceMatch struct {
 }
 
 type AutomaticMatchLease struct {
+	EvidenceBound       bool
+	IndexRevision       uint64
+	TMDBRevision        uint64
+	ConfigurationToken  string
 	StateToken          string
 	SnapshotToken       string
 	InventoryToken      string

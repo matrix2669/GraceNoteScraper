@@ -1,6 +1,6 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const script=fs.readFileSync('lineuparr.html','utf8').split('<script>')[1].split('</script>')[0];
-const code=script.slice(script.indexOf('    let builderResetBackup'),script.indexOf('    function setProviderAddressStatus'));
+const code=require('./review_fixture_helpers.cjs')(script)+script.slice(script.indexOf('    let builderResetBackup'),script.indexOf('    function setProviderAddressStatus'));
 (async()=>{
  for(const choice of [null,{withdrawPublished:false},{withdrawPublished:true}]) {
   let posts=0,reloads=0;const buttons={};

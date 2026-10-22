@@ -62,7 +62,7 @@ async function testWorkflowCompletionAndLateReplies() {
   const a=html.indexOf('    function workflowStates()');
   const b=html.indexOf('    function renderGuidedWorkflow()',a);
   const w=vm.createContext({draft:{channels:[]},workflowRemote:{dispatchReady:true,dispatchConfig:{configured:true}},workflowProgress:{},dispatchBusy:false,dispatchConnectionError:false,pendingDecisions:new Set(),document:{getElementById:()=>({}),querySelector:()=>({})}});
-  vm.runInContext(html.slice(a,b),w);
+  vm.runInContext(require('../tools/review_fixture_helpers.cjs')(html)+html.slice(a,b),w);
   for(const [status,count,expected] of [['refresh-required',0,false],['stale',0,false],['refreshing',0,false],['current',0,true],['current',2,false]]) {
     w.workflowRemote.dispatch={reviewStatus:status,candidateCount:count};assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),expected);
   }
@@ -76,7 +76,7 @@ async function testWorkflowCompletionAndLateReplies() {
   // Execute real loadMatchReview with controllable deferred replies.
   const start=html.indexOf('    async function loadMatchReview('),end=html.indexOf('    function renderMatchReview()',start);
   let resolve,reject;const messages=[];
-  const c=vm.createContext({document:{getElementById:()=>({textContent:'',replaceChildren(){},append(){}}),createElement:()=>({textContent:''})},draft:{},dispatchConfig:{configured:true},dispatchBusy:false,dispatchBusyRequest:0,dispatchReviewEpoch:0,matchReviewRequest:0,decisionRevision:0,pendingDecisions:new Set(),pendingAlternativeReviews:[],matchReconcileTimer:null,clearTimeout(){},matchReviewLimit:100,matchReview:null,workflowRemote:{},URLSearchParams,
+  const c=vm.createContext({document:{getElementById:()=>({textContent:'',replaceChildren(){},append(){}}),createElement:()=>({textContent:''})},builderResetPending:false,draft:{},dispatchConfig:{configured:true},dispatchBusy:false,dispatchBusyRequest:0,dispatchReviewEpoch:0,matchReviewRequest:0,decisionRevision:0,pendingDecisions:new Set(),pendingAlternativeReviews:[],matchReconcileTimer:null,clearTimeout(){},matchReviewLimit:100,matchReview:null,workflowRemote:{},URLSearchParams,
     els:{dispatchLoading:{replaceChildren(){}}},emptyMessage:x=>x,setDispatchControls(){},renderGuidedWorkflow(){},renderMatchReview(){},renderAutomaticExclusions(){},startMatchProgress:()=>()=>{},showMessage:x=>messages.push(x),api:()=>new Promise((yes,no)=>{resolve=yes;reject=no})});
   vm.runInContext(html.slice(start,end),c);
   let pending=vm.runInContext('loadMatchReview(false,false)',c);c.dispatchReviewEpoch++;c.matchReviewRequest++;resolve({reviewStatus:'current',candidateCount:0});await pending;assert.equal(c.matchReview,null);

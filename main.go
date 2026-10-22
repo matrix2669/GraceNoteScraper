@@ -1527,9 +1527,11 @@ func main() {
 			}
 			return nil
 		},
-		tmdbCachedEvidence: tmdbClient.CachedCategoryEvidence,
-		addressTester:      providersource.NewService(),
-		exportDir:          util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
+		tmdbCachedEvidence:   tmdbClient.CachedCategoryEvidence,
+		tmdbEvidenceRevision: tmdbClient.CategoryEvidenceRevision,
+		tmdbWhileEvidence:    tmdbClient.WhileCategoryEvidenceRevision,
+		addressTester:        providersource.NewService(),
+		exportDir:            util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1540,6 +1542,7 @@ func main() {
 
 	lineuparrHandlers.automaticProjection = dispatcharrHandlers.projectAutomaticExclusions
 	lineuparrHandlers.commitDraft = dispatcharrHandlers.commitAutomaticDraft
+	lineuparrHandlers.derivedRevision = dispatcharrHandlers.derivedRevision
 	lineuparrHandlers.afterBuilderReset = dispatcharrHandlers.clearCandidateCache
 
 	// Start background scraper
