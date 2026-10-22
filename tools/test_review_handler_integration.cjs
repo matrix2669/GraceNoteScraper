@@ -32,7 +32,7 @@ if(!process.env.REVIEW_HANDLER_URL){
     window.keys=matchReview.candidates.map(c=>c.key);if(keys.length!==100||keys.some(k=>!k))throw Error('expected100 admitted fixture groups');
     let lastBeat=performance.now();window.beat=setInterval(()=>{const now=performance.now();receipt.maxHeartbeat=Math.max(receipt.maxHeartbeat,now-lastBeat);lastBeat=now;},25);
     const observer=new MutationObserver(()=>{if(receipt.accepted===100&&pendingDecisions.size===0&&document.querySelector('#match-list>.match-card')){receipt.nextPage=performance.now();observer.disconnect();clearInterval(beat);}});observer.observe(els.matchList,{childList:true});
-    window.burst=(async()=>{for(let i=0;i<keys.length;i++){const key=keys[i];const card=[...document.querySelectorAll('#match-list>.match-card')].find(c=>c.dataset.key===key);const button=card?.querySelector(i%2?'.deny-button':'.confirm-button');if(!button||button.disabled)throw Error(`click ${i} unexpectedly blocked`);const at=performance.now();receipt.lastClick=at;button.click();receipt.clickWork.push(performance.now()-at);receipt.accepted++;if(document.querySelector(`[data-key="${key}"]`)?.classList.contains('match-card'))throw Error('click not accepted');if(hz)await new Promise(r=>setTimeout(r,1000/hz));}})();
+    window.burst=(async()=>{receipt.start=performance.now();for(let i=0;i<keys.length;i++){if(hz&&i)await new Promise(r=>setTimeout(r,Math.max(0,receipt.start+i*1000/hz-performance.now())));const key=keys[i];const card=[...document.querySelectorAll('#match-list>.match-card')].find(c=>c.dataset.key===key);const button=card?.querySelector(i%2?'.deny-button':'.confirm-button');if(!button||button.disabled)throw Error(`click ${i} unexpectedly blocked`);const at=performance.now();receipt.lastClick=at;button.click();receipt.clickWork.push(performance.now()-at);receipt.accepted++;if(document.querySelector(`[data-key="${key}"]`)?.classList.contains('match-card'))throw Error('click not accepted');}})();
    },{code,fixture,hz:Number(process.env.REVIEW_BURST_HZ||0)});
    await page.evaluate(()=>burst);
    await page.waitForFunction(()=>receipt.nextPage>0,{},{timeout:15000});
@@ -41,6 +41,8 @@ if(!process.env.REVIEW_HANDLER_URL){
    assert.ok(Math.max(...metrics.clickWork)<250,'immediate acceptance within250ms');
    const nextMS=metrics.nextPage-metrics.lastClick;if(metrics.hz===10)assert.ok(nextMS<3000,`last click to next page ${nextMS.toFixed(1)}ms`);
    metrics.lastClickToNextPageMS=nextMS;metrics.lastClickToFinalAckMS=metrics.lastAck-metrics.lastClick;metrics.p95AckMS=[...metrics.acks].sort((a,b)=>a-b)[94];
+   if(metrics.hz===10)assert.ok(metrics.lastClick-metrics.start>=9850&&metrics.lastClick-metrics.start<10500,'100 fixed-deadline clicks delivered at10Hz');
+   assert.ok(metrics.p95AckMS<100,`p95 HTTP acknowledgement ${metrics.p95AckMS.toFixed(1)}ms`);
    delete metrics.states;
    if(process.env.REVIEW_RETAINED_ROOT)fs.writeFileSync(`${process.env.REVIEW_RETAINED_ROOT}/browser-handler-${metrics.hz}hz.json`,JSON.stringify(metrics,null,2),{mode:0o600});
    console.log(`Real browser→Go handler: 100 at ${metrics.hz||'rapid'}Hz, p95 HTTP acknowledgement ${metrics.p95AckMS.toFixed(1)}ms, final click→next page ${nextMS.toFixed(1)}ms, exactly one refill`);
