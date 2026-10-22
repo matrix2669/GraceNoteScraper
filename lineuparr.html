@@ -1545,7 +1545,7 @@
       renderGuidedWorkflow();
     }
 
-    function scheduleMatchReconcile() {
+    function scheduleDecisionDraftRefresh() {
       clearTimeout(matchReconcileTimer);
       const epoch = dispatchReviewEpoch;
       matchReconcileTimer = setTimeout(async () => {
@@ -1569,7 +1569,7 @@
       renderGuidedWorkflow();
       if (!pendingDecisions.size) {
         if (saved) await refillResolvedPage();
-        scheduleMatchReconcile();
+        scheduleDecisionDraftRefresh();
       }
     }
 

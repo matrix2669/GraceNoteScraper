@@ -116,7 +116,8 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 			t.Fatalf("page still exposes removed TVG-ID selector %q", removed)
 		}
 	}
-	if got := strings.Count(body, "tvgIds:[]"); got != 2 {
+	// Primary and popup choices share one payload helper; browser tests execute both paths.
+	if got := strings.Count(body, "tvgIds:[]"); got != 1 {
 		t.Fatalf("browser decisions do not explicitly suppress provider TVG IDs: found %d requests", got)
 	}
 	if strings.Contains(body, "scheduleMatchReconcile") {
