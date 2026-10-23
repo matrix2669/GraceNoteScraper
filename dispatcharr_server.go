@@ -673,7 +673,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		status = "refreshing"
 	}
 	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
-	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, admitCurrent, visibleLimit)
+	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, visibleLimit)
 	response := dispatcharrReviewResponse{
 		Supplemental: supplemental, SupplementalImpact: s.impactResponse(),
 		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),

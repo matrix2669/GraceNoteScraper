@@ -14,7 +14,7 @@ import (
 
 // Optional authorized private-copy test. Inputs and reports are never source
 // fixtures; feedback is ground truth for this isolated temporary store only.
-func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *builder.Draft, streams []dispatcharr.Stream, primary []dispatcharr.Candidate, cfg appconfig.Config) {
+func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *builder.Draft, streams []dispatcharr.Stream, primary []dispatcharr.Candidate, automatic dispatcharr.AutomaticResult, cfg appconfig.Config) {
 	path := os.Getenv("SUPPLEMENTAL_REPLAY_MANIFEST")
 	if path == "" {
 		return
@@ -46,6 +46,8 @@ func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *bu
 	snapshot := dispatcharrMatchSnapshot{identityStreams: inventory, candidates: primary, fetchedAt: time.Now(), dispatcharrFingerprint: "retained-copy", lineupFingerprint: source}
 	started := time.Now()
 	candidates, complete := ds.prepareSupplemental(draft, cfg, snapshot, reviewInputsRevision{})
+	retrieved := len(candidates)
+	candidates = filterSupplementalAutomatic(candidates, automatic)
 	elapsed := time.Since(started)
 	if output := os.Getenv("SUPPLEMENTAL_RETRIEVAL_OUTPUT"); output != "" {
 		data, err := json.Marshal(candidates)
@@ -164,7 +166,7 @@ func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *bu
 	if err != nil {
 		t.Fatal(err)
 	}
-	report := map[string]any{"targets": 40, "channels": len(draft.Channels), "inventoryPhysical": len(inventory), "feedbackPhysical": acceptedCount, "acceptedRetrieved": len(accepted), "acceptedAlreadyPrimary": acceptedPrimary, "acceptedSupplementalOnly": len(accepted) - acceptedPrimary, "news12ReviewRetrieved": reviewRetrieved, "retrievalCandidates": len(candidates), "retrievalDurationMS": elapsed.Milliseconds(), "priorDecisionsUnchanged": len(before), "priorDenialsUnchanged": denials, "impact240": impact, "consumer240": result, "consumer40": subsetImpact, "export": json.RawMessage(proposedJSON), "missing": missing, "note": "Feedback applied only inside isolated temporary test store. No rejected, unendorsed or experimental mask auto-applied; full raw aliases can leave misses/extras."}
+	report := map[string]any{"targets": 40, "channels": len(draft.Channels), "inventoryPhysical": len(inventory), "feedbackPhysical": acceptedCount, "acceptedRetrieved": len(accepted), "acceptedAlreadyPrimary": acceptedPrimary, "acceptedSupplementalOnly": len(accepted) - acceptedPrimary, "news12ReviewRetrieved": reviewRetrieved, "retrievalCandidates": len(candidates), "retrievedBeforeAutomaticFilter": retrieved, "automaticallyResolvedPairs": retrieved - len(candidates), "retrievalDurationMS": elapsed.Milliseconds(), "priorDecisionsUnchanged": len(before), "priorDenialsUnchanged": denials, "impact240": impact, "consumer240": result, "consumer40": subsetImpact, "export": json.RawMessage(proposedJSON), "missing": missing, "note": "Feedback applied only inside isolated temporary test store. No rejected, unendorsed or experimental mask auto-applied; full raw aliases can leave misses/extras."}
 	output := os.Getenv("SUPPLEMENTAL_REPLAY_OUTPUT")
 	if output == "" {
 		t.Fatal("explicit private output required")

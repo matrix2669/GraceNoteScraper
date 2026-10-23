@@ -167,7 +167,41 @@ func supplementalGroups(rows []builder.SupplementalDecision, history bool) []sup
 	})
 	return result
 }
-func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, valid bool, limit int) (supplementalReview, []supplementalGroup) {
+
+// Use only the authoritative current automatic result, never a retrieval reason
+// or a saved Deny. Literal spelling/account/target scope matches the automatic
+// inventory contract; unknown holds and preserved confirmation conflicts remain
+// outside this filter. The caller's evidence/snapshot fences govern both views.
+func filterSupplementalAutomatic(candidates []dispatcharr.SupplementalCandidate, automatic dispatcharr.AutomaticResult) []dispatcharr.SupplementalCandidate {
+	type identity struct {
+		channel, name string
+		account       int64
+	}
+	key := func(channel, name string, account int64) identity {
+		return identity{channel, supplementalLiteral(name), account}
+	}
+	excluded := map[identity]bool{}
+	for _, row := range automatic.InventoryRows {
+		if row.Rule == "inventory-opposing-feed-v1" && !row.Conflict {
+			excluded[key(row.ChannelID, row.StreamName, row.AccountID)] = true
+		}
+	}
+	for _, row := range automatic.Rows {
+		if row.Rule == "feed-identity-v1" && !row.PendingReview && !row.Conflict {
+			c := row.Candidate
+			excluded[key(c.ChannelID, c.StreamName, c.M3UAccountID)] = true
+		}
+	}
+	kept := make([]dispatcharr.SupplementalCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		if !excluded[key(c.Target.ID, c.Stream.Name, c.Stream.AccountID)] {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int) (supplementalReview, []supplementalGroup) {
 	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, then explicitly check export impact. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
 	stored := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
@@ -208,6 +242,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 	}
 	candidates, complete := s.prepareSupplemental(draft, config, snapshot, inputs)
 	candidates = append(append([]dispatcharr.SupplementalCandidate(nil), candidates...), s.impactExtraCandidates(draft, snapshot, inputs)...)
+	candidates = filterSupplementalAutomatic(candidates, automatic)
 	response.Complete = complete
 	response.Status = "current"
 	if !complete {
@@ -263,12 +298,22 @@ func (s *dispatcharrServer) publishSupplementalLocked(inputs reviewInputsRevisio
 	previous := s.supplementalAdmission
 	next := supplementalAdmission{common: reviewAdmission{inputs: inputs, snapshot: snapshot, inventory: inventory}, groups: map[string][]builder.SupplementalDecision{}, tokens: map[string]string{}}
 	tokens := map[string]string{}
+	current := map[string]bool{}
+	for _, g := range groups {
+		current[g.Key] = true
+	}
 	if previous.common.inputs == inputs && previous.common.snapshot == snapshot && previous.common.inventory == inventory {
 		for k, g := range previous.groups {
-			next.groups[k] = g
-		}
-		for k, t := range previous.tokens {
-			next.tokens[k] = t
+			token := previous.tokens[k]
+			op := s.operations[token]
+			// Keep durable retry/receipt data, but never retain an uncommitted
+			// offer that the current automatic/decision overlay has removed.
+			if current[k] || op.State == "saved" {
+				next.groups[k], next.tokens[k] = g, token
+			} else if op.State == "offered" {
+				op.State = "superseded"
+				s.operations[token] = op
+			}
 		}
 	}
 	for _, g := range groups {
@@ -294,14 +339,37 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 	}
 	if r.Method == http.MethodDelete {
 		var keys []string
+		var previous map[string]builder.SupplementalDecision
 		if !s.saveWhileCurrent(connection, config, func() error {
 			var err error
+			previous = s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 			keys, err = s.lineup.builder.ClearSupplementalDecisions(config.Fingerprint(), key)
 			return err
 		}, w) {
 			return
 		}
 		s.retireDecisionOperations(keys)
+		// Undo can reactivate an automatic constraint on an identical name in
+		// another account. Retire related outstanding offers immediately, before
+		// the next review read rebuilds the decision overlay and admission.
+		s.reviewMu.Lock()
+		for group, rows := range s.supplementalAdmission.groups {
+			token := s.supplementalAdmission.tokens[group]
+			op := s.operations[token]
+			if op.State != "offered" {
+				continue
+			}
+			for _, row := range rows {
+				for _, key := range keys {
+					old := previous[key]
+					if old.ChannelID == row.ChannelID && supplementalLiteral(old.StreamName) == supplementalLiteral(row.StreamName) {
+						op.State = "superseded"
+						s.operations[token] = op
+					}
+				}
+			}
+		}
+		s.reviewMu.Unlock()
 		writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 		return
 	}

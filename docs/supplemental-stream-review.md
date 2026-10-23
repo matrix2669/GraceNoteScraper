@@ -13,6 +13,14 @@ The specific News 12 local-service/Plus, attributed Showtime truncation and WPIX
 Rewind review paths remain available. AccuWeather NY has its own complete,
 station-bound review descriptor; geographic suffixes are never removed generally.
 
+Current definite opposing-feed exclusions resolve those names automatically:
+they remain in **Automatic identity exclusions** and are omitted from pending
+supplemental counts, groups and decision offers. No saved Deny is created.
+Unknown/mixed stream feeds and ambiguous target feeds remain reviewable. Actual
+saved choices, confirmation conflicts, history and Undo remain intact. The same
+filter applies to consumer-impact extras and uses current target/raw-name/account
+constraints; missing or stale automatic evidence cannot suppress a proposal.
+
 The review shows eligible current service names with the station callsign, such as
 **902 · HBO Hits (HBOHTHD)**. Primary **Exact normalized alias** evidence identifies
 a member of the pinned consumer's exact alias lookup, preserving its normalization
