@@ -400,27 +400,36 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 	if !s.saveWhileCurrent(connection, config, func() error {
 		return s.commitAdmittedDecision(a.common, func() error {
 			return s.lineup.builder.SaveSupplementalDecisions(config.Fingerprint(), a.common.inputs.choices, rows, op.State == "saved", func(write func() error) error {
-				return s.whileAdmissionSnapshot(a.common, func() error {
-					if err := r.Context().Err(); err != nil {
-						return err
-					}
-					return write()
-				})
+				// Match review publication's lock order: builder, review, inventory.
+				// Publish the receipt only after a successful write, while the builder
+				// lock still prevents a GET from observing a durable choice with an
+				// offered receipt and retiring its retry admission.
+				s.reviewMu.Lock()
+				defer s.reviewMu.Unlock()
+				s.cache.mu.Lock()
+				defer s.cache.mu.Unlock()
+				current := s.operations[operation]
+				if snapshotIdentity(s.snapshot) != a.common.snapshot || s.cache.observationTokenLocked() != a.common.inventory || s.supplementalAdmission.tokens[key] != operation || current.Key != key || current.Scope != s.operationScope || (current.State != "offered" && current.State != "saved") {
+					return builder.ErrStaleReview
+				}
+				if err := r.Context().Err(); err != nil {
+					return err
+				}
+				if err := write(); err != nil {
+					return err
+				}
+				current.State, current.Decision = "saved", choice
+				current.Members = nil
+				for _, d := range rows {
+					current.Members = append(current.Members, d.Key)
+				}
+				s.operations[operation] = current
+				return nil
 			})
 		})
 	}, w) {
 		return
 	}
-	s.reviewMu.Lock()
-	op = s.operations[operation]
-	op.State = "saved"
-	op.Decision = choice
-	op.Members = nil
-	for _, d := range rows {
-		op.Members = append(op.Members, d.Key)
-	}
-	s.operations[operation] = op
-	s.reviewMu.Unlock()
 	writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 }
 

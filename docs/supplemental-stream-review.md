@@ -72,6 +72,10 @@ base inputs, inventory and reset generation. History survives restart; candidate
 and impact memory does not. Changing source/connection or target station/feed
 identity makes earlier supplemental selectors inactive. Source exclusion and
 Undo do not reuse old operation receipts to resurrect a decision.
+Durable persistence and the saved operation receipt publish under the same
+builder/review locks, so a concurrent review read cannot discard an already-saved
+choice's retry admission. Failed writes publish no saved receipt. Obsolete
+uncommitted offers still retire, and Undo/source/snapshot/reset fences still apply.
 
 ## Existing alias storage and user-attested renames
 
