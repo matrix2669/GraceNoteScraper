@@ -94,6 +94,8 @@ func (s *dispatcharrServer) handleProgress(w http.ResponseWriter, r *http.Reques
 }
 
 type dispatcharrMatchSnapshot struct {
+	reviewInputs           []lineuparrbuilder.InputChannel
+	reviewSources          *lineuparrbuilder.SourceCapture
 	supplementalInputs     reviewInputsRevision
 	supplementalBound      bool
 	guide                  *guide.TVGuide
@@ -547,7 +549,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			}
 			snapshot.warning = failureMessage + " Showing the last completed stream review."
 		} else {
-			currentDraft, currentLineup, _, valid := s.lineup.buildDraft(w, r)
+			currentDraft, currentLineup, currentInputs, valid := s.lineup.buildDraft(w, r)
 			if !valid {
 				return dispatcharrReviewBuild{}, false
 			}
@@ -563,6 +565,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 				matches.All[i].Key = fmt.Sprintf("%x", sha256.Sum256([]byte(matches.All[i].Key+generation)))
 			}
 			snapshot = dispatcharrMatchSnapshot{
+				reviewInputs: copyReviewInputs(currentInputs), reviewSources: currentDraft.SourceCapture,
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
 				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}

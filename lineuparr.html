@@ -1446,9 +1446,13 @@
         try {
           const result=await api('/api/lineuparr/dispatcharr/supplemental-impact');
           if (!current()) return;
+          // This response may describe the previous durable revision while a
+          // choice is awaiting acknowledgement. Keep its optimistic state and
+          // observation alive until every save has settled.
+          if (pendingDecisions.size) {scheduleValidationPoll();return;}
           renderSupplementalImpact(result);
           if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
-          if (result.state === 'complete' && !pendingDecisions.size) {
+          if (['complete','idle'].includes(result.state) && !pendingDecisions.size) {
             const latest=mergeSupplementalReview(await api(`/api/lineuparr/dispatcharr/review?limit=${matchReviewLimit}`));
             if (!current() || pendingDecisions.size) return;
             // New findings update the union count, never replace/re-sort the

@@ -440,7 +440,7 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 // in a batch, but a new catalog/guide/source generation requires another refresh.
 func supplementalEvidenceCurrent(snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision) bool {
 	old := snapshot.supplementalInputs
-	return snapshot.supplementalBound && old.config == inputs.config && old.guide == inputs.guide && old.index == inputs.index && old.tmdb == inputs.tmdb
+	return snapshot.supplementalBound && old.policy == inputs.policy && old.config == inputs.config && old.guide == inputs.guide && old.index == inputs.index && old.tmdb == inputs.tmdb
 }
 
 // Impact extras are proposals, never denials. Keep them available while the user

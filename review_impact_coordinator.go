@@ -34,7 +34,7 @@ func (s *dispatcharrServer) requestImpact(recovery bool) {
 	s.reviewMu.RLock()
 	snapshot := snapshotIdentity(s.snapshot)
 	s.reviewMu.RUnlock()
-	key := supplementalHash([]any{configurationToken(inputs.config), fmt.Sprintf("%p", inputs.guide), inputs.index, inputs.tmdb, inputs.choices, state, inventory, snapshot, conn.Fingerprint()})
+	key := supplementalHash([]any{configurationToken(inputs.config), fmt.Sprintf("%p", inputs.guide), inputs.policy, inputs.index, inputs.tmdb, inputs.choices, state, inventory, snapshot, conn.Fingerprint()})
 	s.impactMu.Lock()
 	defer s.impactMu.Unlock()
 	if s.impactSignal == nil || s.impactContext.Err() != nil {

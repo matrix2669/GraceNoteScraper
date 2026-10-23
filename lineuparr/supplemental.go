@@ -231,7 +231,7 @@ func (s *Service) ProjectSupplementalDecisions(draft *Draft, source, connection 
 		}
 	}
 	if len(decisions) > 0 {
-		draft.SupplementalMessage = "Supplemental choices are saved separately without primary scores. Full raw aliases still match fuzzily; identical names cannot have different account outcomes. Use Check supplemental export impact after a batch. Unchecked, stale or unresolved impact does not block explicit generation and does not protect future inventory."
+		draft.SupplementalMessage = "Saved name choices are validated automatically in the background. Identical raw names share account outcomes; future inventory is not protected. Pending or unresolved validation does not block generation."
 	}
 }
 func containsExact(values []string, value string) bool {
