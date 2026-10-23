@@ -29,9 +29,8 @@ if(!process.env.REVIEW_REGRESSION_URL){
   const unknown=await page.evaluate(()=>window.unknown.key);
   const unknownCard=page.locator(`article[data-key="${unknown}"]`);
   assert.match(await unknownCard.innerText(),/902 · HBO Hits \(HBOHTHD\)/);
-  assert.match(await unknownCard.innerText(),/Matched using: HBO/);
-  await unknownCard.locator('summary').filter({hasText:'Identity evidence'}).click();
-  assert.match(await unknownCard.innerText(),/USER-ATTESTED exact station\/feed: user-attested\/2026-10-22#59368:east/);
+  assert.match(await unknownCard.innerText(),/Matched alias: HBO/);
+  assert.doesNotMatch(await unknownCard.innerText(),/USER-ATTESTED|user-attested|Identity evidence|Feed unknown/);
   assert.match(await page.locator('#match-status').innerText(),/2 alias reviews/);
   await page.evaluate(async()=>{window.rejectNext=true;await decideMatch(unknown.key,'confirmed')});
   assert.equal(await page.evaluate(()=>matchActionState(unknown.key).state),'failed');
@@ -53,6 +52,6 @@ if(!process.env.REVIEW_REGRESSION_URL){
   assert.equal(await page.evaluate(()=>matchReview.deniedCount),0);
   assert.equal(await page.evaluate(()=>matchReview.candidateCount),1);
   assert.deepEqual(errors,[]);
-  console.log('Real browser→HTTP regression passed: readable current target, exact lookup label, full215byte provenance, validated400 rollback, retry/group counts, lost-ack receipt, Undo and delayed-token fence.');
+  console.log('Real browser→HTTP regression passed: readable current target, concise exact alias, no provenance clutter, validated400 rollback, retry/group counts, lost-ack receipt, Undo and delayed-token fence.');
  }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
 }
