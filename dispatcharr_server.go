@@ -123,24 +123,26 @@ type dispatcharrConfigResponse struct {
 }
 
 type dispatcharrReviewDecision struct {
-	NeedsReview   bool      `json:"needsReview,omitempty"`
-	ReviewWarning string    `json:"reviewWarning,omitempty"`
-	Key           string    `json:"key"`
-	Decision      string    `json:"decision"`
-	ChannelID     string    `json:"channelId"`
-	ChannelNumber string    `json:"channelNumber"`
-	ChannelName   string    `json:"channelName"`
-	StreamID      int64     `json:"streamId"`
-	StreamName    string    `json:"streamName"`
-	TVGID         string    `json:"tvgId,omitempty"`
-	M3UAccountID  int64     `json:"m3uAccountId"`
-	M3UAccountIDs []int64   `json:"m3uAccountIds,omitempty"`
-	StreamCount   int       `json:"streamCount"`
-	StreamNames   []string  `json:"streamNames,omitempty"`
-	TVGIDs        []string  `json:"tvgIds,omitempty"`
-	Score         int       `json:"score"`
-	Reason        string    `json:"reason"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ChannelDisplayName string    `json:"channelDisplayName,omitempty"`
+	ChannelCallSign    string    `json:"channelCallSign,omitempty"`
+	NeedsReview        bool      `json:"needsReview,omitempty"`
+	ReviewWarning      string    `json:"reviewWarning,omitempty"`
+	Key                string    `json:"key"`
+	Decision           string    `json:"decision"`
+	ChannelID          string    `json:"channelId"`
+	ChannelNumber      string    `json:"channelNumber"`
+	ChannelName        string    `json:"channelName"`
+	StreamID           int64     `json:"streamId"`
+	StreamName         string    `json:"streamName"`
+	TVGID              string    `json:"tvgId,omitempty"`
+	M3UAccountID       int64     `json:"m3uAccountId"`
+	M3UAccountIDs      []int64   `json:"m3uAccountIds,omitempty"`
+	StreamCount        int       `json:"streamCount"`
+	StreamNames        []string  `json:"streamNames,omitempty"`
+	TVGIDs             []string  `json:"tvgIds,omitempty"`
+	Score              int       `json:"score"`
+	Reason             string    `json:"reason"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 type dispatcharrReviewResponse struct {
@@ -587,6 +589,10 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	history, confirmed, denied := groupReviewDecisions(stored)
+	for i := range history {
+		c := builderChannelIdentity(draft, history[i].ChannelID)
+		history[i].ChannelDisplayName, history[i].ChannelCallSign = reviewDisplayName(c), c.CallSign
+	}
 	if validSnapshot {
 		annotateUnsupportedConfirmations(history, snapshot.candidates)
 	}
@@ -630,12 +636,18 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		for _, c := range matches.All {
 			if !automatic.Hidden[c.Key] {
 				if reason := reasons[c.Key]; reason != "" {
-					c.Reason += "; manual feed review required: " + reason
+					c.ReviewWarning = "Manual feed review required: " + reason
 				}
 				kept = append(kept, c)
 			}
 		}
 		matches.All = kept
+	}
+	for i := range matches.All {
+		c := &matches.All[i]
+		channel := builderChannelIdentity(draft, c.ChannelID)
+		c.ChannelDisplayName = reviewDisplayName(channel)
+		c.ChannelCallSign = channel.CallSign
 	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
@@ -661,7 +673,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		status = "refreshing"
 	}
 	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
-	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, admitCurrent, visibleLimit)
+	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, visibleLimit)
 	response := dispatcharrReviewResponse{
 		Supplemental: supplemental, SupplementalImpact: s.impactResponse(),
 		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),

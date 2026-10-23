@@ -57,27 +57,33 @@ type Decision struct {
 }
 
 type Candidate struct {
-	ReviewKind       string   `json:"reviewKind,omitempty"`
-	ReviewGeneration string   `json:"-"`
-	MatcherVersion   string   `json:"-"`
-	Key              string   `json:"key"`
-	ChannelID        string   `json:"channelId"`
-	ChannelNumber    string   `json:"channelNumber"`
-	ChannelName      string   `json:"channelName"`
-	StreamID         int64    `json:"streamId"`
-	StreamKey        string   `json:"-"`
-	StreamName       string   `json:"streamName"`
-	TVGID            string   `json:"tvgId,omitempty"`
-	M3UAccountID     int64    `json:"m3uAccountId"`
-	ChannelGroupID   *int64   `json:"channelGroupId,omitempty"`
-	StreamChannelNo  *float64 `json:"streamChannelNumber,omitempty"`
-	StreamHash       string   `json:"-"`
-	Source           string   `json:"-"`
-	Score            int      `json:"score"`
-	NameScore        int      `json:"-"`
-	Reason           string   `json:"reason"`
-	NormalizedAlias  string   `json:"-"`
-	KnownEPGID       bool     `json:"-"`
+	// Display-only metadata is deliberately separate from the bounded saved reason.
+	// Keep these values comparable for generation-bound admission equality.
+	ReviewWarning      string   `json:"reviewWarning,omitempty"`
+	ExactAlias         string   `json:"exactAlias,omitempty"`
+	ChannelDisplayName string   `json:"channelDisplayName,omitempty"`
+	ChannelCallSign    string   `json:"channelCallSign,omitempty"`
+	ReviewKind         string   `json:"reviewKind,omitempty"`
+	ReviewGeneration   string   `json:"-"`
+	MatcherVersion     string   `json:"-"`
+	Key                string   `json:"key"`
+	ChannelID          string   `json:"channelId"`
+	ChannelNumber      string   `json:"channelNumber"`
+	ChannelName        string   `json:"channelName"`
+	StreamID           int64    `json:"streamId"`
+	StreamKey          string   `json:"-"`
+	StreamName         string   `json:"streamName"`
+	TVGID              string   `json:"tvgId,omitempty"`
+	M3UAccountID       int64    `json:"m3uAccountId"`
+	ChannelGroupID     *int64   `json:"channelGroupId,omitempty"`
+	StreamChannelNo    *float64 `json:"streamChannelNumber,omitempty"`
+	StreamHash         string   `json:"-"`
+	Source             string   `json:"-"`
+	Score              int      `json:"score"`
+	NameScore          int      `json:"-"`
+	Reason             string   `json:"reason"`
+	NormalizedAlias    string   `json:"-"`
+	KnownEPGID         bool     `json:"-"`
 }
 
 // CandidateSet retains the current best proposal and every qualifying option
@@ -96,22 +102,26 @@ type TVGIDEvidence struct {
 }
 
 type CandidateGroup struct {
-	ReviewKind      string           `json:"reviewKind,omitempty"`
-	Key             string           `json:"key"`
-	ChannelID       string           `json:"channelId"`
-	ChannelNumber   string           `json:"channelNumber"`
-	ChannelName     string           `json:"channelName"`
-	Alias           string           `json:"alias"`
-	NormalizedAlias string           `json:"normalizedAlias"`
-	StreamCount     int              `json:"streamCount"`
-	StreamNames     []string         `json:"streamNames"`
-	TVGIDs          []string         `json:"tvgIds,omitempty"`
-	TVGIDEvidence   []TVGIDEvidence  `json:"tvgIdEvidence,omitempty"`
-	M3UAccountIDs   []int64          `json:"m3uAccountIds"`
-	MinimumScore    int              `json:"minimumScore"`
-	MaximumScore    int              `json:"maximumScore"`
-	Tier            string           `json:"tier"`
-	Reasons         []string         `json:"reasons"`
-	Alternatives    []CandidateGroup `json:"alternatives,omitempty"`
-	CandidateKeys   []string         `json:"-"`
+	ReviewWarnings     []string         `json:"reviewWarnings,omitempty"`
+	ExactAliases       []string         `json:"exactAliases,omitempty"`
+	ChannelDisplayName string           `json:"channelDisplayName,omitempty"`
+	ChannelCallSign    string           `json:"channelCallSign,omitempty"`
+	ReviewKind         string           `json:"reviewKind,omitempty"`
+	Key                string           `json:"key"`
+	ChannelID          string           `json:"channelId"`
+	ChannelNumber      string           `json:"channelNumber"`
+	ChannelName        string           `json:"channelName"`
+	Alias              string           `json:"alias"`
+	NormalizedAlias    string           `json:"normalizedAlias"`
+	StreamCount        int              `json:"streamCount"`
+	StreamNames        []string         `json:"streamNames"`
+	TVGIDs             []string         `json:"tvgIds,omitempty"`
+	TVGIDEvidence      []TVGIDEvidence  `json:"tvgIdEvidence,omitempty"`
+	M3UAccountIDs      []int64          `json:"m3uAccountIds"`
+	MinimumScore       int              `json:"minimumScore"`
+	MaximumScore       int              `json:"maximumScore"`
+	Tier               string           `json:"tier"`
+	Reasons            []string         `json:"reasons"`
+	Alternatives       []CandidateGroup `json:"alternatives,omitempty"`
+	CandidateKeys      []string         `json:"-"`
 }
