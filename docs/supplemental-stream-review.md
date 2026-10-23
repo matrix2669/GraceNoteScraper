@@ -2,9 +2,8 @@
 
 Refresh streams still runs the pinned LineupARR matcher once at threshold 70. Its
 returned scores, primary proposals, Confirm/Deny visibility and the established
-95% export rules are unchanged. A separate list retrieves additional plausible
-streams from attributed service labels and the same successful inventory. Its
-rank explains retrieval order; it is not a match score or probability.
+95% export rules are unchanged. Backend retrieval adds additional plausible
+streams to the same actionable queue from attributed service labels and the same successful inventory. Retrieval rank remains internal and is not a match score or probability.
 Retrieval requires the complete attributed service identity after bounded provider,
 quality and presentation cleanup. Extra brand, event, ordinal or geographic words,
 foreign country contexts and playlist headers are rejected. Short labels such as
@@ -22,19 +21,20 @@ filter applies to consumer-impact extras and uses current target/raw-name/accoun
 constraints; missing or stale automatic evidence cannot suppress a proposal.
 
 The review shows eligible current service names with the station callsign, such as
-**902 · HBO Hits (HBOHTHD)**. Primary **Exact normalized alias** evidence identifies
+**902 · HBO Hits (HBOHTHD)**. Primary **Matched using** evidence identifies
 a member of the pinned consumer's exact alias lookup, preserving its normalization
-and insertion order. It does not claim to identify a fuzzy winner. Other result
-paths explicitly report unavailable alias attribution. Supplemental descriptors
-are labelled as retrieval evidence. Full feed and source warnings expand separately
+and insertion order. It does not claim to identify a fuzzy winner. Fuzzy results omit unproven winning-alias attribution. Retrieval descriptors
+are labelled **Name evidence**. Target feed and raw stream feed are separate; unknown
+feed never inherits the target region. Eligible exact-ID descriptions and single-word
+brands remain readable. Existing exact review descriptors take presentation precedence. Full feed and source warnings expand separately
 from the original matcher reason, so a long explanation cannot prevent saving.
-Pending primary and supplemental counts are shown separately alongside their total;
+One server-owned union applies a single visible limit and pending count;
 confirmed/denied history counts normalized review groups, not clicks or records.
 
 Review the complete raw names, target station, accounts and physical stream IDs.
 Confirm stores a full raw-name positive alias. Deny stores a channel-specific
 literal exclusion even when there is no primary score. Both choices keep a
-distinct supplemental origin and support history and Undo. Equal literal names
+distinct internal origin and support merged chronological history and Undo. Equal literal names
 are grouped with every captured physical member, including same-account duplicate
 IDs. Primary decisions remain authoritative. New or changed physical members are
 not silently approved. Suppressed aliases stay suppressed.
@@ -42,20 +42,24 @@ Saved history expands to every raw spelling, account and physical stream ID,
 including pending local choices. Positive alias suppression can be restored and
 never removes a reviewed negative exclusion for that name.
 
-After a batch, use **Check supplemental export impact**. This explicit action
-serializes the prospective lineup and compares it with its protected baseline
-using the unchanged consumer at Exact95, on the same immutable captured
-inventory. It shows selected, matched, extra, missed and protected-conflict rows.
-Newly exposed extras become review proposals; none are automatically denied.
-Embedded aliases can also affect included sibling channels with the same exported
-name. Their added matches and protected conflicts are shown even when no
-supplemental choice was saved on that channel; review each extra on its own target.
-The check keeps every exported entry distinct, including duplicate names and
-numbers that serialize alike (for example, `005.10` and `5.1`).
-Checks run independently of saves, coalesce identical requests, can be cancelled,
-and cache a completed result only for the same full input fingerprints. Failed
-or cancelled checks can be retried explicitly. Reads, export, individual choices
-and the primary refresh never run this consumer check.
+Saved name effects are validated automatically in the background after successful
+durable decisions, Undo, relevant draft changes and successful explicit snapshots.
+A750ms quiet period coalesces a burst. One server-owned child serializes the actual
+prospective lineup and protected baseline through unchanged Exact95 on the same
+immutable inventory. Primary refresh has priority, obsolete work is cancelled and
+awaited, and one transient retry is allowed before stable actionable failure.
+Reload review recovers failure once; polling only observes cached state. Shutdown
+cancels process-owned work. No Python or full draft construction runs inside a
+save lock or durable acknowledgement. Reads and generation never launch checks.
+
+Newly exposed extras enter the same Confirm/Deny queue; none are automatically
+denied. Completed still-eligible offers survive a replacement-running check.
+Identity/snapshot/evidence/inventory invalidation retires stale offers. Findings
+include same-name sibling collateral matches, missed selected names, protected
+conflicts and all-account limits. Entry-target correspondence preserves duplicate
+names and numbers that serialize alike. Step6 stays incomplete during necessary
+queued/running/stale/failed validation or unresolved findings. Generation remains
+available, and saved choices remain durable independently of validation.
 
 Full raw positive aliases still participate in fuzzy/normalized consumer matching.
 They are not exact physical-stream associations. Current JSON cannot split
@@ -124,3 +128,12 @@ review variants, and preservation of the captured 15 Denys and other supplied
 prior decisions. Rejected or unendorsed feedback and experimental extra masks
 are never seeded into production. The separate 40/240 consumer reports retain
 remaining misses, extras and conflicts; retrieval success is not consumer success.
+
+## News12 evidence limitation
+
+The existing exact-station review descriptor displays News12 with callsignN12HD
+and its conflicting provider name Estrella National TV. This does not repair its
+active alias or matching/export relationship. The original Verizon PDF/positioned
+row, region context and applicability are unavailable. No channel blacklist,
+number-recovery quarantine or alias deletion is justified. ADR036 provider-local
+recovery and ADR039 eligibility remain unchanged pending original-row evidence.
