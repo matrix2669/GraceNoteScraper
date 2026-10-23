@@ -1603,7 +1603,7 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
-      if (matchReview.supplemental) els.matchStatus.textContent += ` Primary: ${(matchReview.candidates || []).filter(c => !c.origin).length} visible; supplemental: ${(matchReview.candidates || []).filter(c => c.origin).length} visible. ${matchReview.supplemental.message || ''}`;
+      if (matchReview.supplemental) els.matchStatus.textContent += ` Primary: ${matchReview.primaryCandidateCount ?? 0} pending (${(matchReview.candidates || []).filter(c => !c.origin).length} visible); supplemental: ${matchReview.supplemental.candidateCount || 0} pending (${(matchReview.candidates || []).filter(c => c.origin).length} visible). Total: ${matchReview.candidateCount} pending review groups. ${matchReview.supplemental.message || ''}`;
       if (!matchReview.warning) els.matchStatus.textContent += ' Review all primary proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
       if (pendingDecisions.size) els.matchStatus.textContent += ` Saving ${pendingDecisions.size} choice(s)… You can continue reviewing.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
@@ -1668,7 +1668,7 @@
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
-      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelDisplayName || candidate.channelName}${candidate.channelCallSign && candidate.channelCallSign !== (candidate.channelDisplayName || candidate.channelName) ? ` (${candidate.channelCallSign})` : ''}`;
       const channelMeta = document.createElement('div'); channelMeta.className = 'match-meta';
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
@@ -1676,6 +1676,7 @@
       score.textContent = candidate.origin ? `Retrieval rank ${candidate.retrievalRank}` : scoreText;
       if (candidate.origin) { tier.textContent='Supplemental'; score.className='match-meta'; }
       channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
+      appendMatchAttribution(channel, candidate);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
       confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
@@ -1692,11 +1693,25 @@
       return card;
     }
 
+    function appendMatchAttribution(container, candidate) {
+      const attribution = document.createElement('div'); attribution.className = 'match-meta';
+      attribution.textContent = candidate.origin
+        ? `Supplemental retrieval descriptor: ${(candidate.retrievalDescriptors || []).join('; ') || 'See raw evidence'}`
+        : candidate.exactAliases?.length ? `Exact normalized alias: ${candidate.exactAliases.join('; ')}` : 'Contributing alias attribution unavailable for this matcher result.';
+      container.append(attribution);
+      if (candidate.reviewWarnings?.length) {
+        const details = document.createElement('details'); details.className = 'match-evidence';
+        const summary = document.createElement('summary'); summary.textContent = 'Manual feed review required · full evidence'; details.append(summary);
+        for (const warning of candidate.reviewWarnings) { const text = document.createElement('p'); text.textContent = warning; details.append(text); }
+        container.append(details);
+      }
+    }
+
     function decisionRow(decision) {
       const row = document.createElement('div'); row.className = 'decision-row'; row.dataset.key = decision.key;
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
-      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "Supplemental · no primary score" : `${decision.score}%`}`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelDisplayName || decision.channelName}${decision.channelCallSign && decision.channelCallSign !== (decision.channelDisplayName || decision.channelName) ? ` (${decision.channelCallSign})` : ''} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "Supplemental · no primary score" : `${decision.score}%`}`;
       copy.append(title, meta);
       if (decision.origin) {
         const details=document.createElement('details'); details.className='match-evidence';
@@ -1808,6 +1823,12 @@
       else openMatchAlternatives(candidate);
     }
 
+    function adjustReviewOriginCount(candidate, delta) {
+      if (!matchReview?.supplemental) return;
+      if (candidate.origin) matchReview.supplemental = {...matchReview.supplemental, candidateCount:Math.max(0, (matchReview.supplemental.candidateCount || 0) + delta)};
+      else matchReview.primaryCandidateCount = Math.max(0, (matchReview.primaryCandidateCount || 0) + delta);
+    }
+
     async function decideMatch(key, decision) {
       const blocked = reviewActionBlock(key, decision);
       if (blocked || !matchReview) { showMessage(blocked || 'Load match review first.'); return; }
@@ -1818,7 +1839,7 @@
       const decisionEpoch = dispatchReviewEpoch;
       const source = draft.sourceFingerprint;
       if (matchReview.supplementalImpact && matchReview.supplementalImpact.state !== 'unchecked') matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'stale',message:'Review is changing. Check supplemental export impact after this batch.'};
-      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:candidate.alias, streamNames:candidate.streamNames, m3uAccountIds:candidate.m3uAccountIds, constituents:candidate.constituents, streamCount:candidate.streamCount, score:candidate.maximumScore};
+      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:candidate.alias, streamNames:candidate.streamNames, m3uAccountIds:candidate.m3uAccountIds, constituents:candidate.constituents, streamCount:candidate.streamCount, score:candidate.maximumScore};
       beginMatchDecision(key);
       matchReview = {
         ...matchReview,
@@ -1829,6 +1850,7 @@
         candidates: (matchReview.candidates || []).filter(item => item.key !== key),
         decisions: [optimistic, ...(matchReview.decisions || [])]
       };
+      adjustReviewOriginCount(candidate, -1);
       renderMatchReview();
       let saved = false;
       try {
@@ -1858,6 +1880,7 @@
             const nextIndex = matchReview.candidates.findIndex(c => (order.get(c.key) ?? Infinity) > order.get(key));
             matchReview.candidates.splice(nextIndex < 0 ? matchReview.candidates.length : nextIndex, 0, candidate);
             matchReview.candidateCount++;
+            adjustReviewOriginCount(candidate, 1);
             matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
           }
           renderMatchReview();
@@ -1891,13 +1914,13 @@
       const card = document.createElement('article'); card.className = 'match-alternative-card'; card.dataset.key = candidate.key;
       const main = document.createElement('div'); main.className = 'match-alternative-main';
       const copy = document.createElement('div');
-      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelDisplayName || candidate.channelName}${candidate.channelCallSign && candidate.channelCallSign !== (candidate.channelDisplayName || candidate.channelName) ? ` (${candidate.channelCallSign})` : ''}`;
       const meta = document.createElement('div'); meta.className = 'match-meta';
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score';
       score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
       meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
-      copy.append(name, meta); main.append(copy); card.append(main);
+      copy.append(name, meta); appendMatchAttribution(copy, candidate); main.append(copy); card.append(main);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
       confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
@@ -1922,10 +1945,11 @@
         if (decisionEpoch !== dispatchReviewEpoch) return;
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
-        matchReview.decisions = [{key:candidate.key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        matchReview.decisions = [{key:candidate.key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:primary.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
         primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         matchReview.candidates = (matchReview.candidates || []).filter(item => item.key !== candidate.key);
         matchReview.candidateCount = Math.max(0, matchReview.candidateCount - 1);
+        adjustReviewOriginCount(candidate, -1);
         matchReview.candidateStreamCount = Math.max(0, (matchReview.candidateStreamCount || 0) - candidate.streamCount);
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         renderMatchReview();
@@ -2402,7 +2426,9 @@
         if (!value || rejected.has(normalized) || /^\d+$/.test(value)) return;
         candidates.push({value, score: score + (value.includes(' ') ? 8 : 0) + Math.min(value.length, 40) / 10});
       };
-      if (!String(channel.nameSource || '').toLowerCase().startsWith('dispatcharr')) add(channel.name, 35);
+      const families = new Set((channel.serviceEvidence || []).filter(e => e.rootStationId === channel.stationId && e.serviceFamily && e.sourceId && e.sourceRowId && e.sourceRevision && (channel.aliasEvidence || []).some(a => a.value === e.value && (a.sources || []).includes(e.sourceId))).map(e => e.serviceFamily));
+      if (families.size === 1) add([...families][0], 200);
+      if (!String(channel.nameSource || '').toLowerCase().startsWith('dispatcharr')) add(channel.name, 100);
       add(channel.affiliate, 45);
       for (const evidence of channel.aliasEvidence || []) {
         const methods = (evidence.methods || []).join(' ').toLowerCase();

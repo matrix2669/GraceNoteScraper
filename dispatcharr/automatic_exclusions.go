@@ -71,7 +71,7 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 		if target.Region == "" {
 			continue
 		}
-		stream := StreamFeed(c.StreamName, codes)
+		stream := StreamFeedForTarget(c.StreamName, codes, target)
 		row := AutomaticExclusion{Candidate: c, Rule: "feed-identity-v1"}
 		if target.Region == "unknown" {
 			row.PendingReview = true

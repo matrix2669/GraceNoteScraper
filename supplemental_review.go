@@ -16,23 +16,26 @@ import (
 )
 
 type supplementalGroup struct {
-	Origin        string                         `json:"origin"`
-	Key           string                         `json:"key"`
-	ChannelID     string                         `json:"channelId"`
-	ChannelNumber string                         `json:"channelNumber"`
-	ChannelName   string                         `json:"channelName"`
-	Alias         string                         `json:"alias"`
-	StreamNames   []string                       `json:"streamNames"`
-	M3UAccountIDs []int64                        `json:"m3uAccountIds"`
-	StreamCount   int                            `json:"streamCount"`
-	RetrievalRank int                            `json:"retrievalRank"`
-	Reasons       []string                       `json:"reasons"`
-	Constituents  []builder.SupplementalDecision `json:"constituents"`
-	Decision      string                         `json:"decision,omitempty"`
-	StreamName    string                         `json:"streamName,omitempty"`
-	UpdatedAt     time.Time                      `json:"updatedAt,omitempty"`
-	NeedsReview   bool                           `json:"needsReview,omitempty"`
-	ReviewWarning string                         `json:"reviewWarning,omitempty"`
+	ChannelDisplayName   string                         `json:"channelDisplayName,omitempty"`
+	ChannelCallSign      string                         `json:"channelCallSign,omitempty"`
+	RetrievalDescriptors []string                       `json:"retrievalDescriptors,omitempty"`
+	Origin               string                         `json:"origin"`
+	Key                  string                         `json:"key"`
+	ChannelID            string                         `json:"channelId"`
+	ChannelNumber        string                         `json:"channelNumber"`
+	ChannelName          string                         `json:"channelName"`
+	Alias                string                         `json:"alias"`
+	StreamNames          []string                       `json:"streamNames"`
+	M3UAccountIDs        []int64                        `json:"m3uAccountIds"`
+	StreamCount          int                            `json:"streamCount"`
+	RetrievalRank        int                            `json:"retrievalRank"`
+	Reasons              []string                       `json:"reasons"`
+	Constituents         []builder.SupplementalDecision `json:"constituents"`
+	Decision             string                         `json:"decision,omitempty"`
+	StreamName           string                         `json:"streamName,omitempty"`
+	UpdatedAt            time.Time                      `json:"updatedAt,omitempty"`
+	NeedsReview          bool                           `json:"needsReview,omitempty"`
+	ReviewWarning        string                         `json:"reviewWarning,omitempty"`
 }
 type supplementalReview struct {
 	Status               string              `json:"status"`
@@ -108,7 +111,7 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 	return candidates, complete
 }
 func supplementalDecision(c dispatcharr.SupplementalCandidate, source, connection, snapshot string) builder.SupplementalDecision {
-	d := builder.SupplementalDecision{Origin: builder.SupplementalOrigin, SourceFingerprint: source, DispatcharrFingerprint: connection, ChannelID: c.Target.ID, StationID: c.Target.StationID, PlacementID: c.Target.PlacementID, ChannelName: c.Target.Name, ChannelNumber: c.Target.Number, RawCallSign: c.Target.CallSign, StreamID: c.Stream.ID, M3UAccountID: c.Stream.AccountID, StreamName: c.Stream.Name, StreamFingerprint: c.Stream.Fingerprint, RetrievalVersion: dispatcharr.SupplementalRevision, RetrievalRank: c.Rank, RetrievalReason: c.Reason, EvidenceRefs: []string{c.Evidence}, AdmittedSnapshot: snapshot}
+	d := builder.SupplementalDecision{Origin: builder.SupplementalOrigin, SourceFingerprint: source, DispatcharrFingerprint: connection, ChannelID: c.Target.ID, StationID: c.Target.StationID, PlacementID: c.Target.PlacementID, ChannelName: c.Target.Name, ChannelNumber: c.Target.Number, RawCallSign: c.Target.CallSign, StreamID: c.Stream.ID, M3UAccountID: c.Stream.AccountID, StreamName: c.Stream.Name, StreamFingerprint: c.Stream.Fingerprint, RetrievalVersion: dispatcharr.SupplementalRevision, RetrievalRank: c.Rank, RetrievalReason: c.Reason, EvidenceRefs: []string{"Retrieval descriptor: " + c.Descriptor, c.Evidence}, AdmittedSnapshot: snapshot}
 	d.Key = builder.SupplementalKey(d)
 	return d
 }
@@ -187,6 +190,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		}
 		d := g.Constituents[0]
 		c := current[d.ChannelID]
+		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
 		for _, old := range primary {
 			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
 				g.NeedsReview = true
@@ -211,6 +215,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		response.Message += " Retrieval reached its bound; more inventory remains unreviewed."
 	}
 	rows := []builder.SupplementalDecision{}
+	descriptors := map[string]string{}
 	seen := map[string]bool{}
 	for _, c := range candidates {
 		d := supplementalDecision(c, config.Fingerprint(), snapshot.dispatcharrFingerprint, snapshotIdentity(snapshot))
@@ -218,6 +223,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 			continue
 		}
 		seen[d.Key] = true
+		descriptors[d.Key] = c.Descriptor
 		if _, settled := stored[d.Key]; settled {
 			continue
 		}
@@ -235,6 +241,14 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		rows = append(rows, d)
 	}
 	groups := supplementalGroups(rows, false)
+	for i := range groups {
+		g := &groups[i]
+		c := current[g.ChannelID]
+		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
+		for _, d := range g.Constituents {
+			g.RetrievalDescriptors = appendUniqueReviewString(g.RetrievalDescriptors, descriptors[d.Key])
+		}
+	}
 	response.CandidateCount = len(groups)
 	response.CandidateStreamCount = len(rows)
 	response.Candidates = groups

@@ -16,10 +16,11 @@ import (
 
 type lineuparrMatcherResult struct {
 	Matches []struct {
-		ChannelID string `json:"channelId"`
-		StreamKey string `json:"streamKey"`
-		Score     int    `json:"score"`
-		Reason    string `json:"reason"`
+		ExactAlias string `json:"exactAlias,omitempty"`
+		ChannelID  string `json:"channelId"`
+		StreamKey  string `json:"streamKey"`
+		Score      int    `json:"score"`
+		Reason     string `json:"reason"`
 	} `json:"matches"`
 	MatcherVersion string `json:"matcherVersion"`
 }
@@ -126,7 +127,7 @@ func MatchStreamCandidatesWithLineuparr(ctx context.Context, source, country str
 			StreamID: stream.ID, StreamKey: stream.Key(), StreamName: stream.Name, TVGID: stream.TVGID,
 			M3UAccountID: stream.M3UAccountID, ChannelGroupID: stream.ChannelGroupID, StreamChannelNo: stream.StreamChannelNo,
 			StreamHash: hash, Source: source, Score: match.Score, NameScore: match.Score,
-			Reason: match.Reason, NormalizedAlias: NormalizeStreamAlias(stream), KnownEPGID: known,
+			Reason: match.Reason, ExactAlias: match.ExactAlias, NormalizedAlias: NormalizeStreamAlias(stream), KnownEPGID: known,
 		})
 	}
 	included := make(map[string]bool)

@@ -47,6 +47,15 @@ func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *bu
 	started := time.Now()
 	candidates, complete := ds.prepareSupplemental(draft, cfg, snapshot, reviewInputsRevision{})
 	elapsed := time.Since(started)
+	if output := os.Getenv("SUPPLEMENTAL_RETRIEVAL_OUTPUT"); output != "" {
+		data, err := json.Marshal(candidates)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(output, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if !complete {
 		t.Fatal("retrieval incomplete")
 	}

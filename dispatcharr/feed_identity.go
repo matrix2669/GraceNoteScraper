@@ -81,16 +81,16 @@ func StreamFeed(raw string, codes map[string]FeedIdentity) FeedIdentity {
 	}
 	// More than one region token is ambiguous even when the terminal label looks
 	// clean ("Network East West"); do not silently discard the first marker.
-	regions := map[string]bool{}
+	regionCount := 0
 	for _, token := range feedToken.FindAllString(clean, -1) {
 		switch strings.ToUpper(token) {
 		case "EAST":
-			regions["east"] = true
+			regionCount++
 		case "WEST", "PACIFIC":
-			regions["west"] = true
+			regionCount++
 		}
 	}
-	if len(regions) > 1 {
+	if regionCount > 1 {
 		return FeedIdentity{Family: label.Family, Evidence: "mixed stream feed labels"}
 	}
 	for _, token := range feedToken.FindAllString(clean, -1) {
@@ -110,4 +110,44 @@ func StreamFeed(raw string, codes map[string]FeedIdentity) FeedIdentity {
 		label.Evidence = "exact attributed station code"
 	}
 	return label
+}
+
+// internalFeedLabel only proposes a parse. The caller must still prove the entire
+// remaining family against this target's attributed identities. Nothing may drop
+// ordinal/subbrand words, and a code conflict or repeated region is never rescued.
+func internalFeedLabel(raw string, parsed FeedIdentity) FeedIdentity {
+	if strings.Contains(parsed.Evidence, "conflict") || strings.Contains(parsed.Evidence, "mixed") {
+		return FeedIdentity{}
+	}
+	clean := feedPrefix.ReplaceAllString(strings.TrimSpace(raw), "")
+	clean = feedQuality.ReplaceAllString(streamQualityText(clean), "")
+	positions := feedToken.FindAllStringIndex(clean, -1)
+	region, start, end, count := "", 0, 0, 0
+	for _, pos := range positions {
+		switch strings.ToUpper(clean[pos[0]:pos[1]]) {
+		case "EAST":
+			region, start, end, count = "east", pos[0], pos[1], count+1
+		case "WEST", "PACIFIC":
+			region, start, end, count = "west", pos[0], pos[1], count+1
+		}
+	}
+	if count != 1 || start == 0 || strings.TrimSpace(clean[end:]) == "" {
+		return FeedIdentity{}
+	}
+	return FeedIdentity{Family: feedFamily(clean[:start] + " " + clean[end:]), Region: region, Evidence: "explicit internal feed label with complete attributed service family"}
+}
+
+// StreamFeedForTarget extends the conservative parser only with the complete
+// independently attributed family of this exact target. Existing uncertainty
+// and station-code conflicts take precedence; a bare family still has no region.
+func StreamFeedForTarget(raw string, codes map[string]FeedIdentity, target FeedIdentity) FeedIdentity {
+	parsed := StreamFeed(raw, codes)
+	return targetFeed(parsed, internalFeedLabel(raw, parsed), target)
+}
+
+func targetFeed(parsed, internal, target FeedIdentity) FeedIdentity {
+	if (target.Region == "east" || target.Region == "west") && internal.Region != "" && sameFeedFamily(internal.Family, target) {
+		return internal
+	}
+	return parsed
 }

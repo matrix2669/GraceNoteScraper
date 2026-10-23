@@ -5,6 +5,23 @@ returned scores, primary proposals, Confirm/Deny visibility and the established
 95% export rules are unchanged. A separate list retrieves additional plausible
 streams from attributed service labels and the same successful inventory. Its
 rank explains retrieval order; it is not a match score or probability.
+Retrieval requires the complete attributed service identity after bounded provider,
+quality and presentation cleanup. Extra brand, event, ordinal or geographic words,
+foreign country contexts and playlist headers are rejected. Short labels such as
+MAX, NFL, ESPN and Movies cannot retrieve every stream containing that word.
+The specific News 12 local-service/Plus, attributed Showtime truncation and WPIX
+Rewind review paths remain available. AccuWeather NY has its own complete,
+station-bound review descriptor; geographic suffixes are never removed generally.
+
+The review shows eligible current service names with the station callsign, such as
+**902 · HBO Hits (HBOHTHD)**. Primary **Exact normalized alias** evidence identifies
+a member of the pinned consumer's exact alias lookup, preserving its normalization
+and insertion order. It does not claim to identify a fuzzy winner. Other result
+paths explicitly report unavailable alias attribution. Supplemental descriptors
+are labelled as retrieval evidence. Full feed and source warnings expand separately
+from the original matcher reason, so a long explanation cannot prevent saving.
+Pending primary and supplemental counts are shown separately alongside their total;
+confirmed/denied history counts normalized review groups, not clicks or records.
 
 Review the complete raw names, target station, accounts and physical stream IDs.
 Confirm stores a full raw-name positive alias. Deny stores a channel-specific
@@ -70,6 +87,14 @@ attributed review-only descriptors for abbreviated services; these never enter
 primary aliases. Its generator preserves user-attested entries separately from
 regenerating the pinned public rows. These assertions are user evidence, not an
 independently verified network announcement.
+
+A single explicit internal East/West/Pacific label, such as `RK: HBO EAST 2`,
+identifies a feed only when its entire residual service family belongs to that
+exact target's current or approved historical evidence. The shared rule applies
+to scored and inventory constraints. It preserves ordinals/subbrands, geographic
+brands, code conflicts and repeated/mixed-region uncertainty. `US: HBO 2 HD`
+remains unresolved. Canonical channel names, primary scoring and manual export
+thresholds are unchanged.
 
 Numeric decoration is never a catalog or feed join. For example, a source-bound
 HDHomeRun physical stream can be reviewed as Showtime 2 East or West; the number

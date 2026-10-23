@@ -3,6 +3,7 @@
 
 import json
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -24,6 +25,34 @@ def channel_number(raw):
     return int(value) if value.isdigit() else raw
 
 
+def exact_alias_lookup(matcher, aliases):
+    """Mirror only alias_match's exact lookup insertion/overwrite order.
+
+    This is normalization membership evidence, never fuzzy-winner attribution.
+    The consumer's scoring and final filtering remain the sole match authority.
+    """
+    lookup = {}
+    for alias in aliases:
+        norm = matcher.normalize_name(alias, [])
+        if norm:
+            lower = norm.lower()
+            lookup[lower] = alias
+            nospace = re.sub(r'[\s&\-]+', '', lower)
+            if nospace != lower:
+                lookup[nospace] = alias
+    return lookup
+
+
+def exact_alias_evidence(matcher, lookup, name, match_type):
+    if match_type != "alias":
+        return ""
+    lower, nospace = matcher._get_cached_norm(name, [])
+    if not lower:
+        return ""
+    # The consumer tests the spaced key first, then its no-space form.
+    return lookup.get(lower, lookup.get(nospace, ""))
+
+
 def main():
     request = json.load(sys.stdin)
     matcher = FuzzyMatcher(match_threshold=70, logger=logging.getLogger("gracenote.lineuparr"))
@@ -39,6 +68,7 @@ def main():
     for index, channel in enumerate(channels):
         name = channel.get("name", "")
         aliases = {name: channel.get("aliases") or []}
+        lookup = exact_alias_lookup(matcher, aliases[name])
         for matched_name, score, match_type in matcher.match_all_streams(
             name, names, aliases, channel_number(channel.get("number")), lineup_country=request.get("country")
         ):
@@ -46,6 +76,7 @@ def main():
                 matches.append({
                     "channelId": channel["id"], "streamKey": stream["key"],
                     "score": score, "reason": "Lineuparr " + match_type,
+                    "exactAlias": exact_alias_evidence(matcher, lookup, matched_name, match_type),
                 })
                 if len(matches) > 250000:
                     raise ValueError("Match result exceeds 250000 pairs")

@@ -86,6 +86,11 @@ func DeriveInventoryFeedExclusions(source string, streams []IdentityStream, targ
 		if feed.Family != "" && (feed.Region == "east" || feed.Region == "west") {
 			byFamily[feed.Family] = append(byFamily[feed.Family], parsedStream{stream, feed})
 		}
+		// Index the prospective family for efficiency, but do not admit it until
+		// StreamFeedForTarget proves membership against the current target below.
+		if internal := internalFeedLabel(stream.Name, feed); internal.Region != "" && internal.Family != feed.Family {
+			byFamily[internal.Family] = append(byFamily[internal.Family], parsedStream{stream, internal})
+		}
 	}
 	rows := map[string]InventoryFeedExclusion{}
 	for _, target := range targets {
@@ -97,11 +102,12 @@ func DeriveInventoryFeedExclusions(source string, streams []IdentityStream, targ
 			for _, parsed := range byFamily[family] {
 				stream := parsed.stream
 				id := key(target.ID, stream.Name, stream.AccountID)
-				if covered[id] || parsed.feed.Region == target.Feed.Region || !inventoryCountryCompatible(stream.Name, target.Country) {
+				feed := StreamFeedForTarget(stream.Name, codes, target.Feed)
+				if covered[id] || feed.Region == "" || !sameFeedFamily(feed.Family, target.Feed) || feed.Region == target.Feed.Region || !inventoryCountryCompatible(stream.Name, target.Country) {
 					continue
 				}
 				decision := explicitStreamDecision(target.ID, source, stream.Fingerprint, stream.Name, decisions)
-				reason := "Inventory identity: explicit " + parsed.feed.Region + " feed conflicts with attributed " + target.Feed.Region + " target (" + target.Feed.Evidence + "); no match score assigned"
+				reason := "Inventory identity: explicit " + feed.Region + " feed conflicts with attributed " + target.Feed.Region + " target (" + target.Feed.Evidence + "); no match score assigned"
 				if decision == "confirmed" {
 					reason = "Saved confirmation preserved; review conflict: " + reason
 				} else if decision == "denied" {
