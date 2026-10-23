@@ -18,6 +18,7 @@ type reviewInputsRevision struct {
 	guide       *guide.TVGuide
 	index, tmdb uint64
 	choices     string
+	policy      string
 }
 type preparedReviewInputs struct {
 	key     reviewInputsRevision
@@ -31,11 +32,12 @@ type cachedReviewDraft struct {
 	lease     *builder.AutomaticMatchLease
 	inputs    []builder.InputChannel
 	builtAt   time.Time
+	sources   *builder.SourceCapture
 }
 
 func (s *lineuparrServer) reviewInputsRevision() reviewInputsRevision {
 	config, _, _ := s.store.Get()
-	key := reviewInputsRevision{config: config, guide: s.state.GetForSource(config.Fingerprint()), choices: s.builder.ReviewInputToken()}
+	key := reviewInputsRevision{policy: lineupindex.ActiveEvidencePolicy + "/" + lineupindex.EvidenceQuarantinePolicy + "/" + lineupindex.EvidenceAdjudicationPolicy, config: config, guide: s.state.GetForSource(config.Fingerprint()), choices: s.builder.ReviewInputToken()}
 	if s.marketIndex != nil {
 		key.index = s.marketIndex.EvidenceRevision()
 	}
@@ -97,6 +99,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*b
 	if reusable && s.draftCache.key == revision && s.draftCache.inputsKey == inputsKey && s.draftCache.data != nil && time.Since(s.draftCache.builtAt) < 5*time.Second {
 		var draft builder.Draft
 		_ = json.Unmarshal(s.draftCache.data, &draft)
+		draft.SourceCapture = s.draftCache.sources
 		if s.draftCache.lease != nil {
 			lease := *s.draftCache.lease
 			draft.AutomaticLease = &lease
@@ -126,7 +129,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*b
 	if reusable {
 		data, err := json.Marshal(draft)
 		if err == nil {
-			s.draftCache = cachedReviewDraft{revision, inputsKey, data, draft.AutomaticLease, copyReviewInputs(inputs), time.Now()}
+			s.draftCache = cachedReviewDraft{key: revision, inputsKey: inputsKey, data: data, lease: draft.AutomaticLease, inputs: copyReviewInputs(inputs), builtAt: time.Now(), sources: draft.SourceCapture}
 		}
 	}
 	return draft, config, inputs, true

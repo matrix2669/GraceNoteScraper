@@ -6,6 +6,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,20 @@ func TestRetainedDryRunReplay(t *testing.T) {
 	fullRows := map[string]builder.DraftChannel{}
 	for _, c := range header.Channels {
 		fullRows[c.ID] = c
+	}
+	// This golden matrix keeps its previously admitted captured baseline. Apply
+	// only the newly adjudicated assignments, using the central immutable audit
+	// ledger; actual current EvidenceView admission is tested separately against
+	// the complete backup in TestAdjudicationRetainedProjection.
+	audit, err := lineupindex.AuditIndexFile(in.IndexPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rejected := map[lineupindex.EvidenceAssignment]bool{}
+	for _, a := range audit.Adjudications {
+		if a.Disposition == "rejected" {
+			rejected[a.Assignment] = true
+		}
 	}
 	inputs := []builder.InputChannel{}
 	for _, c := range in.Draft.Channels {
@@ -111,6 +126,12 @@ func TestRetainedDryRunReplay(t *testing.T) {
 				}
 				for i := range proofs {
 					proof := proofs[i]
+					binding := lineupindex.EvidenceAssignment{SourceID: proof.SourceID, SourceRowID: proof.SourceRowID, RootStationID: proof.RootStationID, RootLineupKey: proof.RootLineupKey}
+					if rejected[binding] {
+						t.Logf("adjudication withdrew captured binding station=%s source=%s row=%s", c.StationID, proof.SourceID, proof.SourceRowID)
+						continue
+					}
+
 					input.ExternalAliases = append(input.ExternalAliases, builder.AttributedAlias{Value: a.Value, Source: source, Method: strings.Join(a.Methods, "; "), Identity: &proof})
 				}
 			}

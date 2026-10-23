@@ -44,7 +44,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 	}
 	notes := "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr name groups below 95% are exported as aliases; distinct denied full names with independent name scores at 95% or above are exported as literal escaped excluded_aliases. Exclusions require Lineuparr PR #26 commit c766a6bb582ca8ef28ae9548d83af1e61f6cde5d or a verified compatible successor; published beta.4 does not support this contract. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices."
 	if draft.SupplementalDecisionCount > 0 {
-		notes += " Supplemental decisions are separate: confirmed full raw names become aliases and reviewed denied literal names may be excluded without a primary score. Check supplemental export impact explicitly; unchecked, stale or unresolved effects remain advisory. Identical names cannot split account outcomes, and future inventory is not protected."
+		notes += " Supplemental decisions are separate: confirmed full raw names become aliases and reviewed denied literal names may be excluded without a primary score. Saved name effects are validated automatically in the background; pending, stale or unresolved effects remain advisory. Identical names cannot split account outcomes, and future inventory is not protected."
 	}
 	return ExportFile{
 		Package:     draft.Package,

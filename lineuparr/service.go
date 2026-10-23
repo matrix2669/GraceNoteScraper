@@ -91,7 +91,11 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	}}
 	statuses = append(statuses, lineup.AdditionalSources...)
 
-	for _, source := range s.fetchSources(ctx, lineup) {
+	sourceCapture := lineup.capturedSources
+	if sourceCapture == nil {
+		sourceCapture = captureSources(s.fetchSources(ctx, lineup), lineup.AdditionalSources)
+	}
+	for _, source := range sourceCapture.sources {
 		status := SourceStatus{
 			ID:      source.ID,
 			Label:   source.Label,
@@ -279,6 +283,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	populateSourceMatches(statuses, resultChannels)
 
 	draft := &Draft{
+		SourceCapture:        sourceCapture,
 		GeneratedAt:          time.Now().UTC(),
 		Package:              packageName(lineup),
 		ProviderName:         lineup.ProviderName,

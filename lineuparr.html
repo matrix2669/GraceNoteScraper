@@ -652,25 +652,23 @@
           <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
         </div>
         <div class="match-status" id="match-status"></div>
+        <button type="button" id="match-reload">Reload review</button>
         <div id="match-save-recovery" role="status" hidden></div>
         <div id="supplemental-impact-panel">
-          <p>Supplemental candidates have retrieval ranks, not LineupARR scores. Confirm adds full raw aliases; Deny adds literal channel exclusions. Review their effects after a batch.</p>
-          <button type="button" id="supplemental-impact-check">Check supplemental export impact</button>
-          <button type="button" id="supplemental-impact-cancel" hidden>Cancel impact check</button>
-          <p id="supplemental-impact-status" role="status">No impact checked. Generation remains available; equal names cannot split account outcomes and future inventory is not protected.</p>
-          <div id="supplemental-impact-results"></div>
+          <p id="supplemental-impact-status" role="status"></p>
+          <details><summary>Validation details</summary><div id="supplemental-impact-results"></div></details>
         </div>
+        <div class="match-list" id="match-list"></div>
+        <details id="decision-history">
+          <summary>Reviewed matches</summary>
+          <div class="decision-list" id="decision-list"></div>
+        </details>
         <details id="automatic-exclusions">
           <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
           <p id="automatic-message">Refresh streams to derive current exclusions.</p>
           <p>These are derived rules, separate from your saved Deny decisions. Definite opposing feeds are excluded across the successful stream inventory, even when they have no match score. Clear callsign conflicts and uncertain feed holds use scored review candidates. Uncertain feed names remain below for Confirm/Deny. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
           <div id="automatic-rows"></div>
           <div id="match-coverage"></div>
-        </details>
-        <div class="match-list" id="match-list"></div>
-        <details id="decision-history">
-          <summary>Reviewed matches</summary>
-          <div class="decision-list" id="decision-list"></div>
         </details>
       </div>
       <div class="match-list" id="dispatch-loading"></div>
@@ -1206,7 +1204,7 @@
         if (epoch !== dispatchReviewEpoch) return;
         dispatchConfig = config;
         renderDispatchConfig();
-        if (dispatchConfig.configured && draft && !dispatchBusy) loadMatchReview();
+        if (dispatchConfig.configured && draft && !dispatchBusy) loadMatchReview(false,true,matchReviewLimit,true);
       } catch (error) {
         if (epoch !== dispatchReviewEpoch) return;
         els.dispatchLoading.replaceChildren(emptyMessage(error.message));
@@ -1347,7 +1345,7 @@
       };
     }
 
-    async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
+    async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit, recoverValidation = false) {
       if (!draft || !dispatchConfig?.configured || pendingDecisions.size || (interactive && dispatchBusy) || (force && builderResetPending)) {
         if (interactive) showMessage(!draft ? 'Load the lineup before reviewing streams.' : !dispatchConfig?.configured ? 'Connect Dispatcharr before reviewing streams.' : reviewActionBlock('', '', true) || 'Review is waiting for the current operation.');
         return false;
@@ -1371,6 +1369,7 @@
       try {
         const query = new URLSearchParams({limit: String(requestedLimit)});
         if (force) query.set('refresh', 'true');
+        if (recoverValidation && !force) query.set('recoverValidation','true');
         let review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
         if (review.supplemental) review = mergeSupplementalReview(review);
@@ -1419,47 +1418,54 @@
 
     let supplementalImpactRequest = 0;
     let supplementalImpactResult = null;
+    let validationPollTimer;
     function renderSupplementalImpact(result) {
       if (!result) return;
       supplementalImpactResult=result;
       if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact=result;
       const status=document.getElementById('supplemental-impact-status'); if (!status) return;
-      status.textContent=`${result.state || 'unchecked'}: ${result.message || ''}${result.state === 'running' ? ` (${result.completed || 0}/${result.total || '?'})` : ''}`;
-      const cancel=document.getElementById('supplemental-impact-cancel'); cancel.hidden=result.state !== 'running';
+      const active=['queued','preparing','running'].includes(result.state);
+      status.textContent=active ? 'Validating saved choices… You can continue reviewing.' : result.state === 'complete' ? (result.unresolved ? 'Validation found names or conflicts that still need review.' : 'Saved choices validated for this stream list.') : result.state === 'idle' ? '' : result.message || 'Reload review to retry validation.';
       const container=document.getElementById('supplemental-impact-results');container.replaceChildren();
       for (const row of result.rows || []) {
         const details=document.createElement('details'); const summary=document.createElement('summary');
-        summary.textContent=`${row.channelNumber} ${row.channelName}: ${row.selected.length} selected, ${row.extra.length} extra, ${row.missed.length} missed, ${row.protectedConflicts.length} protected conflicts`;details.append(summary);
+        summary.textContent=`${row.channelNumber} ${row.channelName}: ${row.extra.length} extra, ${row.missed.length} missed, ${row.protectedConflicts.length} protected conflicts`;details.append(summary);
         for (const [label,values] of [['Selected',row.selected],['Matched',row.matched],['Extra',row.extra],['Missed',row.missed],['Protected conflicts',row.protectedConflicts],['Same-name/account limits',row.sameNameConflicts]]) {
           const p=document.createElement('p');p.textContent=`${label}: ${values.map(v => typeof v === 'string' ? v : `${v.name} [account ${v.accountId}, stream ${v.streamId}]`).join('; ') || 'none'}`;details.append(p);
         }
         container.append(details);
       }
+      if (active) scheduleValidationPoll();
     }
-    async function checkSupplementalImpact() {
-      if (pendingDecisions.size || hasUncertainMatchActions()) { showMessage('Finish or recover queued choices, then check this batch.');return; }
+    function scheduleValidationPoll() {
+      clearTimeout(validationPollTimer);
       const request=++supplementalImpactRequest, epoch=dispatchReviewEpoch, revision=decisionRevision, source=draft?.sourceFingerprint;
-      const current=()=>request===supplementalImpactRequest && epoch===dispatchReviewEpoch && revision===decisionRevision && source===draft?.sourceFingerprint;
-      try {
-        let result=await api('/api/lineuparr/dispatcharr/supplemental-impact',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-        if (!current()) { if (request===supplementalImpactRequest) renderSupplementalImpact({state:'stale',message:'Review changed while starting impact. Check again after your batch.'});return; }
-        renderSupplementalImpact(result);
-        while (result.state === 'running') {
-          await new Promise(resolve=>setTimeout(resolve,500));
-          if (!current()) { if (request===supplementalImpactRequest) renderSupplementalImpact({state:'stale',message:'Review changed; this result is stale. Check again after your batch.'});return; }
-          result=await api('/api/lineuparr/dispatcharr/supplemental-impact');
+      validationPollTimer=setTimeout(async()=>{
+        const current=()=>request===supplementalImpactRequest && epoch===dispatchReviewEpoch && revision===decisionRevision && source===draft?.sourceFingerprint;
+        if (!current()) {if (matchReview && ['queued','preparing','running'].includes(matchReview.supplementalImpact?.state)) scheduleValidationPoll();return;}
+        try {
+          const result=await api('/api/lineuparr/dispatcharr/supplemental-impact');
           if (!current()) return;
+          // This response may describe the previous durable revision while a
+          // choice is awaiting acknowledgement. Keep its optimistic state and
+          // observation alive until every save has settled.
+          if (pendingDecisions.size) {scheduleValidationPoll();return;}
           renderSupplementalImpact(result);
-        }
-        if (matchReview) matchReview.supplementalImpact=result;
-        if (result.state === 'complete' && current()) await loadMatchReview(false,false,matchReviewLimit);
-      } catch(error) { if (current()) renderSupplementalImpact({state:'failed',message:`${error.message}. Retry the explicit impact check.`}); }
-    }
-    async function cancelSupplementalImpact() {
-      const result=supplementalImpactResult;if (!result?.id) return;
-      const request=++supplementalImpactRequest;
-      try {const cancelled=await api('/api/lineuparr/dispatcharr/supplemental-impact',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:result.id})});if(request===supplementalImpactRequest)renderSupplementalImpact(cancelled);}
-      catch(error){if(request===supplementalImpactRequest)showMessage(`Cancellation not acknowledged: ${error.message}. Check impact status.`,true);}
+          if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
+          if (['complete','idle'].includes(result.state) && !pendingDecisions.size) {
+            const latest=mergeSupplementalReview(await api(`/api/lineuparr/dispatcharr/review?limit=${matchReviewLimit}`));
+            if (!current() || pendingDecisions.size) return;
+            // New findings update the union count, never replace/re-sort the
+            // operator's active page or clear a newer optimistic choice.
+            matchReview.candidateCount=latest.candidateCount;
+            matchReview.candidateStreamCount=latest.candidateStreamCount;
+            matchReview.decisionTokens={...matchReview.decisionTokens,...latest.decisionTokens};
+            renderMatchReview();
+            await refillResolvedPage();
+          }
+          renderGuidedWorkflow();
+        } catch (error) {if(current()) renderSupplementalImpact({state:'failed',message:`Validation status unavailable: ${error.message}. Reload review to recover.`});}
+      },500);
     }
 
     function renderAutomaticExclusions(view, limit = 200) {
@@ -1473,7 +1479,7 @@
       for (const row of [...rows].sort((a,b) => Number(!!b.conflict)-Number(!!a.conflict)).slice(0, limit)) {
         const item = document.createElement('div'); item.className = 'channel-meta automatic-row';
         const state = row.conflict ? 'Saved confirmation preserved' : row.manualDecision === 'denied' ? 'Saved denial preserved; automatic constraint active' : row.pendingReview ? 'Manual review required' : 'Automatically excluded';
-        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}${row.inventoryOnly ? ' (inventory identity; no match score)' : ''}. ${row.reason}`;
+        item.textContent = `${row.channelNumber} · ${row.channelDisplayName || row.channelName}${row.channelCallSign ? ` (${row.channelCallSign})` : ''} ← ${row.streamName} · account ${row.accountId}: ${state}${row.inventoryOnly ? ' (inventory identity; no match score)' : ''}. ${row.reason}`;
         if (row.conflict) {
           const saved = (matchReview?.decisions || []).filter(d => d.decision === 'confirmed' && d.channelId === row.channelId && (d.streamNames || [d.streamName]).some(n => n.trim().toLowerCase() === row.streamName.trim().toLowerCase()));
           for (const decision of saved) item.append(decisionRow(decision));
@@ -1579,6 +1585,7 @@
 
     function mergeSupplementalReview(review) {
       if (review.supplementalMerged) return review;
+      if (Array.isArray(review.reviewItems)) return {...review,supplementalMerged:true,candidates:review.reviewItems,decisions:review.reviewedItems || []};
       const extra = review.supplemental || {};
       return {...review, supplementalMerged:true, primaryCandidateCount:review.candidateCount,
         candidateCount:review.candidateCount+(extra.candidateCount || 0),
@@ -1603,8 +1610,7 @@
       const fetched = matchReview.fetchedAt && new Date(matchReview.fetchedAt).getTime() > 0 ? new Date(matchReview.fetchedAt).toLocaleString() : '';
       const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
       els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} stream/channel matches are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
-      if (matchReview.supplemental) els.matchStatus.textContent += ` Primary: ${matchReview.primaryCandidateCount ?? 0} pending (${(matchReview.candidates || []).filter(c => !c.origin).length} visible); supplemental: ${matchReview.supplemental.candidateCount || 0} pending (${(matchReview.candidates || []).filter(c => c.origin).length} visible). Total: ${matchReview.candidateCount} pending review groups. ${matchReview.supplemental.message || ''}`;
-      if (!matchReview.warning) els.matchStatus.textContent += ' Review all primary proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
+      if (!matchReview.warning) els.matchStatus.textContent += ' Review proposals with Confirm or Deny. At 95% or above, Confirm records review without adding an inclusion alias; Deny adds eligible full-name exclusions.';
       if (pendingDecisions.size) els.matchStatus.textContent += ` Saving ${pendingDecisions.size} choice(s)… You can continue reviewing.`;
       els.matchStatus.classList.toggle('warning', !!matchReview.warning);
       els.matchList.replaceChildren();
@@ -1616,12 +1622,7 @@
           : 'No current proposals remain. Unmatched streams stay unchanged.';
         els.matchList.append(emptyMessage(message));
       }
-      for (const origin of ['', 'supplemental-v1']) {
-        const rows = candidates.filter(c => (c.origin || '') === origin);
-        if (!rows.length) continue;
-        const heading=document.createElement('h4'); heading.textContent=origin ? 'Supplemental candidates · retrieval only' : 'Primary LineupARR predictions'; els.matchList.append(heading);
-        for (const candidate of rows) els.matchList.append(matchCard(candidate));
-      }
+      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
       if (hasMore) {
         const remaining = matchReview.candidateCount - candidates.length;
         const amount = Math.min(100, remaining);
@@ -1673,9 +1674,9 @@
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
       const scoreText = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
-      score.textContent = candidate.origin ? `Retrieval rank ${candidate.retrievalRank}` : scoreText;
-      if (candidate.origin) { tier.textContent='Supplemental'; score.className='match-meta'; }
-      channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
+      score.textContent = scoreText;
+      if (!candidate.origin) channelMeta.append(tier, score);
+      channel.append(channelName, channelMeta);
       appendMatchAttribution(channel, candidate);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
@@ -1694,15 +1695,28 @@
     }
 
     function appendMatchAttribution(container, candidate) {
-      const attribution = document.createElement('div'); attribution.className = 'match-meta';
-      attribution.textContent = candidate.origin
-        ? `Supplemental retrieval descriptor: ${(candidate.retrievalDescriptors || []).join('; ') || 'See raw evidence'}`
-        : candidate.exactAliases?.length ? `Exact normalized alias: ${candidate.exactAliases.join('; ')}` : 'Contributing alias attribution unavailable for this matcher result.';
-      container.append(attribution);
+      const feedLabel=feed=>feed?.region === 'east' ? 'East' : feed?.region === 'west' ? 'West' : feed?.region === 'conflicting' ? 'Conflicting feed labels' : 'Feed unknown';
+      if (candidate.targetFeed) {
+        const target=document.createElement('div');target.className='match-meta target-feed';target.textContent=`Target feed: ${feedLabel(candidate.targetFeed)}${candidate.targetFeed.provenanceKind === 'user-attested' ? ' (user-attested)' : ''}`;container.append(target);
+      }
+      for (const feed of candidate.streamFeeds || []) {
+        const stream=document.createElement('div');stream.className='match-meta stream-feed';stream.textContent=`Stream feed: ${feedLabel(feed)}${candidate.streamFeeds.length>1 ? ` · ${feed.name}` : ''}`;container.append(stream);
+      }
+      const evidence=candidate.origin ? candidate.retrievalDescriptors : candidate.exactAliases;
+      if (evidence?.length) {const attribution=document.createElement('div');attribution.className='match-meta';attribution.textContent=`${candidate.origin ? 'Name evidence' : 'Matched using'}: ${evidence.join('; ')}`;container.append(attribution);}
+      const finding=typeof matchReview !== 'undefined' && matchReview?.supplementalImpact?.rows?.find(row=>row.channelId === candidate.channelId);
+      if (finding) {
+        const messages=[];
+        if (finding.missed?.length) messages.push(`${finding.missed.length} selected name(s) did not match`);
+        if (finding.protectedConflicts?.length) messages.push(`${finding.protectedConflicts.length} existing match(es) affected`);
+        if (finding.sameNameConflicts?.length) messages.push('Equal raw names have conflicting choices across accounts');
+        if (messages.length) {const p=document.createElement('p');p.className='warning';p.textContent=`${matchReview.supplementalImpact.findingsStale ? 'Prior validation' : 'Validation'}: ${messages.join('; ')}`;container.append(p);}
+      }
+      for (const conflict of candidate.identityConflicts || []) {const p=document.createElement('p');p.className='warning';p.textContent=conflict;container.append(p);}
       if (candidate.reviewWarnings?.length) {
-        const details = document.createElement('details'); details.className = 'match-evidence';
-        const summary = document.createElement('summary'); summary.textContent = 'Manual feed review required · full evidence'; details.append(summary);
-        for (const warning of candidate.reviewWarnings) { const text = document.createElement('p'); text.textContent = warning; details.append(text); }
+        const details=document.createElement('details'); details.className='match-evidence';
+        const summary=document.createElement('summary');summary.textContent='Identity evidence';details.append(summary);
+        for (const warning of candidate.reviewWarnings) {const p=document.createElement('p');p.textContent=warning;details.append(p);}
         container.append(details);
       }
     }
@@ -1711,8 +1725,8 @@
       const row = document.createElement('div'); row.className = 'decision-row'; row.dataset.key = decision.key;
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
-      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelDisplayName || decision.channelName}${decision.channelCallSign && decision.channelCallSign !== (decision.channelDisplayName || decision.channelName) ? ` (${decision.channelCallSign})` : ''} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "Supplemental · no primary score" : `${decision.score}%`}`;
-      copy.append(title, meta);
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelDisplayName || decision.channelName}${decision.channelCallSign && decision.channelCallSign !== (decision.channelDisplayName || decision.channelName) ? ` (${decision.channelCallSign})` : ''} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "" : `${decision.score}%`}`;
+      copy.append(title, meta); appendMatchAttribution(copy,decision);
       if (decision.origin) {
         const details=document.createElement('details'); details.className='match-evidence';
         const summary=document.createElement('summary'); summary.textContent='Saved raw names and physical streams'; details.append(summary);
@@ -1720,7 +1734,7 @@
         for (const member of decision.constituents || []) { const item=document.createElement('div'); item.className='match-raw-name'; item.textContent=`Account ${member.m3uAccountId}, stream ${member.streamId}: ${member.streamName}`; details.append(item); }
         if (!(decision.constituents || []).length && (decision.m3uAccountIds || []).length) { const item=document.createElement('div'); item.textContent=`Accounts: ${decision.m3uAccountIds.join(', ')}. Physical IDs are unavailable in this record.`; details.append(item); }
         const effect=document.createElement('p'); effect.textContent=decision.decision === 'confirmed'
-          ? 'When current and unsuppressed, these full raw names contribute aliases. Consumer matching remains fuzzy; check export impact after your batch.'
+          ? 'When current and unsuppressed, these full raw names contribute aliases. Consumer matching remains fuzzy; validation runs in the background.'
           : 'When current, these reviewed names contribute channel-scoped literal exclusions without a primary score. Positive alias suppression does not remove this Deny.';
         details.append(effect); const limit=document.createElement('p'); limit.textContent='Identical raw names cannot split account outcomes. Future inventory is not protected by a past impact check.'; details.append(limit); copy.append(details);
       }
@@ -1777,6 +1791,7 @@
     function beginMatchDecision(key) {
       pendingDecisions.add(key);
       decisionRevision++;
+      if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'queued'};
       clearTimeout(matchReconcileTimer);
       workflowRemote.dispatch = null;
       workflowRemote.dispatchReady = false;
@@ -1838,8 +1853,8 @@
       const order = rememberReviewOrder();
       const decisionEpoch = dispatchReviewEpoch;
       const source = draft.sourceFingerprint;
-      if (matchReview.supplementalImpact && matchReview.supplementalImpact.state !== 'unchecked') matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'stale',message:'Review is changing. Check supplemental export impact after this batch.'};
-      const optimistic = {key, decision, origin:candidate.origin, retrievalRank:candidate.retrievalRank, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:candidate.alias, streamNames:candidate.streamNames, m3uAccountIds:candidate.m3uAccountIds, constituents:candidate.constituents, streamCount:candidate.streamCount, score:candidate.maximumScore};
+      matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'queued',message:'Saved choices will be validated in the background.'};
+      const optimistic = {key, decision, origin:candidate.origin, targetFeed:candidate.targetFeed, streamFeeds:candidate.streamFeeds, identityConflicts:candidate.identityConflicts, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:candidate.alias, streamNames:candidate.streamNames, m3uAccountIds:candidate.m3uAccountIds, constituents:candidate.constituents, streamCount:candidate.streamCount, score:candidate.maximumScore};
       beginMatchDecision(key);
       matchReview = {
         ...matchReview,
@@ -1863,7 +1878,7 @@
           offerMatchAlternatives(candidate);
           showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
         } else {
-          showMessage(candidate.origin ? `Supplemental ${decision}. Full raw ${decision === 'confirmed' ? 'aliases' : 'exclusions'} saved; check export impact after your batch.` : decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
+          showMessage(candidate.origin ? `Choice ${decision}. Saved names will be validated in the background.` : decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
         }
       } catch (error) {
         if (saved) return;
@@ -2913,7 +2928,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false && (!workflowRemote.dispatch?.supplementalImpact || ['idle','complete'].includes(workflowRemote.dispatch.supplementalImpact.state) && !workflowRemote.dispatch.supplementalImpact.unresolved)}
       ].filter(state => state.panel);
     }
 
@@ -3181,13 +3196,13 @@
     });
     document.getElementById('builder-reset').addEventListener('click', () => resetBuilder());
     document.getElementById('builder-reset-undo').addEventListener('click', () => resetBuilder(true));
+    document.getElementById('match-reload').addEventListener('click',()=>loadMatchReview(false,true,matchReviewLimit,true));
     els.dispatchRefresh.addEventListener('click', async () => { if (await loadMatchReview(true)) await reloadDraft(); });
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();
     document.getElementById('customization-complete').addEventListener('click', completeCustomizationWorkflow);
     loadDraft();
-    document.getElementById('supplemental-impact-check').addEventListener('click',checkSupplementalImpact);
-    document.getElementById('supplemental-impact-cancel').addEventListener('click',cancelSupplementalImpact);
+
 
     const marketStart = document.getElementById('major-market-start');
     const marketStatus = document.getElementById('major-market-status');

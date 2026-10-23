@@ -13,6 +13,7 @@ type LineupContext struct {
 	ProviderName      string
 	LineupID          string
 	AdditionalSources []SourceStatus
+	capturedSources   *SourceCapture
 }
 
 // InputChannel is one provider lineup position. Multiple positions may point
@@ -178,6 +179,7 @@ type AutomaticMatchLease struct {
 }
 
 type Draft struct {
+	SourceCapture             *SourceCapture        `json:"-"`
 	SupplementalMessage       string                `json:"supplementalMessage,omitempty"`
 	SupplementalDecisionCount int                   `json:"supplementalDecisionCount"`
 	ResetGeneration           uint64                `json:"resetGeneration"`

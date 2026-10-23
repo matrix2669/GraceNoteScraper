@@ -306,7 +306,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			}
 		}
 		for _, relation := range scan.Relations {
-			if relation.EvidencePolicy != ProviderIdentityPolicy || relation.SourceRowID == "" || relation.SourceLineupKey != scan.Lineup.Key {
+			if rejectedRelation(relation) != nil || relation.EvidencePolicy != ProviderIdentityPolicy || relation.SourceRowID == "" || relation.SourceLineupKey != scan.Lineup.Key {
 				continue
 			}
 			// A station-bound national catalog fact is tied to this GNID and
@@ -322,7 +322,7 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 				EvidencePolicy: relation.EvidencePolicy, StationID: relation.StationID, Kind: FactCategory, Value: relation.Category,
 				RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel,
 				SourceURL: relation.SourceURL, Method: strings.Trim(strings.ReplaceAll(relation.Method, "number-policy-provider-alias-v3", ""), "; ") + "; provider-category-relation", SourceRevision: relation.SourceRevision,
-				SourceRowID: relation.SourceRowID, RootSourceLineupKey: relation.SourceLineupKey, RootSourceStationID: relation.StationID,
+				SourceRowID: relation.SourceRowID, RootSourceID: assignmentForRelation(relation).SourceID, RootSourceLineupKey: assignmentForRelation(relation).RootLineupKey, RootSourceStationID: assignmentForRelation(relation).RootStationID,
 			})
 		}
 	}
@@ -1313,5 +1313,8 @@ func epgFactProvenanceKey(stationID string, fact StationFact) string {
 // Fresh provider assertions can seed comparison only in their actual source
 // lineup. Historical EPG copies never reseed a scan through station storage.
 func scanFactBindingValid(scan *postalLineupScan, f ProviderFact) bool {
+	if rejectedFact(f.StationID, StationFact{SourceID: f.SourceID, SourceRowID: f.SourceRowID, RootSourceID: f.RootSourceID, RootSourceLineupKey: f.RootSourceLineupKey, RootSourceStationID: f.RootSourceStationID}) != nil {
+		return false
+	}
 	return officialOrigin(&Index{Lineups: map[string]*LineupRecord{scan.Lineup.Key: scan.Lineup}}, f.SourceID, scan.Lineup.Key) && usableFact(StationFact{Kind: f.Kind, SourceID: f.SourceID, Method: f.Method}) && f.EvidencePolicy == ProviderIdentityPolicy && f.SourceRowID != "" && f.RootSourceLineupKey == scan.Lineup.Key && f.RootSourceStationID == f.StationID && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix)
 }

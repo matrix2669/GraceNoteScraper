@@ -34,6 +34,16 @@ type dispatcharrAPI interface {
 
 type dispatcharrServer struct {
 	impactMu                sync.Mutex
+	impactLaunchMu          sync.Mutex
+	impactCompleted         *supplementalImpactJob
+	impactSignal            chan struct{}
+	impactContext           context.Context
+	impactStop              context.CancelFunc
+	impactStopped           chan struct{}
+	impactDirty             uint64
+	impactRequestedKey      string
+	impactRefreshes         int
+	impactLifecycle         string
 	impact                  *supplementalImpactJob
 	impactRunner            func(context.Context, dispatcharr.ImpactRequest) (dispatcharr.ImpactResult, error)
 	supplementalMu          sync.Mutex
@@ -84,6 +94,8 @@ func (s *dispatcharrServer) handleProgress(w http.ResponseWriter, r *http.Reques
 }
 
 type dispatcharrMatchSnapshot struct {
+	reviewInputs           []lineuparrbuilder.InputChannel
+	reviewSources          *lineuparrbuilder.SourceCapture
 	supplementalInputs     reviewInputsRevision
 	supplementalBound      bool
 	guide                  *guide.TVGuide
@@ -123,6 +135,7 @@ type dispatcharrConfigResponse struct {
 }
 
 type dispatcharrReviewDecision struct {
+	reviewIdentity
 	ChannelDisplayName string    `json:"channelDisplayName,omitempty"`
 	ChannelCallSign    string    `json:"channelCallSign,omitempty"`
 	NeedsReview        bool      `json:"needsReview,omitempty"`
@@ -146,6 +159,8 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	ReviewItems          []any                        `json:"reviewItems"`
+	ReviewedItems        []any                        `json:"reviewedItems"`
 	SupplementalImpact   supplementalImpactResponse   `json:"supplementalImpact"`
 	Supplemental         supplementalReview           `json:"supplemental"`
 	OperationScope       string                       `json:"operationScope"`
@@ -274,6 +289,13 @@ func (s *dispatcharrServer) handleReview(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	if strings.EqualFold(r.URL.Query().Get("refresh"), "true") {
+		s.signalImpact()
+	}
+	if r.URL.Query().Get("recoverValidation") == "true" && (s.impactResponse().State == "failed" || s.impactResponse().State == "cancelled" || s.impactResponse().State == "stale") {
+		s.recoverImpact()
+	}
+	build.response.SupplementalImpact = s.impactResponse()
 	writeLineuparrJSON(w, http.StatusOK, build.response)
 }
 
@@ -347,6 +369,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		s.retireDecisionOperations(keys)
+		s.signalImpact()
 		writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 		return
 	}
@@ -433,6 +456,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		members[i] = d.Key
 	}
 	s.recordDecisionReceipt(body.Key, body.Decision, committedInputs, admission, candidates, members)
+	s.signalImpact()
 
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
@@ -442,6 +466,8 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	// part of the durable connection fingerprint. A save must not slip between
 	// capturing credentials and reserving the refresh operation.
 	if force {
+		s.beginImpactRefresh()
+		defer s.endImpactRefresh()
 		if !s.refreshMu.TryLock() {
 			http.Error(w, "A stream refresh or connection test is already running", http.StatusConflict)
 			return dispatcharrReviewBuild{}, false
@@ -523,7 +549,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			}
 			snapshot.warning = failureMessage + " Showing the last completed stream review."
 		} else {
-			currentDraft, currentLineup, _, valid := s.lineup.buildDraft(w, r)
+			currentDraft, currentLineup, currentInputs, valid := s.lineup.buildDraft(w, r)
 			if !valid {
 				return dispatcharrReviewBuild{}, false
 			}
@@ -539,6 +565,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 				matches.All[i].Key = fmt.Sprintf("%x", sha256.Sum256([]byte(matches.All[i].Key+generation)))
 			}
 			snapshot = dispatcharrMatchSnapshot{
+				reviewInputs: copyReviewInputs(currentInputs), reviewSources: currentDraft.SourceCapture,
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
 				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
@@ -673,12 +700,66 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		status = "refreshing"
 	}
 	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
-	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, visibleLimit)
+	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, dispatcharrReviewMaxLimit)
 	response := dispatcharrReviewResponse{
 		Supplemental: supplemental, SupplementalImpact: s.impactResponse(),
 		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 		StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 		FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
+	}
+	// Build the single ordered union before applying its one visible limit.
+	// Internal origin/persistence envelopes remain distinct; unscored rows do not
+	// acquire a fabricated primary score.
+	current, feeds, codes := reviewIdentityCatalog(draft, lineupConfig)
+	// automaticView may reuse an immutable cached slice across concurrent GETs.
+	// Presentation enrichment belongs to this response, never that shared cache.
+	response.Automatic.Rows = append([]automaticMatchRow(nil), response.Automatic.Rows...)
+	for i := range response.Automatic.Rows {
+		row := &response.Automatic.Rows[i]
+		c := current[row.ChannelID]
+		row.ChannelDisplayName, row.ChannelCallSign = reviewDisplayName(c), c.CallSign
+		row.reviewIdentity = presentReviewIdentity(c, []string{row.StreamName}, feeds, codes)
+	}
+	response.ReviewItems = []any{}
+	response.ReviewedItems = []any{}
+	rawCandidates := map[string]dispatcharr.Candidate{}
+	for _, c := range matches.All {
+		rawCandidates[c.Key] = c
+	}
+	for _, g := range groups {
+		g = exactReviewGroupNames(g, rawCandidates)
+		response.ReviewItems = append(response.ReviewItems, enrichReviewGroup(g, current, feeds, codes))
+	}
+	for i := range supplementalGroups {
+		g := &supplementalGroups[i]
+		g.reviewIdentity = presentReviewIdentity(current[g.ChannelID], g.StreamNames, feeds, codes)
+		response.ReviewItems = append(response.ReviewItems, *g)
+	}
+	response.CandidateCount = len(response.ReviewItems)
+	response.CandidateStreamCount += supplemental.CandidateStreamCount
+	response.ConfirmedCount += supplemental.ConfirmedCount
+	response.DeniedCount += supplemental.DeniedCount
+	if len(response.ReviewItems) > visibleLimit {
+		response.ReviewItems = response.ReviewItems[:visibleLimit]
+	}
+	for i := range history {
+		history[i].reviewIdentity = presentReviewIdentity(current[history[i].ChannelID], history[i].StreamNames, feeds, codes)
+	}
+	type savedItem struct {
+		at   time.Time
+		item any
+	}
+	saved := []savedItem{}
+	for _, g := range history {
+		saved = append(saved, savedItem{g.UpdatedAt, g})
+	}
+	for _, g := range supplemental.Decisions {
+		g.reviewIdentity = presentReviewIdentity(current[g.ChannelID], g.StreamNames, feeds, codes)
+		saved = append(saved, savedItem{g.UpdatedAt, g})
+	}
+	sort.SliceStable(saved, func(i, j int) bool { return saved[i].at.After(saved[j].at) })
+	for _, g := range saved {
+		response.ReviewedItems = append(response.ReviewedItems, g.item)
 	}
 	// Validate all captured generations together, after expensive computation.
 	// Response data and admission become current at this publication point.
@@ -768,7 +849,7 @@ func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]d
 			groups[key] = group
 		}
 		group.StreamCount++
-		group.StreamNames = appendUniqueReviewString(group.StreamNames, decision.StreamName)
+		group.StreamNames = appendExactReviewName(group.StreamNames, decision.StreamName)
 		group.TVGIDs = appendUniqueReviewString(group.TVGIDs, decision.TVGID)
 		group.M3UAccountIDs = appendUniqueReviewInt64(group.M3UAccountIDs, decision.M3UAccountID)
 		if decision.UpdatedAt.After(group.UpdatedAt) {
@@ -893,6 +974,7 @@ func (s *dispatcharrServer) removeCachedGroup(dispatchFingerprint, lineupFingerp
 }
 
 func (s *dispatcharrServer) clearCandidateCache() {
+	s.interruptImpact()
 	s.reviewMu.Lock()
 	s.review = dispatcharrCandidateCache{}
 	s.admission = reviewAdmission{}
