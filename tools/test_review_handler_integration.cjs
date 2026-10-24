@@ -28,8 +28,13 @@ if(!process.env.REVIEW_HANDLER_URL){
     for(const name of ['renderGuidedWorkflow','scheduleWorkflowRefresh','renderAll','refreshResetRecovery'])window[name]=()=>{};
     window.messages=[];window.showMessage=(text,error)=>messages.push({text,error});window.emptyMessage=text=>{const p=document.createElement('p');p.textContent=text;return p};
     window.receipt={hz,accepted:0,posts:0,refills:0,acks:[],clickWork:[],start:performance.now(),lastClick:0,lastAck:0,nextPage:0,maxHeartbeat:0};
-    const fetchReal=window.fetch.bind(window);window.fetch=async(path,options)=>{const at=performance.now();if(window.dropBeforeDecision&&options?.method==='POST'&&String(path).includes('/dispatcharr/decision')){window.dropBeforeDecision=false;throw Error('Synthetic request lost before server arrival')}const response=await fetchReal(path,options);if(window.dropNextDecisionAck&&options?.method==='POST'&&String(path).includes('/dispatcharr/decision')){window.dropNextDecisionAck=false;throw Error('Synthetic acknowledgement lost after durable handler response')}if(options?.method==='POST'){receipt.posts++;receipt.acks.push(performance.now()-at);receipt.lastAck=performance.now();}else if(String(path).includes('/dispatcharr/review')){receipt.refills++;}return response};
+    const fetchReal=window.fetch.bind(window);window.fetch=async(path,options)=>{const at=performance.now();if(window.dropBeforeDecision&&options?.method==='POST'&&String(path).includes('/dispatcharr/decision')){window.dropBeforeDecision=false;throw Error('Synthetic request lost before server arrival')}if(window.holdNextReceipt&&String(path).includes('/dispatcharr/decision?operation=')){window.holdNextReceipt=false;return new Response('Synthetic running receipt',{status:409})}const response=await fetchReal(path,options);if(window.dropNextDecisionAck&&options?.method==='POST'&&String(path).includes('/dispatcharr/decision')){window.dropNextDecisionAck=false;window.holdNextReceipt=true;throw Error('Synthetic acknowledgement lost after durable handler response')}if(options?.method==='POST'){receipt.posts++;receipt.acks.push(performance.now()-at);receipt.lastAck=performance.now();}else if(String(path).includes('/dispatcharr/review')){receipt.refills++;}return response};
     (0,eval)(code+'\nwindow.renderMatchReview=renderMatchReview;');renderMatchReview();
+    window.loseChoice=async(key)=>{
+     window.dropNextDecisionAck=true;window.lostChoice=decideMatch(key,'confirmed');
+     while(matchActionState(key).state!=='uncertain'||window.holdNextReceipt)await new Promise(r=>setTimeout(r,5));
+    };
+    window.finishRecovery=async()=>{await recoverMatchActions();await lostChoice;await reloadDraft();await loadMatchReview(false,true);};
     window.keys=matchReview.candidates.map(c=>c.key);if(keys.length!==100||keys.some(k=>!k))throw Error('expected100 admitted fixture groups');
     let lastBeat=performance.now();window.beat=setInterval(()=>{const now=performance.now();receipt.maxHeartbeat=Math.max(receipt.maxHeartbeat,now-lastBeat);lastBeat=now;},25);
     const observer=new MutationObserver(()=>{if(receipt.accepted===100&&pendingDecisions.size===0&&document.querySelector('#match-list>.match-card')){receipt.nextPage=performance.now();observer.disconnect();clearInterval(beat);}});observer.observe(els.matchList,{childList:true});
@@ -38,8 +43,8 @@ if(!process.env.REVIEW_HANDLER_URL){
    },{code,fixture,hz:Number(process.env.REVIEW_BURST_HZ||0)});
    if(fixture.recovery){
     await page.evaluate(async key=>{
-     window.originalOperation=matchReview.decisionTokens[key];window.originalKey=key;window.dropNextDecisionAck=true;
-     await decideMatch(key,'confirmed');
+     window.originalOperation=matchReview.decisionTokens[key];window.originalKey=key;
+     await loseChoice(key);
      if(matchActionState(key).state!=='uncertain')throw Error('lost grouped save was not uncertain');
      // Replace the page with actual history, then remove both page rows to
      // prove recovery depends on the receipt and its persistent global panel.
@@ -64,9 +69,10 @@ if(!process.env.REVIEW_HANDLER_URL){
     });
     await page.locator('#match-save-recovery button').click();
     await page.waitForFunction(()=>recoveryDraftHeld&&matchActionState(originalKey).state==='saved'&&!dispatchBusy);
-    assert.equal(await page.evaluate(()=>recoverMatchActions.pending),true,'intermediate receipt incorrectly treated as completed recovery');
+    assert.equal(await page.evaluate(()=>pendingDecisions.size),0,'receipt settlement did not drain original logical job');
     await page.evaluate(()=>releaseRecoveryDraft());
     await page.waitForFunction(()=>!recoverMatchActions.pending&&matchActionState(originalKey).state==='saved'&&!dispatchBusy);
+    await page.evaluate(()=>loadMatchReview(false,true));
     await page.evaluate(async()=>{
      await clearDecision(undoKey);
      if(window.undoResponseStatus!==200)throw Error('Undo did not send a successful DELETE');
@@ -82,14 +88,14 @@ if(!process.env.REVIEW_HANDLER_URL){
      if(matchActionState(absent).state!=='failed'||matchReview.decisionTokens[absent]===absentToken)throw Error('not-saved recovery retained old admission');
      await decideMatch(absent,'denied');if(matchActionState(absent).state!=='saved')throw Error('fresh choice after not-saved receipt blocked');
      // Lose a second acknowledgement, supersede its snapshot, then recover.
-     const other=matchReview.candidates[0].key;window.dropNextDecisionAck=true;await decideMatch(other,'confirmed');
-     await fetch('/fixture/refresh',{method:'POST'});await recoverMatchActions();
+     const other=matchReview.candidates[0].key;await loseChoice(other);
+     await fetch('/fixture/refresh',{method:'POST'});await finishRecovery();
      if(matchActionState(other).state!=='cancelled'||hasUncertainMatchActions())throw Error('snapshot supersession stranded recovery');
      // Repeat using the actual reset endpoint in this disposable Go fixture.
-     const third=matchReview.candidates[0].key;window.dropNextDecisionAck=true;await decideMatch(third,'confirmed');
+     const third=matchReview.candidates[0].key;await loseChoice(third);
      const summary=await api('/api/lineuparr/reset');
      await api('/api/lineuparr/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,withdrawPublished:false})});
-     await recoverMatchActions();
+     await finishRecovery();
      if(matchActionState(third).state!=='cancelled'||hasUncertainMatchActions())throw Error('reset supersession stranded recovery');
      if(draft.resetGeneration!==summary.generation+1)throw Error('recovery retained the pre-reset request generation');
     });

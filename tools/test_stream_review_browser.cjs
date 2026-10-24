@@ -12,7 +12,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    window.draft={sourceFingerprint:'fixture',channels:[]};window.pendingDecisions=new Set();window.builderResetPending=false;window.decisionSaveQueue=Promise.resolve();window.matchReconcileTimer=null;window.pendingAlternativeReviews=[];window.setDispatchControls=()=>{};window.dispatchBusy=false;window.decisionRevision=0;window.dispatchReviewEpoch=0;window.workflowRemote={};window.matchReviewLimit=100;
    for(const name of ['renderAutomaticExclusions','renderMatchCoverage','renderGuidedWorkflow','scheduleWorkflowRefresh','showMessage'])window[name]=()=>{};
    window.emptyMessage=text=>{const p=document.createElement('p');p.textContent=text;return p};
-   window.reloadDraft=async()=>{};window.fail=false;window.writes=[];window.api=async(path,options)=>{if(fail)throw Error('save failed');writes.push(JSON.parse(options.body))};
+   window.reloadDraft=async()=>{};window.fail=false;window.writes=[];window.api=async(path,options)=>{if(fail)throw Error('save failed');writes.push(JSON.parse(options.body));return {saved:true}};
    window.candidate=(key,kind='inclusion')=>({key,reviewKind:kind,alias:key,streamNames:[key],streamCount:1,minimumScore:kind==='qualified'?100:82,maximumScore:kind==='qualified'?100:82,channelNumber:'1',channelName:'Fixture',reasons:[],alternatives:[]});
    window.high=candidate('high','qualified');window.next=candidate('boundary','qualified');next.minimumScore=next.maximumScore=95;window.loads=0;
    window.matchReview={streamCount:4,candidateCount:3,confirmedCount:0,deniedCount:0,candidates:[high,candidate('low')],decisions:[]};

@@ -29,7 +29,7 @@ if(!process.env.REVIEW_REGRESSION_URL){
   const unknown=await page.evaluate(()=>window.unknown.key);
   const unknownCard=page.locator(`article[data-key="${unknown}"]`);
   assert.match(await unknownCard.innerText(),/902 · HBO Hits \(HBOHTHD\)/);
-  assert.match(await unknownCard.innerText(),/Matched alias: HBO/);
+  assert.match(await unknownCard.innerText(),/Matched alias: “US: HBO 2 HD” → “HBO/);
   assert.doesNotMatch(await unknownCard.innerText(),/USER-ATTESTED|user-attested|Identity evidence|Feed unknown/);
   assert.match(await page.locator('#match-status').innerText(),/2 alias reviews/);
   await page.evaluate(async()=>{window.rejectNext=true;await decideMatch(unknown.key,'confirmed')});
@@ -43,7 +43,7 @@ if(!process.env.REVIEW_REGRESSION_URL){
   assert.equal(await page.evaluate(()=>matchReview.decisions[0].streamCount),2);
   assert.equal(await page.evaluate(()=>matchReview.decisions[0].reason),'Lineuparr alias');
   await page.evaluate(async()=>{window.loseAck=true;await decideMatch(explicit.key,'denied')});
-  assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'uncertain');
+  assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'saved','one automatic receipt reconciles the lost durable ACK');
   await page.evaluate(async()=>{await recoverMatchActions()});
   assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'saved');
   assert.equal(await page.evaluate(()=>matchReview.deniedCount),1);
