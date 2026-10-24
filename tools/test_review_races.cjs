@@ -9,12 +9,15 @@ const code=require('./review_fixture_helpers.cjs')(html)+slice('    function sav
 const tick=async()=>{for(let i=0;i<15;i++)await Promise.resolve()};
 function fixture(keys) {
  const candidate=key=>({key,channelId:key,channelName:key,channelNumber:'1',alias:key,streamCount:1,streamNames:[key],minimumScore:100,maximumScore:100,alternatives:[]});
- const c={draft:{sourceFingerprint:'fixture',channels:keys.map(id=>({id,included:true,name:id,number:'1'}))},dispatchConfig:{configured:true},matchReview:{reviewStatus:'current',candidates:keys.map(candidate),candidateCount:keys.length,candidateStreamCount:keys.length,confirmedCount:0,deniedCount:0,decisions:[]},pendingDecisions:new Set(),pendingAlternativeReviews:[],dispatchBusy:false,builderResetPending:false,decisionRevision:0,dispatchReviewEpoch:0,matchReviewRequest:0,dispatchBusyRequest:0,matchReviewLimit:100,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,workflowRemote:{},setTimeout(){},clearTimeout(){},URLSearchParams,renderGuidedWorkflow(){},scheduleWorkflowRefresh(){},emptyMessage:x=>x,startMatchProgress:()=>()=>{},showMessage(message){c.messages.push(message)},messages:[],saves:[],reads:[],opened:[],closeEvents:[]};
+ const c={document:{getElementById:()=>({replaceChildren(){},append(){},setAttribute(){},addEventListener(){}}),querySelectorAll:()=>[]},draft:{sourceFingerprint:'fixture',channels:keys.map(id=>({id,included:true,name:id,number:'1'}))},dispatchConfig:{configured:true},matchReview:{reviewStatus:'current',candidates:keys.map(candidate),candidateCount:keys.length,candidateStreamCount:keys.length,confirmedCount:0,deniedCount:0,decisions:[]},pendingDecisions:new Set(),pendingAlternativeReviews:[],dispatchBusy:false,builderResetPending:false,decisionRevision:0,dispatchReviewEpoch:0,matchReviewRequest:0,dispatchBusyRequest:0,matchReviewLimit:100,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,workflowRemote:{},setTimeout(){},clearTimeout(){},URLSearchParams,renderGuidedWorkflow(){},scheduleWorkflowRefresh(){},emptyMessage:x=>x,startMatchProgress:()=>()=>{},showMessage(message){c.messages.push(message)},messages:[],saves:[],reads:[],opened:[],closeEvents:[]};
  let close;
  c.els={alternativeDialog:{dataset:{},open:false,hasAttribute(){return this.open},addEventListener(name,fn){close=fn},close(){this.open=false;c.closeEvents.push(close)}},alternativeList:{querySelector:()=>null},dispatchLoading:{replaceChildren(){}}};
  c.api=(path,options)=>new Promise((resolve,reject)=>{if(options)c.saves.push({body:JSON.parse(options.body),resolve,reject});else c.reads.push({resolve,reject})});
  vm.createContext(c);vm.runInContext(code,c);
- c.renderMatchReview=()=>{c.status=c.pendingDecisions.size?'saving':'settled'};
+ // This VM suite keeps a small DOM boundary but must run the production
+ // recovery renderer's lifecycle effects. The separate browser/Go retirement
+ // suite runs the complete production renderMatchReview and actual handlers.
+ c.renderMatchReview=()=>{c.renderMatchRecovery();c.status=c.pendingDecisions.size?'saving':'settled'};
  c.setDispatchControls=()=>{c.disabled=c.dispatchBusy||c.pendingDecisions.size>0};
  c.openMatchAlternatives=primary=>{c.opened.push(primary);c.els.alternativeDialog.open=true;c.els.alternativeDialog.dataset.reviewKey=primary.key};
  c.reloadDraft=async()=>{};
@@ -31,6 +34,16 @@ function fixture(keys) {
  c.saves[0].resolve({saved:true});await Promise.all([a,b]);
  assert.equal(c.saves.length,1);assert.deepEqual(Array.from(c.matchReview.decisions,d=>d.key),['A']);
  assert.deepEqual(Array.from(c.matchReview.candidates,d=>d.key),['B']);assert.equal(c.pendingDecisions.size,0);assert.equal(c.disabled,false);assert.equal(c.status,'settled');assert.match(c.messages.at(-1),/not acknowledged.*B/);
+ // A replacement choice with the same display key owns its own row, history
+ // and pending marker. An old job completion cannot remove or settle it.
+ const newer=fixture(['A']);const oldChoice=newer.decideMatch('A','confirmed');await tick();
+ const newOwner={id:99999,source:'fixture',key:'A',epoch:newer.dispatchReviewEpoch};
+ const newRow={...newer.candidate('A'),reviewDecisionOwner:newOwner};const newHistory={key:'A',decision:'denied',reviewDecisionOwner:newOwner};
+ newer.matchReview={...newer.matchReview,candidates:[newRow],decisions:[newHistory],candidateCount:1,candidateStreamCount:1,confirmedCount:0,deniedCount:1};
+ newer.matchActionState('A','saving',{operation:'replacement-operation',job:{proposalOwner:newOwner,source:'fixture',epoch:newer.dispatchReviewEpoch,scope:newer.matchReview.operationScope,sent:true,terminal:false}});
+ newer.saves[0].resolve({saved:true});await oldChoice;
+ assert.strictEqual(newer.matchReview.candidates[0],newRow);assert.strictEqual(newer.matchReview.decisions[0],newHistory);assert.equal(newer.matchReview.deniedCount,1);assert.equal(newer.matchActionState('A').operation,'replacement-operation');assert.equal(newer.pendingDecisions.has('A'),true);
+ newer.pendingDecisions.clear();newer.matchActionState('A').job.terminal=true;
  // R1 follow-up: a restored fuzzy group cannot reintroduce an excluded
  // alternative target, including when the restored primary is retried.
  const g=fixture(['A','B','other']);g.matchReview.candidates[1].minimumScore=82;g.matchReview.candidates[1].alternatives=[g.candidate('other')];g.invalidateChangedMatchInputs();

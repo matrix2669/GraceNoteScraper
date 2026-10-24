@@ -1,3 +1,6 @@
+let suiteCompleted=false,suiteFailed=false;
+const completionWatchdog=setTimeout(()=>{console.error('ALTERNATIVE_POPUP_INCOMPLETE: watchdog expired');process.exit(1)},10000);completionWatchdog.unref();
+process.on('beforeExit',()=>{if(!suiteCompleted&&!suiteFailed){console.error('ALTERNATIVE_POPUP_INCOMPLETE: exited before final assertions');process.exitCode=1}});
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
@@ -16,7 +19,7 @@ for(const minimumScore of [94,95,98]) {const c={candidate:{minimumScore,alternat
   const c={draft:{sourceFingerprint:'fixture'},pendingDecisions:new Set(),dispatchBusy:false,builderResetPending:false,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,clearTimeout(){},setTimeout(){},setDispatchControls(){},decisionRevision:0,dispatchReviewEpoch:0,
    renderGuidedWorkflow(){},workflowRemote:{},scheduleWorkflowRefresh(){},
    matchReview:{candidates:[target,survivor],candidateCount:2,candidateStreamCount:4,confirmedCount:0,deniedCount:0,decisions:[]},
-   api:async()=>{await saving;if(fail)throw Error('save failed');},renderMatchReview(){},reloadDraft:async()=>{},showMessage(){},
+   api:async()=>{await saving;if(fail)throw Error('save failed');return {saved:true};},renderMatchReview(){},reloadDraft:async()=>{},showMessage(){},
    adjustReviewKindCount(){},refillResolvedPage:async()=>{refills++;},closeMatchAlternatives(){closed++;},
    els:{alternativeDialog:{dataset:{reviewKey:'primary'}},alternativeList:{querySelector:()=>count>1}},
    primary,target,decision,card:{querySelectorAll:()=>[],remove:()=>{removed++;}}};
@@ -26,9 +29,10 @@ for(const minimumScore of [94,95,98]) {const c={candidate:{minimumScore,alternat
   assert.equal(c.matchReview.candidateCount,fail?2:1);assert.equal(refills,fail?0:1);
  }
  // A response for an obsolete review cannot remove cards or close a newer popup.
- let release;const c={draft:{sourceFingerprint:'fixture'},pendingDecisions:new Set(),dispatchBusy:false,builderResetPending:false,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,clearTimeout(){},setTimeout(){},setDispatchControls(){},decisionRevision:0,dispatchReviewEpoch:0,
+ let release;const c={matchReview:{operationScope:'scope',decisionTokens:{b:'op-b'}},draft:{sourceFingerprint:'fixture'},pendingDecisions:new Set(),dispatchBusy:false,builderResetPending:false,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,clearTimeout(){},setTimeout(){},setDispatchControls(){},decisionRevision:0,dispatchReviewEpoch:0,
  renderGuidedWorkflow(){},renderMatchReview(){},workflowRemote:{},scheduleWorkflowRefresh(){},api:()=>new Promise(r=>release=r),
  els:{alternativeDialog:{dataset:{reviewKey:'old'}}},primary:{},target:{key:'b'},decision:'denied',card:{querySelectorAll:()=>[],remove(){throw Error('stale removal');}},refillResolvedPage:async()=>{}};
- const p=vm.runInNewContext(alternate+';decideAlternative(primary,target,decision,card)',c);await Promise.resolve();c.dispatchReviewEpoch++;release();await p;
- console.log('Alternative popup: pending/failure, last item, multiple items, Confirm/Deny and stale replies pass');
-})().catch(e=>{console.error(e);process.exitCode=1;});
+ const p=vm.runInNewContext(alternate+';decideAlternative(primary,target,decision,card)',c);await Promise.resolve();c.dispatchReviewEpoch++;release({saved:true});await p;
+ suiteCompleted=true;clearTimeout(completionWatchdog);
+ console.log('ALTERNATIVE_POPUP_COMPLETE: Alternative popup: pending/failure, last item, multiple items, Confirm/Deny and stale replies pass');
+})().catch(e=>{suiteFailed=true;clearTimeout(completionWatchdog);console.error(e);process.exitCode=1;});
