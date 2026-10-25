@@ -10,14 +10,14 @@ if(!process.env.UNIFIED_REPAIR_URL){
    await page.route('**/*',r=>r.request().url().startsWith(origin+'/')?r.continue():r.abort());await page.goto(origin);
    const fixture=await page.evaluate(async()=>{const r=await fetch('/fixture');if(!r.ok)throw Error(await r.text());return r.json()});
    const html=fs.readFileSync('lineuparr.html','utf8'),part=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
-   const code=part('    async function api(','    let builderResetBackup')+part('    async function loadMatchReview(','    function showConfirmedMatches(')+part('    async function generateLineup(','    els.exportOpen.addEventListener');
+   const code=part('    async function api(','    let builderResetBackup')+part('    async function loadMatchReview(','    function showConfirmedMatches(')+part('    function sameArray(',"    document.addEventListener('DOMContentLoaded'")+part('    async function generateLineup(','    els.exportOpen.addEventListener');
    await page.setContent(html.replace(/<script>[\s\S]*?<\/script>/g,''));
    await page.evaluate(({code,fixture,prior})=>{
     window.els={};for(const [key,id]of Object.entries({matchReview:'match-review',matchStreams:'match-streams',matchCandidates:'match-candidates',matchConfirmed:'match-confirmed',matchConfirmedJump:'match-confirmed-jump',matchDenied:'match-denied',matchList:'match-list',dispatchLoading:'dispatch-loading',matchStatus:'match-status',decisionList:'decision-list',decisionHistory:'decision-history',alternativeDialog:'match-alternative-dialog',alternativeList:'match-alternative-list',alternativeTitle:'match-alternative-title',alternativeHelp:'match-alternative-help',exportOpen:'export-open',dispatchURL:'dispatch-url',dispatchAuth:'dispatch-auth',dispatchUser:'dispatch-user',dispatchPassword:'dispatch-password',dispatchAPIKey:'dispatch-api-key',dispatchSave:'dispatch-save',dispatchRefresh:'dispatch-refresh',dispatchDisconnect:'dispatch-disconnect'}))els[key]=document.getElementById(id);
     Object.assign(window,{draft:fixture.draft,dispatchConfig:{configured:true},publishing:false,saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),dispatchBusy:false,decisionRevision:0,dispatchReviewEpoch:0,matchReviewRequest:0,dispatchBusyRequest:0,workflowRemote:{},matchReviewLimit:100,decisionSaveQueue:Promise.resolve(),matchReconcileTimer:null,pendingAlternativeReviews:[],builderResetPending:false,localExportChanges:new Set()});
     for(const name of ['renderGuidedWorkflow','scheduleWorkflowRefresh','renderSummary','setDispatchControls'])window[name]=()=>{};
     window.reloadDraft=async()=>{};window.refreshExportSummary=async()=>{};window.messages=[];window.showMessage=(text,error)=>messages.push({text,error});window.emptyMessage=text=>{const p=document.createElement('p');p.textContent=text;return p};
-    (0,eval)(code+'\nwindow.renderMatchReview=renderMatchReview;window.mergeSupplementalReview=mergeSupplementalReview;window.generateLineup=generateLineup;');
+    (0,eval)(code+'\nwindow.renderMatchReview=renderMatchReview;window.mergeSupplementalReview=mergeSupplementalReview;window.generateLineup=generateLineup;window.setImpactOwner=()=>matchReviewImpactOwner=publicationViewSnapshot();');
     const all=mergeSupplementalReview(fixture.review),candidate=all.candidates.find(c=>c.channelId===fixture.choiceTarget&&c.constituents?.some(p=>p.m3uAccountId===3&&p.streamId===2));if(!candidate)throw Error('missing durable choice fixture');
     window.choice=candidate.key;window.matchReview={...all,candidates:[candidate],candidateCount:1,candidateStreamCount:candidate.streamCount,supplementalImpact:{state:prior,rows:[]}};
     const extra=n=>({...candidate,key:`extra-${n}`,alias:`New extra ${n}`,streamNames:[`New extra ${n}`]});window.extraRows=[extra(1),extra(2)];
@@ -38,7 +38,7 @@ if(!process.env.UNIFIED_REPAIR_URL){
      return realAPI(path,options);
     };
     const load=loadMatchReview;window.loadMatchReview=async(...args)=>{refills++;return load(...args)};
-    renderMatchReview();window.beforeChoice=matchReview.decisions.length;
+    setImpactOwner();renderMatchReview();window.beforeChoice=matchReview.decisions.length;
    },{code,fixture,prior});
    await page.locator('#match-list .confirm-button').first().click();
    await page.waitForFunction(()=>saveAtServer&&pollsWhilePending>0);

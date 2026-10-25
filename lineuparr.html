@@ -985,10 +985,10 @@
       });
     }
     async function refreshResetRecovery() {
-      const source = draft?.sourceFingerprint;
+      const source = draft?.sourceFingerprint, owner=publicationViewSnapshot();
       try {
         const summary = await api('/api/lineuparr/reset');
-        if (source !== draft?.sourceFingerprint || summary.sourceFingerprint !== source) return;
+        if (!samePublicationView(owner) || source !== draft?.sourceFingerprint || summary.sourceFingerprint !== source) return;
         builderResetBackup = summary.recovery?.id || null;
         document.getElementById('builder-reset-undo').hidden = !builderResetBackup;
       } catch (_) { /* A busy builder leaves recovery available on the next reload. */ }
@@ -997,6 +997,8 @@
     async function resetBuilder(restore = false) {
       const blocked = reviewActionBlock('', '', true);
       if (blocked || saving || !draft) { showMessage(blocked || (saving ? 'Wait for channel changes to save.' : 'Load the lineup before resetting.')); return; }
+      const resetOwner=publicationViewSnapshot();
+      let completionOwner=resetOwner;
       let saved = false;
       builderResetPending = true;
       setDispatchControls();
@@ -1005,23 +1007,30 @@
       button.disabled = true;
       try {
         const summary = await api('/api/lineuparr/reset');
+        if (!samePublicationView(resetOwner)) return;
         if (restore) {
           builderResetBackup = summary.recovery?.id || null;
           if (!builderResetBackup) throw new Error('No recovery backup is available for this lineup.');
         }
         const publication = await confirmBuilderReset(summary, restore);
+        if (!samePublicationView(resetOwner)) return;
         if (!publication) { showMessage('Builder reset cancelled.'); return; }
         dispatchBusy = true;
         invalidateDispatchReview(); closeMatchAlternatives(); setDispatchControls();
         const result = await api('/api/lineuparr/reset', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:summary.sourceFingerprint,token:summary.token,confirm:true,...publication,...(restore ? {restore:builderResetBackup} : {})})});
         saved = true;
+        if (!samePublicationView(resetOwner)) return;
         builderResetBackup = result.backup;
         matchReview = null; matchReviewLimit = 100; matchInputSignature = null;
+        retirePublicationView();
+        completionOwner=publicationViewSnapshot();
         document.getElementById('builder-reset-undo').hidden = result.restoreAvailable === false;
-        await reloadDraft();
+        if (!await reloadDraft() || draft.sourceFingerprint!==resetOwner.sourceFingerprint) return;
+        completionOwner=publicationViewSnapshot();
         await loadMatchReview(false, false);
+        if (!samePublicationView(completionOwner)) return;
         showMessage(`${restore ? 'Builder choices restored.' : 'Builder reset.'} Guide, TMDB data and connections preserved. Refresh streams before continuing review. ${publication.withdrawPublished ? 'Published JSON is withdrawn until regeneration.' : 'Existing publication state is preserved; regenerate JSON when ready.'}`);
-      } catch (error) { showMessage(saved ? `Builder ${restore ? 'restored' : 'reset'}. Could not reload the current view: ${error.message}` : error.message, true); }
+      } catch (error) { if (samePublicationView(completionOwner)) showMessage(saved ? `Builder ${restore ? 'restored' : 'reset'}. Could not reload the current view: ${error.message}` : error.message, true); }
       finally {builderResetPending=false;button.disabled=false;dispatchBusy=false;setDispatchControls();scheduleWorkflowRefresh(0);}
     }
 
@@ -1388,6 +1397,8 @@
       const requestNumber = ++matchReviewRequest;
       const revision = decisionRevision;
       const epoch = dispatchReviewEpoch;
+      const publicationOwner=publicationViewSnapshot();
+      let observationRead=validationReadSnapshot(publicationOwner);
       const stopProgress = force ? startMatchProgress() : () => {};
       if (interactive) {
         dispatchBusy = true;
@@ -1401,21 +1412,24 @@
         if (force) query.set('refresh', 'true');
         if (recoverValidation && !force) query.set('recoverValidation','true');
         let review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
-        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) return;
         if (review.supplemental) review = mergeSupplementalReview(review);
         loadMatchReview.failed = false;
         document.getElementById('match-reload').hidden = true;
         matchReview = review;
+        review.supplementalImpact=acceptSupplementalImpact(review.supplementalImpact,publicationOwner,observationRead);
         for (const [key, action] of matchActionState.states || []) {
           if (action.needsAdmission && review.decisionTokens?.[key] && review.decisionTokens[key] !== action.operation) matchActionState(key, 'failed', {needsAdmission:false,job:null});
         }
         const refreshAdmission = await reconcileMatchActionStates(review);
-        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) return;
         if (refreshAdmission) {
+          observationRead=validationReadSnapshot(publicationOwner);
           review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
-          if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return;
+          if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) return;
           if (review.supplemental) review = mergeSupplementalReview(review);
-        matchReview = review;
+          matchReview = review;
+          review.supplementalImpact=acceptSupplementalImpact(review.supplementalImpact,publicationOwner,observationRead);
         }
         reviewOrder = new Map();
         workflowRemote.dispatch = review;
@@ -1423,9 +1437,10 @@
         matchReviewLimit = review.visibleLimit || requestedLimit;
         recoverMatchActions.refreshAdmission = false;
         renderMatchReview();
+        if (['queued','preparing','running'].includes(review.supplementalImpact.state)) scheduleValidationPoll();
         return true;
       } catch (error) {
-        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) return false;
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) return false;
         loadMatchReview.failed = true;
         document.getElementById('match-reload').hidden = false;
         if (matchReview) matchReview = {...matchReview, reviewStatus:'stale'};
@@ -1435,7 +1450,7 @@
         return false;
       } finally {
         stopProgress();
-        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch) {
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) {
           if (interactive && dispatchBusyRequest === requestNumber) {
             dispatchBusy = false;
             setDispatchControls();
@@ -1456,22 +1471,96 @@
 
     let supplementalImpactRequest = 0;
     let supplementalImpactResult = null;
+    let observedPublication = null; // PublishedSnapshot, separate from mutable draft signatures.
+    let publicationSummaryState = 'unknown';
+    let publicationViewEpoch = 0;
+    let publicationTransitionRevision = 0;
+    let localEditRevision = 0;
+    let publishRequestSequence = 0;
+    let activePublishOperation = null;
+    let matchReviewImpactOwner = null;
+    let validationReadSequence = 0;
+    let validationAcceptedRead = 0;
+    const validationObservations = new Map();
+    const consumedSupplementalObservations = new Set();
+    function publicationViewSnapshot() {
+      return Object.freeze({sourceFingerprint:draft?.sourceFingerprint||null,resetGeneration:draft?.resetGeneration??null,viewEpoch:publicationViewEpoch});
+    }
+    function samePublicationView(owner) {
+      return !!owner && owner.sourceFingerprint===(draft?.sourceFingerprint||null) && owner.resetGeneration===(draft?.resetGeneration??null) && owner.viewEpoch===publicationViewEpoch;
+    }
+    function immutablePublicationValue(value) {
+      if (value && typeof value==='object') {
+        for (const child of Object.values(value)) immutablePublicationValue(child);
+        Object.freeze(value);
+      }
+      return value;
+    }
+    function publishedSnapshot(record, owner) {
+      return Object.freeze({...owner,identity:publicationIdentity(record),record:immutablePublicationValue(JSON.parse(JSON.stringify(record)))});
+    }
+    function publicationIdentity(record) {
+      return JSON.stringify([record?.filename||'',record?.path||'',record?.publishedAt||'']);
+    }
+    function supplementalObservationKey(result, owner) {
+      // Job/input identities are opaque; neither timestamps nor ID spelling orders results.
+      return result?.id && owner ? JSON.stringify([owner.sourceFingerprint,owner.resetGeneration,owner.viewEpoch,result.id,result.fingerprint||'',result.jsonHash||'',result.inventoryHash||'',result.consumerRevision||'',result.profile||'']) : null;
+    }
+    function normalizeSupplementalImpact(result) {
+      return result && typeof result === 'object' ? {...result,state:result.state||'unknown',rows:Array.isArray(result.rows)?result.rows:[]} : {state:'unknown',rows:[]};
+    }
+    function validationReadSnapshot(owner = publicationViewSnapshot()) {
+      return Object.freeze({request:++validationReadSequence,owner,editRevision:localEditRevision});
+    }
+    function acceptSupplementalImpact(result, owner = publicationViewSnapshot(), read = validationReadSnapshot(owner)) {
+      if (!samePublicationView(owner)) return null;
+      if (read.request<validationAcceptedRead || read.editRevision!==localEditRevision) return supplementalImpactResult || normalizeSupplementalImpact(null);
+      validationAcceptedRead=read.request;
+      const accepted=normalizeSupplementalImpact(result);
+      supplementalImpactResult=accepted;
+      matchReviewImpactOwner=owner;
+      const key=supplementalObservationKey(accepted,owner);
+      if (['complete','idle'].includes(accepted.state) && !accepted.findingsStale && (!key || !validationObservations.has(key))) {
+        const observation=Object.freeze({key,owner,result:immutablePublicationValue(JSON.parse(JSON.stringify(accepted)))});
+        // A current completed no-extra result resolves prior extras independently
+        // of unrelated conflicts. Repeated old identities remain idempotent.
+        if (!accepted.rows.some(row=>(row.extra||[]).length)) {
+          for (const [id, prior] of validationObservations) if (samePublicationView(prior.owner)) consumedSupplementalObservations.add(id);
+        }
+        if (key) validationObservations.set(key,observation);
+      }
+      return accepted;
+    }
+    function actionableSupplementalObservations() {
+      return [...validationObservations.values()].filter(item=>samePublicationView(item.owner) && !consumedSupplementalObservations.has(item.key) && item.result.rows.some(row=>(row.extra||[]).length));
+    }
+    function localPublicationEditSnapshot() {
+      return JSON.stringify([localEditRevision,typeof decisionRevision==='undefined'?0:decisionRevision,draft?.exportSignatures||null,[...localExportChanges].sort()]);
+    }
+    function noteLocalExportEdit() { localEditRevision++; }
+    function retirePublicationView() {
+      publicationViewEpoch++;
+      publicationTransitionRevision++;
+      observedPublication=null;
+      publicationSummaryState='unknown';
+      matchReviewImpactOwner=null;
+      supplementalImpactResult=null;
+      validationObservations.clear();
+      consumedSupplementalObservations.clear();
+      localExportChanges.clear();
+    }
     let validationPollTimer;
-    function renderSupplementalImpact(result) {
-      if (!result) return;
-      supplementalImpactResult=result;
-      if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact=result;
+    function renderSupplementalImpact(result, owner = publicationViewSnapshot()) {
+      result = result || {state:'unknown',rows:[]};
+      if (!samePublicationView(owner)) return;
       const status=document.getElementById('supplemental-impact-status'); if (!status) return;
       const active=['queued','preparing','running'].includes(result.state);
-      const failed = ['failed','stale'].includes(result.state);
+      const failed = ['failed','stale','unknown'].includes(result.state);
       const review=matchReview;
-      const impact=review?.supplementalImpact;
-      const supplemental=review?.supplemental;
       const noProposals=!!review && review.candidateCount===0 && !(review.candidates||[]).length;
-      const supplementalSettled=(!supplemental || review.supplementalMerged || supplemental.candidateCount===0) && supplemental?.complete!==false;
-      const writesSettled=pendingDecisions.size===0 && !hasUncertainMatchActions();
-      const finalCheckOnly=active && noProposals && supplementalSettled && !impact?.unresolved && writesSettled && !!workflowRemote.dispatchConfig?.configured && !dispatchBusy && !dispatchConnectionError && review?.reviewStatus==='current';
-      status.textContent = finalCheckOnly ? 'Finishing review checks…' : failed ? 'Saved-choice validation is unavailable. Reload review to retry.' : '';
+      status.textContent = failed ? 'Saved-choice validation is unavailable. Reload review to retry.'
+        : active && noProposals ? 'Finishing review checks… Additional matches may appear.' : '';
+      renderReviewBoundaryStatus(result);
       const reload = document.getElementById('match-reload');
       if (reload) reload.hidden = !failed && !(typeof loadMatchReview === 'function' && loadMatchReview.failed);
       const container=document.getElementById('supplemental-impact-results');container.replaceChildren();
@@ -1487,22 +1576,50 @@
         }
       }
       if (result.unresolved && !container.childNodes.length) container.append(emptyMessage('Saved choices still need review. Review the remaining proposals and saved confirmation conflicts.'));
-      if (active) scheduleValidationPoll();
+    }
+    function renderReviewBoundaryStatus(result = matchReview?.supplementalImpact) {
+      result = result || {state:'unknown'};
+      const exportStatus=document.getElementById('export-review-status');
+      const notice=document.getElementById('supplemental-publication-notice');
+      if (exportStatus) {
+        const active=['queued','preparing','running'].includes(result?.state);
+        const failure=['failed','stale','unknown'].includes(result?.state);
+        const writes=pendingDecisions.size>0 || hasUncertainMatchActions();
+        exportStatus.textContent = writes
+          ? (hasUncertainMatchActions()
+            ? `A saved choice is still being verified${active ? '; review checks are still running' : ''}. Generation will be available when the choice is settled and publishes current saved choices.`
+            : `Choices are saving${active ? '; review checks are still running' : ''}. Generation will be available when choices settle and publishes current saved choices.`)
+          : failure ? 'Review checks could not be confirmed. Reload review to retry; generating publishes current saved choices.'
+          : active ? 'Review checks are still running. Generating now publishes the current saved choices.' : '';
+      }
+      if (notice) {
+        const actionable=actionableSupplementalObservations().length>0;
+        const published=observedPublication && samePublicationView(observedPublication) && publicationSummaryState!=='absent';
+        const unconfirmed=publicationSummaryState==='unconfirmed';
+        notice.textContent=actionable && (published || unconfirmed)
+          ? unconfirmed ? 'Additional matches need review. The publication outcome is unconfirmed; reload the saved export to check its current state.' : 'Additional matches need review. The published file has not changed.'
+          : '';
+        notice.hidden=!notice.textContent;
+      }
     }
     function scheduleValidationPoll() {
       clearTimeout(validationPollTimer);
-      const request=++supplementalImpactRequest, epoch=dispatchReviewEpoch, revision=decisionRevision, source=draft?.sourceFingerprint;
+      const request=++supplementalImpactRequest, epoch=dispatchReviewEpoch, revision=decisionRevision, source=draft?.sourceFingerprint, owner=publicationViewSnapshot();
       validationPollTimer=setTimeout(async()=>{
-        const current=()=>request===supplementalImpactRequest && epoch===dispatchReviewEpoch && revision===decisionRevision && source===draft?.sourceFingerprint;
+        const current=()=>request===supplementalImpactRequest && epoch===dispatchReviewEpoch && revision===decisionRevision && source===draft?.sourceFingerprint && samePublicationView(owner);
         if (!current()) {if (matchReview && ['queued','preparing','running'].includes(matchReview.supplementalImpact?.state)) scheduleValidationPoll();return;}
+        const observationRead=validationReadSnapshot(owner);
         try {
-          const result=await api('/api/lineuparr/dispatcharr/supplemental-impact');
+          const response=await api('/api/lineuparr/dispatcharr/supplemental-impact');
           if (!current()) return;
           // This response may describe the previous durable revision while a
           // choice is awaiting acknowledgement. Keep its optimistic state and
           // observation alive until every save has settled.
           if (pendingDecisions.size) {scheduleValidationPoll();return;}
-          renderSupplementalImpact(result);
+          const result=acceptSupplementalImpact(response,owner,observationRead);
+          if (matchReview) matchReview.supplementalImpact=result;
+          renderSupplementalImpact(result,owner);
+          if (['queued','preparing','running'].includes(result.state)) scheduleValidationPoll();
           if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
           if (['complete','idle'].includes(result.state) && !pendingDecisions.size) {
             const latest=mergeSupplementalReview(await api(`/api/lineuparr/dispatcharr/review?limit=${matchReviewLimit}`));
@@ -1516,7 +1633,12 @@
             await refillResolvedPage();
           }
           renderGuidedWorkflow();
-        } catch (error) {if(current()) renderSupplementalImpact({state:'failed',message:`Validation status unavailable: ${error.message}. Reload review to recover.`});}
+        } catch (error) {if(current()) {
+          const result=acceptSupplementalImpact({state:'failed',message:`Validation status unavailable: ${error.message}. Reload review to recover.`},owner,observationRead);
+          if (matchReview) matchReview.supplementalImpact=result;
+          if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
+          renderSupplementalImpact(result,owner); renderGuidedWorkflow();
+        }}
       },500);
     }
 
@@ -1697,7 +1819,7 @@
       renderAutomaticExclusions(matchReview?.automatic);
       renderMatchCoverage(matchReview?.coverage);
       if (!matchReview) return;
-      if (typeof renderSupplementalImpact === 'function') renderSupplementalImpact(matchReview.supplementalImpact);
+      if (typeof renderSupplementalImpact === 'function') renderSupplementalImpact(matchReview.supplementalImpact,matchReviewImpactOwner);
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
       const unsettled = (matchReview.decisions || []).filter(item => pendingDecisions.has(item.key) && !['saved','failed','cancelled'].includes(matchActionState(item.key).state));
@@ -1940,6 +2062,7 @@
     function beginMatchDecision(key) {
       pendingDecisions.add(key);
       decisionRevision++;
+      if (typeof scheduleValidationPoll==='function') scheduleValidationPoll();
       if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'queued'};
       clearTimeout(matchReconcileTimer);
       workflowRemote.dispatch = null;
@@ -2252,9 +2375,10 @@
 
     let draftRequest = 0;
     async function reloadDraft(expectedEpoch = null, expectedRevision = decisionRevision) {
-      const request = ++draftRequest;
+      const request = ++draftRequest, owner=publicationViewSnapshot(), transition=publicationTransitionRevision;
       const next = await api('/api/lineuparr/draft');
-      if (request !== draftRequest || expectedRevision !== decisionRevision || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
+      if (!samePublicationView(owner) || transition!==publicationTransitionRevision || request !== draftRequest || expectedRevision !== decisionRevision || (expectedEpoch !== null && expectedEpoch !== dispatchReviewEpoch)) return false;
+      if (draft && (draft.sourceFingerprint!==next.sourceFingerprint || (draft.resetGeneration??null)!==(next.resetGeneration??null))) retirePublicationView();
       draft = next;
       renderAll();
       void refreshResetRecovery();
@@ -2275,6 +2399,7 @@
       renderBatchControls();
       renderChannels();
       renderGuidedWorkflow();
+      renderPublishedSnapshot();
       refreshExportSummary();
       scheduleWorkflowRefresh(0);
     }
@@ -2342,6 +2467,7 @@
       els.removeDuplicates.disabled = saving || count === 0;
       els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
       els.exportOpen.disabled = saving || pendingChannelSaves > 0 || pendingDecisions.size > 0 || builderResetPending || hasUncertainMatchActions();
+      if (typeof renderReviewBoundaryStatus === 'function') renderReviewBoundaryStatus();
     }
 
     function remainingDuplicateSuggestions() {
@@ -2476,11 +2602,7 @@
     }
 
     function categoryReviewDetailedName(channel) {
-      if (typeof window.lineuparrDescriptiveChannelName === 'function') return window.lineuparrDescriptiveChannelName(channel);
-      const callSign = String(channel.callSign || '').trim();
-      const name = String(channel.name || '').trim();
-      const normalize = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
-      return name && normalize(name) !== normalize(callSign) ? name : '';
+      return canonicalChannelDisplayName(channel);
     }
 
     function categoryReviewCategory(channel) {
@@ -2544,6 +2666,7 @@
       const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Confirming…' : `Confirm selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
       approve.addEventListener('click', async () => {
         const selected = pending.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:categoryReviewCategory(channel)}));
+        noteLocalExportEdit();
         categoryReviewApproving = true; renderCategoryReview();
         try {
           await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})});
@@ -2578,13 +2701,11 @@
         for (const channel of groups.get(priority)) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
-        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for confirmation`);
+        const displayName = categoryReviewDetailedName(channel) || 'Unnamed channel';
+        const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${displayName} for confirmation`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
         const title = document.createElement('button'); title.type = 'button'; title.className = 'channel-name category-review-channel-link'; title.title = 'Show upcoming programmes';
-        const callSign = String(channel.callSign || channel.name || 'Unnamed channel').trim();
-        const primary = document.createElement('span'); primary.textContent = `${channel.number || '—'} · ${callSign}`; title.append(primary);
-        const detailedName = categoryReviewDetailedName(channel);
-        if (detailedName) { const detail = document.createElement('span'); detail.className = 'category-review-channel-detail'; detail.textContent = `· ${detailedName}`; title.append(detail); }
+        const primary = document.createElement('span'); primary.textContent = equivalentChannelNames(displayName, channel.number) ? displayName : `${channel.number || '—'} · ${displayName}`; title.append(primary);
         title.addEventListener('click', event => { event.preventDefault(); openCategoryReviewPrograms(channel); });
         const proposed = document.createElement('p'); proposed.className = 'channel-meta'; proposed.textContent = `Proposed category: ${channel.category}`;
         const evidence = document.createElement('details'); evidence.className = 'channel-meta';
@@ -2594,7 +2715,7 @@
         evidence.append(summary, method); identity.append(selection, proposed, evidence);
         const controls = document.createElement('div'); controls.className = 'category-review-controls';
         const label = document.createElement('label'); label.textContent = 'Category';
-        const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
+        const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${displayName}`);
         for (const category of categories()) select.add(new Option(category, category));
         select.value = categoryReviewCategory(channel); select.disabled = categoryReviewApproving; label.append(select);
         const confirm = document.createElement('button'); confirm.type = 'button'; confirm.textContent = 'Commit'; confirm.disabled = categoryReviewApproving;
@@ -2645,36 +2766,55 @@
     }
 
     function descriptiveChannelName(channel) {
-      const callSign = String(channel.callSign || channel.name || '').trim();
-      const rejected = new Set([
-        callSign, channel.stationId, channel.placementId, channel.number,
-        `${channel.number || ''} ${callSign}`
-      ].map(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')).filter(Boolean));
-      const candidates = [];
-      const add = (value, score) => {
-        value = String(value || '').trim();
-        const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (!value || rejected.has(normalized) || /^\d+$/.test(value)) return;
-        candidates.push({value, score: score + (value.includes(' ') ? 8 : 0) + Math.min(value.length, 40) / 10});
+      const callSign = String(channel.callSign || '').trim();
+      const rejected = new Set([callSign, channel.stationId, channel.placementId, channel.number,
+        `${channel.number || ''} ${callSign}`].map(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')).filter(Boolean));
+      const valid = value => {
+        value=String(value||'').trim();
+        return value && !rejected.has(value.toLowerCase().replace(/[^a-z0-9]+/g,'')) && !/^\d+$/.test(value);
       };
-      const families = new Set((channel.serviceEvidence || []).filter(e => e.rootStationId === channel.stationId && e.serviceFamily && e.sourceId && e.sourceRowId && e.sourceRevision && (channel.aliasEvidence || []).some(a => a.value === e.value && (a.sources || []).includes(e.sourceId))).map(e => e.serviceFamily));
-      if (families.size === 1) add([...families][0], 200);
-      if (!String(channel.nameSource || '').toLowerCase().startsWith('dispatcharr')) add(channel.name, 100);
-      add(channel.affiliate, 45);
-      for (const evidence of channel.aliasEvidence || []) {
-        const methods = (evidence.methods || []).join(' ').toLowerCase();
-        const sources = (evidence.sources || []).map(value => String(value).toLowerCase());
-        if (/station id|position id|channel number plus|event callsign/.test(methods)) continue;
-        const external = sources.some(source => source !== 'gracenote' && !source.startsWith('dispatcharr'));
+      // Match review_display.go: eligible exact-station supplemental descriptors
+      // first, then a single current service family, then current source name.
+      for (const evidence of channel.supplementalEvidence || [])
+        if (evidence.rootStationId===channel.stationId && valid(evidence.value)) return String(evidence.value).trim();
+      const families=new Set((channel.serviceEvidence||[]).filter(e=>e.rootStationId===channel.stationId && e.serviceFamily && e.sourceId && e.sourceRowId && e.sourceRevision && (channel.aliasEvidence||[]).some(a=>a.value===e.value && (a.sources||[]).includes(e.sourceId))).map(e=>e.serviceFamily));
+      if (families.size===1 && valid([...families][0])) return [...families][0];
+      if (valid(channel.name) && !String(channel.nameSource||'').toLowerCase().startsWith('dispatcharr') && !equivalentChannelNames(channel.name,callSign)) return String(channel.name).trim();
+      let best='',score=0;
+      for (const alias of channel.aliasEvidence||[]) {
+        const methods=(alias.methods||[]).join(' ').toLowerCase();
+        const sources=(alias.sources||[]).map(v=>String(v).toLowerCase());
+        if (/historical|position id|channel number plus|event callsign/.test(methods) || !valid(alias.value) || String(alias.value).toLowerCase()===callSign.toLowerCase()) continue;
+        const external=sources.some(source=>source!=='gracenote'&&!source.startsWith('dispatcharr'));
         if (!external && !/affiliate/.test(methods)) continue;
-        let score = external ? 55 : 20;
-        if (/official|provider|lineup|affiliate|network|catalog/.test(methods)) score += 20;
-        add(evidence.value, score);
+        let weight=external?1:0;
+        if (/exact/.test(methods)&&/station id/.test(methods)) weight=3;
+        if ((channel.serviceEvidence||[]).some(e=>e.rootStationId===channel.stationId&&e.value===alias.value&&e.bindingKind==='station-id-catalog-v1')) weight=3;
+        if (weight>score) {best=String(alias.value).trim();score=weight;}
       }
-      candidates.sort((left, right) => right.score - left.score || left.value.localeCompare(right.value));
-      return candidates[0]?.value || '';
+      if (best) return best;
+      return valid(channel.affiliate)?String(channel.affiliate).trim():String(channel.name||'').trim();
     }
     window.lineuparrDescriptiveChannelName = descriptiveChannelName;
+
+    function verifiedChannelRegion(channel) {
+      const regions = new Set((channel.serviceEvidence || []).filter(evidence =>
+        evidence.rootStationId === channel.stationId && evidence.serviceFamily && evidence.sourceId && evidence.sourceRowId && evidence.sourceRevision &&
+        (channel.aliasEvidence || []).some(alias => alias.value === evidence.value && (alias.sources || []).includes(evidence.sourceId))
+      ).map(evidence => String(evidence.feed || '').toLowerCase()).filter(region => ['east','west','pacific'].includes(region)));
+      return regions.size === 1 ? [...regions][0] : '';
+    }
+
+    function canonicalChannelDisplayName(channel) {
+      const callSign = String(channel.callSign || '').trim();
+      const name = descriptiveChannelName(channel) || callSign || String(channel.name || '').trim() || String(channel.number || '').trim();
+      const region = verifiedChannelRegion(channel);
+      let friendly = name;
+      if (region === 'east') friendly = friendly.replace(/\s+(?:[-–—]\s*East|\(East\))\s*$/i, '').trim();
+      if (region === 'west' && !/\b(east|west|eastern|western|pacific)\b/i.test(friendly)) friendly = `${friendly} West`;
+      if (region === 'pacific' && !/\b(pacific|west|western)\b/i.test(friendly)) friendly = `${friendly} Pacific`;
+      return callSign && !equivalentChannelNames(callSign, friendly) ? `${friendly} (${callSign})` : friendly;
+    }
 
     function filteredChannels() {
       const query = els.search.value.trim().toLowerCase();
@@ -2739,14 +2879,8 @@
       const number = document.createElement('div'); number.className = 'channel-number'; number.textContent = channel.number || '—';
       const copy = document.createElement('div'); copy.className = 'channel-copy';
       const name = document.createElement('button'); name.type = 'button'; name.className = 'channel-name channel-name-button';
-      const callSign = String(channel.callSign || channel.name || '').trim();
-      const detailedName = descriptiveChannelName(channel);
-      const callSignText = document.createElement('span'); callSignText.textContent = callSign || 'Unnamed channel';
+      const callSignText = document.createElement('span'); callSignText.textContent = canonicalChannelDisplayName(channel) || 'Unnamed channel';
       name.append(callSignText);
-      if (detailedName && !equivalentChannelNames(callSign, detailedName)) {
-        const detail = document.createElement('span'); detail.className = 'channel-detail-name'; detail.textContent = `· ${detailedName}`;
-        name.append(detail);
-      }
       name.title = 'Show upcoming programmes';
       name.addEventListener('click', () => openChannelPrograms(channel));
       const meta = document.createElement('div'); meta.className = 'channel-meta';
@@ -2798,15 +2932,18 @@
 
     async function setAlias(channelId, alias, suppressed) {
       if (saving) return;
+      const editOwner=publicationViewSnapshot();
+      noteLocalExportEdit();
       saving = true; renderSummary();
       try {
         await api('/api/lineuparr/alias', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelId, alias, suppressed})
         });
-        await reloadDraft();
+        if (!samePublicationView(editOwner)) return;
+        if (!await reloadDraft() || !samePublicationView(editOwner)) return;
         showMessage(suppressed ? 'Alias removed from this export.' : 'Alias restored.');
-      } catch (error) { showMessage(error.message, true); }
-      finally { saving = false; renderSummary(); renderChannels(); }
+      } catch (error) { if (samePublicationView(editOwner)) showMessage(error.message, true); }
+      finally { saving = false; if (samePublicationView(editOwner)) {renderSummary(); renderChannels();} else setDispatchControls(); }
     }
 
     function badge(text, kind = '') { const item = document.createElement('span'); item.className = `badge ${kind}`; item.textContent = text; return item; }
@@ -2834,11 +2971,14 @@
       if (saving || selectedChannels.size === 0) return;
       const channelIDs = [...selectedChannels];
       const category = els.batchCategory.value || 'Uncategorized';
+      const editOwner=publicationViewSnapshot();
+      noteLocalExportEdit();
       saving = true; renderBatchControls(); renderSummary();
       try {
         await api('/api/lineuparr/categories', {
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:channelIDs, category})
         });
+        if (!samePublicationView(editOwner)) return;
         const selected = new Set(channelIDs);
         for (const channel of draft.channels) {
           if (!selected.has(channel.id)) continue;
@@ -2855,9 +2995,10 @@
         scheduleWorkflowRefresh(0);
         showMessage(`${channelIDs.length} channel${channelIDs.length === 1 ? '' : 's'} moved to ${category}.`);
       } catch (error) {
+        if (!samePublicationView(editOwner)) return;
         showMessage(error.message, true);
       } finally {
-        saving = false; renderBatchControls(); renderSummary(); renderChannels();
+        saving = false; if (samePublicationView(editOwner)) {renderBatchControls(); renderSummary(); renderChannels();} else setDispatchControls();
       }
     }
 
@@ -2910,6 +3051,8 @@
     function emptyMessage(text) { const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item; }
 
     async function saveChannel(channel, patch, control) {
+      const editOwner=publicationViewSnapshot();
+      noteLocalExportEdit();
       const oldIncluded = channel.included; const oldCategory = channel.category;
       if ('included' in patch) channel.included = patch.included;
       if ('category' in patch) channel.category = patch.category.trim() || 'Uncategorized';
@@ -2917,22 +3060,24 @@
       control.disabled = true; renderSummary();
       try {
         const saved = await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
+        if (!samePublicationView(editOwner)) return false;
         if ('category' in patch) { channel.categoryReview = saved.categoryReview; channel.categorySource = 'user'; channel.categoryPriority = 1; channel.needsCategoryReview = false; renderCategoryOptions(); }
-        if ('included' in patch) { localExportChanges.add('included'); await loadMatchReview(false, false); }
+        if ('included' in patch) { localExportChanges.add('included'); await loadMatchReview(false, false); if (!samePublicationView(editOwner)) return false; }
         if ('category' in patch) localExportChanges.add('categories');
         workflowProgress.customizationSignature = '';
         renderGuidedWorkflow();
         refreshExportSummary();
         scheduleWorkflowRefresh(0);
-        showMessage('Saved.'); setTimeout(() => { if (els.message.textContent === 'Saved.') showMessage(''); }, 1300);
+        showMessage('Saved.'); setTimeout(() => { if (samePublicationView(editOwner) && els.message.textContent === 'Saved.') showMessage(''); }, 1300);
         return true;
       } catch (error) {
+        if (!samePublicationView(editOwner)) return false;
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
         showMessage(error.message, true);
         return false;
       } finally {
         pendingChannelSaves--;
-        control.disabled = false; renderSummary(); renderChannels(); renderCategoryReview();
+        control.disabled = false; if (samePublicationView(editOwner)) {renderSummary(); renderChannels(); renderCategoryReview();} else setDispatchControls();
       }
     }
 
@@ -2975,9 +3120,12 @@
       const ids = [...els.duplicateReviewList.querySelectorAll('input:not(:checked)')].map(input => input.value);
       if (!ids.length) return;
       if ([...els.duplicateReviewList.querySelectorAll('fieldset')].some(group => !group.querySelector('input:checked'))) return;
+      const editOwner=publicationViewSnapshot();
+      noteLocalExportEdit();
       saving = true; els.duplicateReviewConfirm.disabled = true; renderSummary(); showMessage('Applying duplicate choices…');
       try {
         await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:ids})});
+        if (!samePublicationView(editOwner)) return;
         const selected = new Set(ids);
         for (const channel of draft.channels) if (selected.has(channel.id)) channel.included = false;
         localExportChanges.add('included');
@@ -2985,25 +3133,30 @@
         els.duplicateReview.close();
         renderSummary();
         await loadMatchReview(false, false);
+        if (!samePublicationView(editOwner)) return;
         renderGuidedWorkflow(); refreshExportSummary(); scheduleWorkflowRefresh(0);
         showMessage(`${selected.size} duplicate position${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
-      } catch (error) { showMessage(error.message, true); }
-      finally { saving = false; updateDuplicateReviewCount(); renderSummary(); renderChannels(); }
+      } catch (error) { if (samePublicationView(editOwner)) showMessage(error.message, true); }
+      finally { saving = false; if (samePublicationView(editOwner)) {updateDuplicateReviewCount(); renderSummary(); renderChannels();} else setDispatchControls(); }
     }
 
     async function restoreAll() {
+      const editOwner=publicationViewSnapshot();
+      noteLocalExportEdit();
       saving = true; renderSummary(); showMessage('Restoring every provider channel…');
       try {
         await api('/api/lineuparr/restore-all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        if (!samePublicationView(editOwner)) return;
         for (const channel of draft.channels) channel.included = true;
         renderSummary();
         await loadMatchReview(false, false);
+        if (!samePublicationView(editOwner)) return;
         localExportChanges.add('included');
         workflowProgress.customizationSignature = '';
         renderGuidedWorkflow(); refreshExportSummary(); scheduleWorkflowRefresh(0);
         showMessage('All provider channels are included again.');
-      } catch (error) { showMessage(error.message, true); }
-      finally { saving = false; renderSummary(); renderChannels(); }
+      } catch (error) { if (samePublicationView(editOwner)) showMessage(error.message, true); }
+      finally { saving = false; if (samePublicationView(editOwner)) {renderSummary(); renderChannels();} else setDispatchControls(); }
     }
 
     function initCollapsibleSections() {
@@ -3064,14 +3217,17 @@
         const actions = document.createElement('div'); actions.className = 'export-panel-actions';
         savedExportDownload = document.createElement('a'); savedExportDownload.id = 'saved-export-download'; savedExportDownload.className = 'export-button'; savedExportDownload.textContent = 'Download Lineup File'; savedExportDownload.hidden = true;
         actions.append(els.exportOpen, savedExportDownload);
+        const status = document.createElement('p'); status.id='export-review-status'; status.setAttribute('role','status'); status.setAttribute('aria-live','polite');
+        const notice = document.createElement('p'); notice.id='supplemental-publication-notice'; notice.className='warning'; notice.setAttribute('role','status'); notice.setAttribute('aria-live','polite'); notice.hidden=true;
         const summary = document.createElement('div'); summary.id = 'published-export-summary'; summary.className = 'published-export-summary'; summary.setAttribute('aria-live','polite');
-        panel.append(eyebrow, title, help, actions, summary); main.append(panel);
+        panel.append(eyebrow, title, help, actions, status, notice, summary); main.append(panel);
       } else {
         savedExportDownload = document.getElementById('saved-export-download');
       }
       for (const selector of ['#source-panel','#alias-panel','#major-market-panel','#tmdb-category-panel','#category-review-panel','.builder-panel','#dispatch-panel','#export-panel']) {
         const section = document.querySelector(selector); if (section) main.append(section);
       }
+      if (typeof renderReviewBoundaryStatus === 'function') renderReviewBoundaryStatus();
     }
 
     function scheduleWorkflowRefresh(delay = 8000) {
@@ -3089,6 +3245,7 @@
       workflowRefreshing = true;
       const epoch = dispatchReviewEpoch;
       const revision = decisionRevision;
+      const owner=publicationViewSnapshot();
       try {
         const requests = [api('/api/lineuparr/workflow')];
         const positions = {progress: 0};
@@ -3102,26 +3259,34 @@
           positions[key] = requests.length; requests.push(optionalAPI(path));
         }
         const results = await Promise.all(requests);
-        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision || !samePublicationView(owner)) return;
         workflowProgress = results[positions.progress] || {};
         for (const key of ['local','major','tmdb','dispatchConfig']) if (positions[key] !== undefined && results[positions[key]]) workflowRemote[key] = results[positions[key]];
-        if (workflowRemote.tmdb?.state === 'enriching') workflowRemote.setup = await optionalAPI('/api/setup/status');
+        if (workflowRemote.tmdb?.state === 'enriching') {
+          const setup=await optionalAPI('/api/setup/status');
+          if (epoch !== dispatchReviewEpoch || revision !== decisionRevision || !samePublicationView(owner)) return;
+          workflowRemote.setup=setup;
+        }
         const tmdbConfigured = workflowRemote.tmdb && !['not-configured','no-provider'].includes(workflowRemote.tmdb.state);
         if (tmdbConfigured && workflowRemote.tmdb.state === 'current' && workflowProgress.tmdbDisposition !== 'complete') {
           workflowProgress = await api('/api/lineuparr/workflow', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'complete-tmdb', sourceFingerprint:draft.sourceFingerprint})});
         }
-        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision || !samePublicationView(owner)) return;
         if (workflowRemote.dispatchConfig?.configured) {
+          const observationRead=validationReadSnapshot(owner);
           const review = await optionalAPI('/api/lineuparr/dispatcharr/review?limit=1');
-          if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
+          if (epoch !== dispatchReviewEpoch || revision !== decisionRevision || !samePublicationView(owner)) return;
+          if (review) review.supplementalImpact=acceptSupplementalImpact(review.supplementalImpact,owner,observationRead);
           workflowRemote.dispatch = review;
+          if (['queued','preparing','running'].includes(review?.supplementalImpact?.state)) scheduleValidationPoll();
+          renderReviewBoundaryStatus();
           workflowRemote.dispatchReady = !!workflowRemote.dispatch;
         } else if (workflowRemote.dispatchConfig) {
           workflowRemote.dispatch = null; workflowRemote.dispatchReady = true;
         }
         renderGuidedWorkflow();
       } catch (error) {
-        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision) return;
+        if (epoch !== dispatchReviewEpoch || revision !== decisionRevision || !samePublicationView(owner)) return;
         showMessage(error.message, true);
       } finally {
         workflowRefreshing = false;
@@ -3135,6 +3300,7 @@
       const majorScans = workflowRemote.major?.scans || [];
       const majorComplete = majorScans.some(scan => scan.status === 'complete' && (scan.providerAudit || []).some(source => source.access === 'enriched'));
       const tmdbState = workflowRemote.tmdb?.state || '';
+      const supplementalImpact = workflowRemote.dispatch?.supplementalImpact || {state:'unknown'};
       const tmdbConfigured = !!tmdbState && !['not-configured','no-provider'].includes(tmdbState);
       const tmdbSkipped = !tmdbConfigured && workflowProgress.tmdbDisposition === 'skipped';
       const reviewPending = draft.channels.filter(channel => channel.included && (Object.hasOwn(channel, 'needsCategoryReview') ? channel.needsCategoryReview : channel.category === 'Uncategorized')).length;
@@ -3144,7 +3310,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false && (!workflowRemote.dispatch?.supplementalImpact || ['idle','complete'].includes(workflowRemote.dispatch.supplementalImpact.state) && !workflowRemote.dispatch.supplementalImpact.unresolved)}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false && (['idle','complete'].includes(supplementalImpact.state) && !supplementalImpact.unresolved)}
       ].filter(state => state.panel);
     }
 
@@ -3265,53 +3431,116 @@
     }
 
     let exportSummaryRequest = 0;
+    function renderPublishedSnapshot() {
+      const box=document.getElementById('published-export-summary'); if (!box) return;
+      const saved=observedPublication && samePublicationView(observedPublication) ? observedPublication.record : null;
+      box.replaceChildren();
+      els.exportOpen.textContent=saved ? 'Re-generate Lineup File' : 'Generate Lineup File';
+      if (!saved) {
+        if (savedExportDownload) savedExportDownload.hidden=true;
+        box.textContent=publicationSummaryState==='absent' ? 'No lineup file has been generated for this lineup yet.' : publicationSummaryState==='unconfirmed' ? 'The publication outcome is unconfirmed. Reload the saved export to check its current state.' : 'Could not confirm the saved export. Reload to check its current state.';
+        renderReviewBoundaryStatus(); return;
+      }
+      const publicURL=new URL(saved.path,document.baseURI).href;
+      if (savedExportDownload) {savedExportDownload.hidden=false;savedExportDownload.href=publicURL+'?download=1';savedExportDownload.download=saved.filename;}
+      const date=document.createElement('p');date.className='published-export-date';date.textContent=`${publicationSummaryState==='unconfirmed'?'Last confirmed snapshot:':'Created:'} ${new Date(saved.publishedAt).toLocaleString()} · ${saved.filename}`;box.append(date);
+      addCopyURL(box,'Lineup URL · click to copy',publicURL);
+      if (observedPublication.internalBaseURL) addCopyURL(box,'Docker-network lineup URL · click to copy',new URL(saved.path,observedPublication.internalBaseURL).href);
+      const reasons=exportChangeReasons(saved.signatures,draft?.exportSignatures);
+      if (reasons.size) {
+        const messages=[];
+        if (reasons.has('included')) messages.push('Included channels have changed');
+        if (reasons.has('aliases')) messages.push('Channel aliases have changed');
+        if (reasons.has('categories')) messages.push('Channel categories have changed');
+        const stale=document.createElement('p');stale.className='export-stale';stale.textContent=`${messages.join('. ')}. Re-generate the lineup file to publish these changes.`;box.append(stale);
+      }
+      if (publicationSummaryState==='unconfirmed') {
+        const warning=document.createElement('p');warning.textContent='The publication outcome is unconfirmed. Showing the last confirmed snapshot; reload the saved export to check its current state.';box.append(warning);
+      }
+      if (publicationSummaryState==='failed') {
+        const warning=document.createElement('p');warning.textContent='Could not refresh the saved export. Showing the last confirmed snapshot.';box.append(warning);
+      }
+      renderReviewBoundaryStatus();
+    }
     async function refreshExportSummary() {
-      const box = document.getElementById('published-export-summary'); if (!box) return;
-      const request = ++exportSummaryRequest;
+      const box=document.getElementById('published-export-summary'); if (!box) return;
+      const read=Object.freeze({request:++exportSummaryRequest,owner:publicationViewSnapshot(),transition:publicationTransitionRevision});
+      const current=()=>read.request===exportSummaryRequest && samePublicationView(read.owner) && read.transition===publicationTransitionRevision;
       try {
-        const saved = await api('/api/lineuparr/export-summary');
-        if (request !== exportSummaryRequest) return;
-        box.replaceChildren();
-        els.exportOpen.textContent = saved.exists ? 'Re-generate Lineup File' : 'Generate Lineup File';
-        if (!saved.exists) {
-          if (savedExportDownload) savedExportDownload.hidden = true;
-          box.textContent = 'No lineup file has been generated for this lineup yet.';
-          return;
+        const saved=await api('/api/lineuparr/export-summary');
+        if (!current()) return;
+        if (!saved || typeof saved.exists!=='boolean') throw new Error('Saved export status is unavailable.');
+        if (saved.exists && !saved.path) throw new Error('Saved export path is unavailable.');
+        publicationSummaryState=saved.exists?'present':'absent';
+        observedPublication=saved.exists?publishedSnapshot(saved,read.owner):null;
+        // A summary describes publication context, never the chronology of findings.
+        renderPublishedSnapshot();
+        if (saved.exists) {
+          const settings=await optionalExportLinks();
+          if (!current()) return;
+          if (settings?.internalBaseURL) observedPublication=Object.freeze({...observedPublication,internalBaseURL:settings.internalBaseURL});
+          renderPublishedSnapshot();
         }
-        const publicURL = new URL(saved.path,document.baseURI).href;
-        if (savedExportDownload) { savedExportDownload.hidden = false; savedExportDownload.href = publicURL + '?download=1'; savedExportDownload.download = saved.filename; }
-        const date = document.createElement('p'); date.className = 'published-export-date'; date.textContent = `Created: ${new Date(saved.publishedAt).toLocaleString()} · ${saved.filename}`; box.append(date);
-        addCopyURL(box, 'Lineup URL · click to copy', publicURL);
-        try {
-          const settings=await api('/api/setup/share-links');
-          if (request===exportSummaryRequest && settings.internalBaseURL) addCopyURL(box, 'Docker-network lineup URL · click to copy', new URL(saved.path,settings.internalBaseURL).href);
-        } catch (_) { /* Optional internal links do not hide a saved export. */ }
-        const reasons = exportChangeReasons(saved.signatures, draft?.exportSignatures);
-        if (reasons.size) {
-          const messages = [];
-          if (reasons.has('included')) messages.push('Included channels have changed');
-          if (reasons.has('aliases')) messages.push('Channel aliases have changed');
-          if (reasons.has('categories')) messages.push('Channel categories have changed');
-          const stale = document.createElement('p'); stale.className = 'export-stale'; stale.textContent = `${messages.join('. ')}. Re-generate the lineup file to publish these changes.`; box.append(stale);
-        }
-      } catch(error) { if(request===exportSummaryRequest) box.textContent=`Could not load the saved export: ${error.message}`; }
+      } catch(error) {
+        if (current()) {if (publicationSummaryState!=='unconfirmed') publicationSummaryState='failed';renderPublishedSnapshot();}
+      }
+    }
+    async function refreshPublishedLinks(snapshot, transition) {
+      const settings=await optionalExportLinks();
+      if (!samePublicationView(snapshot) || transition!==publicationTransitionRevision || observedPublication!==snapshot) return;
+      if (settings?.internalBaseURL) observedPublication=Object.freeze({...snapshot,internalBaseURL:settings.internalBaseURL});
+      renderPublishedSnapshot();
+    }
+    async function optionalExportLinks() {
+      try {return await api('/api/setup/share-links');} catch (_) {return null;}
     }
 
     document.addEventListener('DOMContentLoaded', () => { arrangeLineuparrWorkflow(); refreshExportSummary(); scheduleWorkflowRefresh(0); });
 
     async function generateLineup() {
       if (publishing || !draft || saving || pendingChannelSaves || pendingDecisions.size || builderResetPending || hasUncertainMatchActions()) { showMessage(publishing ? 'The lineup file is already being generated.' : !draft ? 'Load the lineup before generating.' : 'Wait for current changes to finish before generating the lineup file.'); return; }
-      let saved = false;
-      publishing = true; els.exportOpen.disabled = true; showMessage('Generating the Lineuparr lineup file…');
+      const operation=Object.freeze({request:++publishRequestSequence,owner:publicationViewSnapshot(),observations:Object.freeze([...validationObservations.keys()]),editRevision:localPublicationEditSnapshot()});
+      activePublishOperation=operation;
+      let acknowledged=false;
+      publishing=true;els.exportOpen.disabled=true;showMessage('Generating the Lineuparr lineup file…');
       try {
-        const result = await api('/api/lineuparr/publish', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint})});
-        saved = true;
-        if (result.signatures) draft.exportSignatures = result.signatures;
-        localExportChanges.clear();
-        await refreshExportSummary();
-        showMessage('Lineup file generated. Its URLs now serve this saved version.' + (draft.supplementalMessage ? ` ${draft.supplementalMessage}` : ''));
-      } catch (error) { showMessage(saved ? `Lineup file generated. Could not update its summary: ${error.message}` : error.message, true); }
-      finally { publishing = false; renderSummary(); }
+        const result=await api('/api/lineuparr/publish',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:operation.owner.sourceFingerprint})});
+        if (!samePublicationView(operation.owner) || activePublishOperation!==operation) return;
+        if (!result?.path) {const error=new Error('Generation was not acknowledged. Reload the saved export to check its state before trying again.');error.uncertain=true;throw error;}
+        acknowledged=true;
+        publicationTransitionRevision++;
+        const internalBaseURL=observedPublication && samePublicationView(observedPublication) ? observedPublication.internalBaseURL : '';
+        observedPublication=Object.freeze({...publishedSnapshot(result,operation.owner),internalBaseURL});
+        publicationSummaryState='present';
+        for (const key of operation.observations) consumedSupplementalObservations.add(key);
+        if (operation.editRevision===localPublicationEditSnapshot()) {
+          if (result.signatures) draft.exportSignatures=result.signatures;
+          localExportChanges.clear();
+        }
+        renderPublishedSnapshot();
+        await refreshPublishedLinks(observedPublication,publicationTransitionRevision);
+        if (!samePublicationView(operation.owner) || activePublishOperation!==operation) return;
+        const validation=['queued','preparing','running'].includes(matchReview?.supplementalImpact?.state);
+        showMessage(validation ? 'Lineup generated. Review checks are still running; additional matches may appear.' : 'Lineup file generated. Its URLs now serve this saved version.'+(draft.supplementalMessage?` ${draft.supplementalMessage}`:''));
+      } catch(error) {
+        if (samePublicationView(operation.owner) && activePublishOperation===operation) {
+          // A gateway response can replace the durable publication ACK. Keep this
+          // classification local; decision POST receipt/recovery rules are unchanged.
+          const unconfirmed=!acknowledged && (error.uncertain || error.status>=500);
+          if (unconfirmed) {
+            publicationTransitionRevision++; // A pre-outcome summary cannot resolve it.
+            publicationSummaryState='unconfirmed';
+            renderPublishedSnapshot();
+          }
+          showMessage(acknowledged?`Lineup file generated. Could not update its summary: ${error.message}`:unconfirmed?'Generation was not acknowledged. Reload the saved export to check its state before trying again.':error.message,true);
+        }
+      } finally {
+        if (activePublishOperation===operation) {
+          activePublishOperation=null;publishing=false;
+          if (samePublicationView(operation.owner)) renderSummary();
+          else setDispatchControls(); // Release only this operation's global busy guard.
+        }
+      }
     }
 
     els.exportOpen.addEventListener('click', generateLineup);
