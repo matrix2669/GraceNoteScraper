@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
+	"os"
 	"testing"
 
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
@@ -18,5 +21,43 @@ func TestReviewDisplayPrefersEligibleCurrentFamily(t *testing.T) {
 	c.Name = "Current descriptive name"
 	if got := reviewDisplayName(c); got != c.Name {
 		t.Fatal(got)
+	}
+}
+
+func TestReviewDisplaySharedCapturedNames(t *testing.T) {
+	data, err := os.ReadFile("tools/fixtures/review_display_names.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Name     string               `json:"name"`
+			Channel  builder.DraftChannel `json:"channel"`
+			Expected string               `json:"expected"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(data, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) != 23 {
+		t.Fatalf("incomplete display fixture: %d", len(fixture.Cases))
+	}
+	for _, test := range fixture.Cases {
+		t.Run(test.Name, func(t *testing.T) {
+			before, err := json.Marshal(test.Channel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reviewDisplayName(test.Channel); got != test.Expected {
+				t.Fatalf("display name = %q, want %q", got, test.Expected)
+			}
+			after, err := json.Marshal(test.Channel)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(before, after) {
+				t.Fatal("display resolution changed identity, aliases, provenance or choices")
+			}
+		})
 	}
 }

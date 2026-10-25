@@ -1,0 +1,906 @@
+{
+  "provenance": "Captured509 fields from diagnosis/509-evidence.json channels509[0], plus synthetic eligibility/value/precedence controls; display-only, no live inputs",
+  "cases": [
+    {
+      "name": "captured-509-merged-provider-method",
+      "channel": {
+        "serviceEvidence": [
+          {
+            "sourceRevision": "catalog-a594d3da018a38fd06a2edae",
+            "value": "My9 (WWOR)",
+            "sourceId": "optimum-official-lineup",
+            "sourceRowId": "row-5bb5cfb45c48297c48fe8408",
+            "rootStationId": "26566",
+            "rootLineupKey": "USA-NY58806-DEFAULT@device=X",
+            "policy": "provider-identity-v1"
+          },
+          {
+            "value": "WWOR",
+            "sourceId": "gracenote-weekday-epg-usa-11743",
+            "peerStationId": "11760",
+            "policy": "provider-identity-v1"
+          },
+          {
+            "sourceRevision": "catalog-a594d3da018a38fd06a2edae",
+            "value": "WWOR",
+            "sourceId": "optimum-official-lineup",
+            "sourceRowId": "row-5bb5cfb45c48297c48fe8408",
+            "rootStationId": "26566",
+            "rootLineupKey": "USA-NY58806-DEFAULT@device=X",
+            "policy": "provider-identity-v1"
+          }
+        ],
+        "categoryPriority": 1,
+        "needsCategoryReview": false,
+        "id": "26566274",
+        "stationId": "26566",
+        "placementId": "26566274",
+        "number": "509",
+        "name": "WWORDT",
+        "originalName": "WWORDT",
+        "callSign": "WWORDT",
+        "affiliate": "FOX ENTERTAINMENT",
+        "category": "Local & Public",
+        "included": true,
+        "aliases": [
+          "509 WWORDT",
+          "FOX ENTERTAINMENT",
+          "My9 (WWOR)",
+          "WWOR",
+          "WWORDT",
+          "26566",
+          "26566274"
+        ],
+        "aliasEvidence": [
+          {
+            "value": "509 WWORDT",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "channel number plus callsign"
+            ]
+          },
+          {
+            "value": "FOX ENTERTAINMENT",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "affiliate name"
+            ]
+          },
+          {
+            "value": "My9 (WWOR)",
+            "sources": [
+              "optimum-official-lineup"
+            ],
+            "methods": [
+              "exact Optimum channel number from the public market lineup PDF; exact provider channel number plus exact identity across same-number variants; identity-policy-v2; number-policy-provider-v2"
+            ]
+          },
+          {
+            "value": "WWOR",
+            "sources": [
+              "gracenote-weekday-epg-usa-11743",
+              "optimum-official-lineup"
+            ],
+            "methods": [
+              "exact Optimum channel number from the public market lineup PDF; exact provider channel number plus exact identity across same-number variants; identity-policy-v2; number-policy-provider-v2",
+              "pair-level identity (affiliate:FOXENTERTAINMENT, identity-name:MY9WWOR, identity-name:WWOR); two non-concurrent weekday blocks in America/New_York matched at least 80% with 18 meaningful programmes and 720 matched minutes; identity-policy-v2"
+            ]
+          },
+          {
+            "value": "WWORDT",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "channel callsign",
+              "event callsign"
+            ]
+          },
+          {
+            "value": "26566",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "station ID"
+            ]
+          },
+          {
+            "value": "26566274",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "lineup position ID"
+            ]
+          }
+        ],
+        "epgIds": [
+          "26566"
+        ],
+        "epgIdEvidence": [
+          {
+            "value": "26566",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "station ID"
+            ]
+          }
+        ],
+        "nameSource": "gracenote",
+        "nameMethod": "channel callsign",
+        "categorySource": "gracenote",
+        "categoryMethod": "exact maintained channel category identity",
+        "matchedSources": [
+          "dispatcharr-confirmed",
+          "gracenote"
+        ]
+      },
+      "expected": "My9 (WWOR)",
+      "canonical": "My9 (WWOR) (WWORDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "merged-provider-and-EPG-method",
+      "channel": {
+        "serviceEvidence": [
+          {
+            "sourceRevision": "catalog-a594d3da018a38fd06a2edae",
+            "value": "My9 (WWOR)",
+            "sourceId": "optimum-official-lineup",
+            "sourceRowId": "row-5bb5cfb45c48297c48fe8408",
+            "rootStationId": "26566",
+            "rootLineupKey": "USA-NY58806-DEFAULT@device=X",
+            "policy": "provider-identity-v1"
+          },
+          {
+            "value": "WWOR",
+            "sourceId": "gracenote-weekday-epg-usa-11743",
+            "peerStationId": "11760",
+            "policy": "provider-identity-v1"
+          },
+          {
+            "sourceRevision": "catalog-a594d3da018a38fd06a2edae",
+            "value": "WWOR",
+            "sourceId": "optimum-official-lineup",
+            "sourceRowId": "row-5bb5cfb45c48297c48fe8408",
+            "rootStationId": "26566",
+            "rootLineupKey": "USA-NY58806-DEFAULT@device=X",
+            "policy": "provider-identity-v1"
+          }
+        ],
+        "categoryPriority": 1,
+        "needsCategoryReview": false,
+        "id": "26566274",
+        "stationId": "26566",
+        "placementId": "26566274",
+        "number": "509",
+        "name": "WWORDT",
+        "originalName": "WWORDT",
+        "callSign": "WWORDT",
+        "affiliate": "FOX ENTERTAINMENT",
+        "category": "Local & Public",
+        "included": true,
+        "aliases": [
+          "509 WWORDT",
+          "FOX ENTERTAINMENT",
+          "My9 (WWOR)",
+          "WWOR",
+          "WWORDT",
+          "26566",
+          "26566274"
+        ],
+        "aliasEvidence": [
+          {
+            "value": "WWOR",
+            "sources": [
+              "gracenote-weekday-epg-usa-11743",
+              "optimum-official-lineup"
+            ],
+            "methods": [
+              "exact Optimum channel number from the public market lineup PDF; exact provider channel number plus exact identity across same-number variants; identity-policy-v2; number-policy-provider-v2",
+              "pair-level identity (affiliate:FOXENTERTAINMENT, identity-name:MY9WWOR, identity-name:WWOR); two non-concurrent weekday blocks in America/New_York matched at least 80% with 18 meaningful programmes and 720 matched minutes; identity-policy-v2"
+            ]
+          }
+        ],
+        "epgIds": [
+          "26566"
+        ],
+        "epgIdEvidence": [
+          {
+            "value": "26566",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "station ID"
+            ]
+          }
+        ],
+        "nameSource": "gracenote",
+        "nameMethod": "channel callsign",
+        "categorySource": "gracenote",
+        "categoryMethod": "exact maintained channel category identity",
+        "matchedSources": [
+          "dispatcharr-confirmed",
+          "gracenote"
+        ]
+      },
+      "expected": "WWOR",
+      "canonical": "WWOR (WWORDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-9.1 WTESTDT",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "9.1 WTESTDT",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-9.1-WTESTDT",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "9.1-WTESTDT",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-123",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "123",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-12399",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "12399",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-999999",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "999999",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "reject-opaque-W.TEST-DT",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "W.TEST-DT",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "exact provider channel number plus callsign; exact station ID"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "historical",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Unusable Description",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "historical provider alias"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "unattributed",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Unusable Description",
+            "sources": [],
+            "methods": [
+              "exact provider identity"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "empty-source",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Unusable Description",
+            "sources": [
+              "",
+              "  "
+            ],
+            "methods": [
+              "provider identity"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "dispatch-only",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Unusable Description",
+            "sources": [
+              "dispatcharr-confirmed"
+            ],
+            "methods": [
+              "saved name"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "gracenote-callsign",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Unusable Description",
+            "sources": [
+              "gracenote"
+            ],
+            "methods": [
+              "event callsign"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "callsign-fallback",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": []
+      },
+      "expected": "WTESTDT",
+      "canonical": "WTESTDT",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "number-fallback",
+      "channel": {
+        "id": "numeric",
+        "number": "777",
+        "name": "777",
+        "callSign": "",
+        "nameSource": "dispatcharr",
+        "included": true,
+        "category": "Entertainment"
+      },
+      "expected": "777",
+      "canonical": "777",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "stable-provider-order",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "First provider name",
+            "sources": [
+              "provider-a"
+            ],
+            "methods": [
+              "provider channel number plus verified identity"
+            ]
+          },
+          {
+            "value": "Longer second provider name",
+            "sources": [
+              "provider-b"
+            ],
+            "methods": [
+              "provider channel number plus verified identity"
+            ]
+          }
+        ]
+      },
+      "expected": "First provider name",
+      "canonical": "First provider name (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "exact-ID-precedence",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Provider name",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "provider name"
+            ]
+          },
+          {
+            "value": "Exact station description",
+            "sources": [
+              "catalog"
+            ],
+            "methods": [
+              "exact station ID description"
+            ]
+          }
+        ]
+      },
+      "expected": "Exact station description",
+      "canonical": "Exact station description (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "source-bound-descriptor",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [],
+        "supplementalEvidence": [
+          {
+            "rootStationId": "other",
+            "value": "Wrong station"
+          },
+          {
+            "rootStationId": "123",
+            "value": "Exact review descriptor"
+          }
+        ]
+      },
+      "expected": "Exact review descriptor",
+      "canonical": "Exact review descriptor (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "verified-east",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "PRIMARYHD",
+        "callSign": "PRIMARYHD",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Current alias",
+            "sources": [
+              "registry"
+            ],
+            "methods": [
+              "verified current station"
+            ]
+          }
+        ],
+        "serviceEvidence": [
+          {
+            "rootStationId": "123",
+            "value": "Current alias",
+            "serviceFamily": "HBO Drama",
+            "sourceId": "registry",
+            "sourceRowId": "row",
+            "sourceRevision": "v1",
+            "feed": "east"
+          }
+        ]
+      },
+      "expected": "HBO Drama",
+      "canonical": "HBO Drama (PRIMARYHD)",
+      "targetRegion": "east"
+    },
+    {
+      "name": "verified-west",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WESTHD",
+        "callSign": "WESTHD",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Current alias",
+            "sources": [
+              "registry"
+            ],
+            "methods": [
+              "verified current station"
+            ]
+          }
+        ],
+        "serviceEvidence": [
+          {
+            "rootStationId": "123",
+            "value": "Current alias",
+            "serviceFamily": "HBO Drama",
+            "sourceId": "registry",
+            "sourceRowId": "row",
+            "sourceRevision": "v1",
+            "feed": "west"
+          }
+        ]
+      },
+      "expected": "HBO Drama",
+      "canonical": "HBO Drama West (WESTHD)",
+      "targetRegion": "west"
+    },
+    {
+      "name": "verified-pacific",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "BBCAM",
+        "callSign": "BBCAM",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "Current alias",
+            "sources": [
+              "registry"
+            ],
+            "methods": [
+              "verified current station"
+            ]
+          }
+        ],
+        "serviceEvidence": [
+          {
+            "rootStationId": "123",
+            "value": "Current alias",
+            "serviceFamily": "BBC America",
+            "sourceId": "registry",
+            "sourceRowId": "row",
+            "sourceRevision": "v1",
+            "feed": "pacific"
+          }
+        ]
+      },
+      "expected": "BBC America",
+      "canonical": "BBC America Pacific (BBCAM)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "ineligible-family-and-inactive-evidence",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [],
+        "serviceEvidence": [
+          {
+            "rootStationId": "other",
+            "value": "Suppressed alias",
+            "serviceFamily": "Wrong family",
+            "sourceId": "registry",
+            "sourceRowId": "row",
+            "sourceRevision": "v1"
+          }
+        ],
+        "inactiveAliasEvidence": [
+          {
+            "value": "Inactive label",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "provider name"
+            ]
+          }
+        ]
+      },
+      "expected": "Fallback Network",
+      "canonical": "Fallback Network (WTESTDT)",
+      "targetRegion": "unknown"
+    },
+    {
+      "name": "safe-text-rendering",
+      "channel": {
+        "id": "position",
+        "stationId": "123",
+        "placementId": "12399",
+        "number": "9.1",
+        "name": "WTESTDT",
+        "callSign": "WTESTDT",
+        "nameSource": "gracenote",
+        "affiliate": "Fallback Network",
+        "category": "Entertainment",
+        "included": true,
+        "aliases": [],
+        "aliasEvidence": [
+          {
+            "value": "<img src=x onerror=alert(1)>",
+            "sources": [
+              "official"
+            ],
+            "methods": [
+              "provider channel number plus exact identity"
+            ]
+          }
+        ]
+      },
+      "expected": "<img src=x onerror=alert(1)>",
+      "canonical": "<img src=x onerror=alert(1)> (WTESTDT)",
+      "targetRegion": "unknown"
+    }
+  ]
+}

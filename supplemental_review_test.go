@@ -318,6 +318,32 @@ func TestSupplementalImpactSameNameAccountAndProtectedBaseline(t *testing.T) {
 		t.Fatalf("account/baseline conflicts hidden: %+v", rows)
 	}
 }
+func TestSupplementalImpactPrimaryCoverageMatchesQueueAndKeepsConflicts(t *testing.T) {
+	c := builder.DraftChannel{ID: "target", StationID: "station", PlacementID: "placement", CallSign: "RAW", Name: "Canonical", Number: "1", Included: true}
+	draft := &builder.Draft{Channels: []builder.DraftChannel{c}}
+	inventory := []dispatcharr.IdentityStream{
+		{Name: "Confirmed physical", ID: 1, AccountID: 2, Fingerprint: "physical"},
+		{Name: "Denied literal", ID: 3, AccountID: 4, Fingerprint: "denied-physical"},
+		{Name: "Uncovered extra", ID: 5, AccountID: 6, Fingerprint: "uncovered"},
+	}
+	primary := map[string]builder.MatchDecision{
+		"physical":     {ChannelID: c.ID, Decision: "confirmed", StreamFingerprint: "physical", StreamName: "Confirmed physical"},
+		"literal":      {ChannelID: c.ID, Decision: "denied", StreamFingerprint: "other-physical", StreamName: "Denied literal"},
+		"other-target": {ChannelID: "another-target", Decision: "denied", StreamFingerprint: "other", StreamName: "Uncovered extra"},
+	}
+	result := dispatcharr.ImpactResult{Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", EntryIndex: 0, Name: "Canonical", Number: "1", Names: []string{"Confirmed physical", "Denied literal", "Uncovered extra"}}}}
+	rows := compareSupplementalImpact(draft, inventory, nil, primary, result, "conn")
+	if len(rows) != 1 {
+		t.Fatalf("target row missing: %+v", rows)
+	}
+	if len(rows[0].Extra) != 1 || rows[0].Extra[0].Name != "Uncovered extra" {
+		t.Fatalf("saved primary coverage did not match queue semantics: %+v", rows[0].Extra)
+	}
+	if len(rows[0].ProtectedConflicts) != 1 || rows[0].ProtectedConflicts[0] != "Saved primary denial still matches: Denied literal" {
+		t.Fatalf("denial conflict was hidden by derived extra coverage: %+v", rows[0].ProtectedConflicts)
+	}
+}
+
 func TestSupplementalProjectionDoesNotSeedPrimary(t *testing.T) {
 	s, review := supplementalServerFixture(t)
 	g := review.Supplemental.Candidates[0]

@@ -42,7 +42,7 @@ async function transportCases(){
    window.candidate=(key,score=100)=>({key,channelId:key,reviewKind:score<95?'inclusion':'qualified',alias:key,streamNames:[key],streamCount:1,minimumScore:score,maximumScore:score,channelNumber:'1',channelName:'Fixture',reasons:[],alternatives:[]});
    window.matchReview={streamCount:21208,candidateCount:100,confirmedCount:722,deniedCount:0,candidates:Array.from({length:100},(_,i)=>candidate('row'+i)),decisions:Array.from({length:722},(_,i)=>({key:'old'+i,decision:'confirmed',streamName:'Saved '+i,channelName:'Fixture',streamCount:1,score:100})),automatic:{rows:Array.from({length:800},(_,i)=>({key:'auto'+i,exported:true,streamName:'Synthetic '+i,channelNumber:'1',channelName:'Fixture',reason:'identity fixture'}))}};
    window.loads=0;window.loadMatchReview=async()=>{loads++;recoverMatchActions.refreshAdmission=false;if(!matchReview.candidates.length&&matchReview.candidateCount>0)matchReview.candidates=[candidate('refilled')];renderMatchReview();};
-   (0,eval)(code+'\nwindow.cancelValidation=()=>clearTimeout(validationPollTimer);window.renderMatchReview=renderMatchReview;window.setImpactOwner=()=>matchReviewImpactOwner=publicationViewSnapshot();window.decideMatch=decideMatch;window.decideAlternative=decideAlternative;window.openMatchAlternatives=openMatchAlternatives;');renderMatchReview();
+   (0,eval)(code+'\nwindow.cancelValidation=()=>clearTimeout(validationPollTimer);window.renderMatchReview=renderMatchReview;window.setImpactOwner=()=>{matchReviewImpactOwner=publicationViewSnapshot();matchReview.supplementalImpact=acceptSupplementalImpact(matchReview.supplementalImpact);};window.receiveImpact=result=>{matchReview.supplementalImpact=acceptSupplementalImpact(result);renderSupplementalImpact(matchReview.supplementalImpact);};window.decideMatch=decideMatch;window.decideAlternative=decideAlternative;window.openMatchAlternatives=openMatchAlternatives;');renderMatchReview();
   },code);
   await page.evaluate(()=>{
    const originalSetTimeout=window.setTimeout.bind(window);
@@ -162,15 +162,16 @@ async function transportCases(){
   await page.waitForFunction(()=>!matchActionState('popup-unsaved').needsAdmission);
   await page.evaluate(()=>{behavior='success';});await popup.getByRole('button',{name:'Confirm this match',exact:true}).click();await page.waitForFunction(()=>pendingDecisions.size===0&&!document.getElementById('match-alternative-dialog').open);
   assert.deepEqual(await page.evaluate(()=>postBodies.map(b=>b.operation)),['op-popup-unsaved','fresh-popup-unsaved'],'explicit retry uses fresh admission only');
-  // Receipt reconciliation cannot invalidate the accepted alternative backlog.
-  await page.evaluate(()=>{resetFixture(['p1','p2','survivor']);for(const key of ['p1','p2']){const c=matchReview.candidates.find(c=>c.key===key);c.minimumScore=80;c.alternatives=[candidate('alt-'+key)];draft.channels.push({id:'alt-'+key,included:true});matchReview.decisionTokens['alt-'+key]='op-alt-'+key;}matchReview.candidateCount=5;renderMatchReview();});
+  // Receipt reconciliation settles ordinary choices without creating an alternatives backlog.
+  await page.evaluate(()=>{resetFixture(['p1','p2','alt-p1','alt-p2','survivor']);for(const [key,alt] of [['p1','alt-p1'],['p2','alt-p2']]){const c=matchReview.candidates.find(c=>c.key===key);c.minimumScore=80;c.alternatives=[candidate(alt)];}renderMatchReview();});
   await row('p1').locator('.confirm-button').click();await row('p2').locator('.deny-button').click();await page.waitForFunction(()=>receipts===1);
-  await page.evaluate(()=>{receiptState='saved';behavior='success';return recoverMatchActions();});await page.waitForFunction(()=>pendingDecisions.size===0&&document.getElementById('match-alternative-dialog').open);
-  await page.evaluate(()=>new Promise(r=>setTimeout(r,450)));assert.equal(await page.evaluate(()=>loads),0,'deferred read cannot replace popup epochs');
-  assert.equal(await page.locator('#match-alternative-title').innerText(),'Other matches for p1');
-  await popup.getByRole('button',{name:'Confirm this match',exact:true}).click();await page.waitForFunction(()=>document.getElementById('match-alternative-title').textContent==='Other matches for p2');
-  await popup.getByRole('button',{name:'Deny',exact:true}).click();await page.waitForFunction(()=>pendingDecisions.size===0&&!document.getElementById('match-alternative-dialog').open);
-  await page.waitForFunction(()=>loads===1);assert.equal(await row('survivor').count(),1);
+  await page.evaluate(()=>{receiptState='saved';behavior='success';return recoverMatchActions();});await page.waitForFunction(()=>pendingDecisions.size===0);
+  assert.equal(await page.locator('#match-alternative-dialog').evaluate(n=>n.open),false);
+  assert.equal(await page.evaluate(()=>pendingAlternativeReviews.length),0);
+  for(const key of ['alt-p1','alt-p2']) {assert.equal(await row(key).count(),1,`${key} stays available in the ordinary queue`);assert.equal(await row(key).locator('.confirm-button').isEnabled(),true);assert.equal(await row(key).locator('.deny-button').isEnabled(),true);}
+  await row('alt-p1').locator('.confirm-button').click();await page.waitForFunction(()=>pendingDecisions.size===0);
+  await row('alt-p2').locator('.deny-button').click();await page.waitForFunction(()=>pendingDecisions.size===0);
+  assert.equal(await row('survivor').count(),1);
   // Closing during uncertainty does not reopen an obsolete modal on recovery.
   await page.evaluate(()=>{resetFixture(['closed']);matchReview.candidates=[];window.primary={...candidate('p',80),alternatives:[candidate('closed')]};openMatchAlternatives(primary);});
   await popup.getByRole('button',{name:'Deny',exact:true}).click();await page.waitForFunction(()=>receipts===1);await popup.getByRole('button',{name:'Close alternate matches'}).click();
@@ -181,13 +182,13 @@ async function transportCases(){
   await page.evaluate(()=>{matchReview.candidates[0].streamNames=['Stream TV: HBO DRAMA'];matchReview.candidates[0].alias='Stream TV: HBO DRAMA';renderMatchReview();});assert.match(await row('names').locator('.match-reason').innerText(),/Matched alias: “Stream TV: HBO DRAMA” → “HBO Drama West”/);assert.doesNotMatch(await row('names').innerText(),/Stream feed: West/);if(process.env.SAVE_ACK_SCREENSHOT_DIR)await row('names').screenshot({path:process.env.SAVE_ACK_SCREENSHOT_DIR+'/raw-stream-west-alias.png'});
   await page.evaluate(()=>{matchReview.candidates[0].streamNames=['HBO Drama'];renderMatchReview();});assert.match(await row('names').innerText(),/Matched alias: “HBO Drama” → “HBO Drama West”/);
   await page.evaluate(()=>{matchReview.candidates[0].streamNames=['A','B'];matchReview.candidates[0].exactAliases=['Alias A','Alias B'];renderMatchReview();});assert.match(await row('names').innerText(),/Matched aliases: “Alias A”; “Alias B”/);assert.doesNotMatch(await row('names').locator('.match-reason').innerText(),/→/);
-  await page.evaluate(()=>renderSupplementalImpact({state:'complete',unresolved:true,rows:[{channelNumber:'905',channelName:'HBO Drama West',missed:['TV:HBODRAMA'],protectedConflicts:[{name:'Saved raw'}]}]}));assert.match(await page.locator('#supplemental-impact-results').innerText(),/TV:HBODRAMA.*Saved raw.*Undo/);assert.equal(await page.locator('#match-reload').isVisible(),false);
-  await page.evaluate(()=>renderSupplementalImpact({state:'failed'}));assert.equal(await page.locator('#match-reload').isVisible(),true);
+  await page.evaluate(()=>receiveImpact({state:'complete',unresolved:true,rows:[{channelNumber:'905',channelName:'HBO Drama West',missed:['TV:HBODRAMA'],protectedConflicts:[{name:'Saved raw'}]}]}));assert.match(await page.locator('#supplemental-impact-results').innerText(),/TV:HBODRAMA.*Saved raw.*Saved confirmations are preserved/);assert.equal(await page.locator('#match-reload').isVisible(),false);
+  await page.evaluate(()=>receiveImpact({state:'failed'}));assert.equal(await page.locator('#match-reload').isVisible(),true);
   // R1-F1: zero proposals cannot hide the pending reason for incomplete Step 6.
   for(const state of ['queued','preparing','running']) {
    const active=await page.evaluate(({html,state})=>{
     resetFixture([]);window.workflowProgress={};window.dispatchConnectionError=false;
-    matchReview.supplementalImpact={state,rows:[],unresolved:false};
+    receiveImpact({state,rows:[],unresolved:false});
     workflowRemote={dispatchReady:true,dispatchConfig:{configured:true},dispatch:matchReview};
     const start=html.indexOf('    function workflowStates('),end=html.indexOf('    function renderGuidedWorkflow(',start);
     (0,eval)(html.slice(start,end)+';window.reviewStates=workflowStates;');renderMatchReview();
@@ -195,7 +196,7 @@ async function transportCases(){
     return {step6:reviewStates().find(s=>s.step===6).complete,status:document.getElementById('supplemental-impact-status').textContent,findings:document.getElementById('supplemental-impact-results').textContent,reloadHidden:document.getElementById('match-reload').hidden,remaining:document.getElementById('match-candidates').textContent};
    },{html,state});
    assert.equal(active.step6,false,state+' must keep Step6 incomplete');
-   assert.equal(active.status,'Finishing review checks… Additional matches may appear.',state+' should explain pending validation at the empty-list boundary');
+   assert.equal(active.status,{queued:'Waiting to check saved choices…',preparing:'Preparing review checks…',running:'Checking saved choices…'}[state],state+' should explain pending validation at the empty-list boundary');
    assert.equal(active.remaining,'0');assert.equal(active.findings,'');assert.equal(active.reloadHidden,true);
    assert.equal(await page.locator('#supplemental-impact-status').isVisible(),true);
    assert.equal(await page.getByText('Validation details',{exact:true}).count(),0);
