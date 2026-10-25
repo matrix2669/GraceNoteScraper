@@ -64,7 +64,7 @@ async function testWorkflowCompletionAndLateReplies() {
   const w=vm.createContext({draft:{channels:[]},workflowRemote:{dispatchReady:true,dispatchConfig:{configured:true}},workflowProgress:{},dispatchBusy:false,dispatchConnectionError:false,pendingDecisions:new Set(),document:{getElementById:()=>({}),querySelector:()=>({})}});
   vm.runInContext(require('../tools/review_fixture_helpers.cjs')(html)+html.slice(a,b),w);
   for(const [status,count,expected] of [['refresh-required',0,false],['stale',0,false],['refreshing',0,false],['current',0,true],['current',2,false]]) {
-    w.workflowRemote.dispatch={reviewStatus:status,candidateCount:count,supplementalImpact:{state:'idle'}};assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),expected);
+    w.workflowRemote.dispatch={reviewStatus:status,candidateCount:count,...(status==='current'&&count===0?{candidates:[]}:{}),supplementalImpact:{state:'idle'}};assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),expected);
   }
   // High scores remain unresolved review proposals even if an obsolete optional-only counter says zero.
   w.workflowRemote.dispatch={reviewStatus:'current',candidateCount:1,requiredCount:0,qualifiedCount:1,candidates:[{reviewKind:'qualified',score:100}]};

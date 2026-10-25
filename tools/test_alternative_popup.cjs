@@ -9,8 +9,13 @@ new vm.Script(script);
 function fn(name,next) {return script.slice(script.indexOf(`    async function ${name}(`),script.indexOf(`    function ${next}(`));}
 const helpers=require('./review_fixture_helpers.cjs')(script)+script.slice(script.indexOf('    function saveMatchDecision('),script.indexOf('    async function decideMatch('));
 const alternate=helpers+fn('decideAlternative','closeMatchAlternatives');
-const line=script.split('\n').find(x=>x.includes('const alternatives = candidate.minimumScore'));
-for(const minimumScore of [94,95,98]) {const c={candidate:{minimumScore,alternatives:[{}]}};vm.runInNewContext(line+';result=alternatives.length;',c);assert.equal(c.result,minimumScore<95?1:0);}
+const decisionStart=script.indexOf('    async function decideMatch(');
+const decisionEnd=script.indexOf('    function openMatchAlternatives(',decisionStart);
+assert.ok(decisionStart>=0 && decisionEnd>decisionStart,'decideMatch extraction boundaries must be ordered and present');
+const decision=script.slice(decisionStart,decisionEnd);
+assert.match(decision,/async function decideMatch[\s\S]*await saveMatchDecision/,'extraction contains the actual decision handler');
+assert.doesNotMatch(decision,/offerMatchAlternatives\s*\(/,'successful primary choices no longer open the alternatives popup');
+assert.doesNotMatch(decision,/Other qualifying possibilities|close this list/,'popup-specific success copy is removed');
 (async()=>{
  for(const decision of ['confirmed','denied']) for(const count of [1,2]) for(const fail of [false,true]) {
   let release; const saving=new Promise(r=>release=r); let closed=0,refills=0,removed=0;

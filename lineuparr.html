@@ -655,7 +655,8 @@
         <button type="button" id="match-reload" hidden>Reload review</button>
         <div id="match-save-recovery" role="status" hidden></div>
         <div id="supplemental-impact-panel">
-          <p id="supplemental-impact-status" role="status"></p>
+          <p id="supplemental-impact-status" role="status" aria-live="polite"></p>
+          <div id="supplemental-impact-progress" hidden><progress aria-label="Review checks" aria-describedby="supplemental-impact-status" style="width:100%"></progress></div>
           <div id="supplemental-impact-results"></div>
         </div>
         <div class="match-list" id="match-list"></div>
@@ -1231,6 +1232,7 @@
       renderAutomaticExclusions(null);
       ++dispatchReviewEpoch;
       ++matchReviewRequest;
+      if (typeof clearReviewProgress === 'function') clearReviewProgress();
       matchReview = null;
       workflowRemote.dispatch = null;
       workflowRemote.dispatchReady = false;
@@ -1398,6 +1400,7 @@
       const revision = decisionRevision;
       const epoch = dispatchReviewEpoch;
       const publicationOwner=publicationViewSnapshot();
+      const progress = beginReviewProgress('proposals', publicationOwner);
       let observationRead=validationReadSnapshot(publicationOwner);
       const stopProgress = force ? startMatchProgress() : () => {};
       if (interactive) {
@@ -1437,10 +1440,12 @@
         matchReviewLimit = review.visibleLimit || requestedLimit;
         recoverMatchActions.refreshAdmission = false;
         renderMatchReview();
+        finishReviewProgress(progress, !reviewQueueFacts().empty || (observationRead.request === validationAcceptedRead && observationRead.editRevision === localEditRevision));
         if (['queued','preparing','running'].includes(review.supplementalImpact.state)) scheduleValidationPoll();
         return true;
       } catch (error) {
         if (requestNumber !== matchReviewRequest || revision !== decisionRevision || epoch !== dispatchReviewEpoch || !samePublicationView(publicationOwner)) return false;
+        finishReviewProgress(progress, false);
         loadMatchReview.failed = true;
         document.getElementById('match-reload').hidden = false;
         if (matchReview) matchReview = {...matchReview, reviewStatus:'stale'};
@@ -1459,7 +1464,9 @@
           return;
         }
         if (interactive) {
+          const retainedProgress=ownsReviewProgress(reviewProgress) ? reviewProgress : null;
           ++dispatchReviewEpoch;
+          if (retainedProgress) retainedProgress.epoch=dispatchReviewEpoch;
           workflowRemote.dispatch = matchReview;
           workflowRemote.dispatchReady = !!matchReview;
           dispatchBusy = false;
@@ -1517,6 +1524,7 @@
       if (read.request<validationAcceptedRead || read.editRevision!==localEditRevision) return supplementalImpactResult || normalizeSupplementalImpact(null);
       validationAcceptedRead=read.request;
       const accepted=normalizeSupplementalImpact(result);
+      if (typeof reviewProgress !== 'undefined' && ownsReviewProgress(reviewProgress) && reviewProgress.error && ['queued','preparing','running'].includes(accepted.state)) reviewProgress=null;
       supplementalImpactResult=accepted;
       matchReviewImpactOwner=owner;
       const key=supplementalObservationKey(accepted,owner);
@@ -1539,6 +1547,7 @@
     }
     function noteLocalExportEdit() { localEditRevision++; }
     function retirePublicationView() {
+      clearReviewProgress();
       publicationViewEpoch++;
       publicationTransitionRevision++;
       observedPublication=null;
@@ -1549,33 +1558,114 @@
       consumedSupplementalObservations.clear();
       localExportChanges.clear();
     }
+    // A presentation handoff only: accepted impact/read ordering remains authoritative.
+    let reviewProgress = null;
+    function reviewQueueFacts(review = matchReview) {
+      const valid = !!review && Number.isFinite(review.candidateCount) && review.candidateCount >= 0 && Array.isArray(review.candidates);
+      return {valid, empty:valid && review.candidates.length === 0, zero:valid && review.candidateCount === 0 && review.candidates.length === 0};
+    }
+    function ownsReviewProgress(token = reviewProgress) {
+      return !!token && reviewProgress === token && samePublicationView(token.owner) && token.epoch === dispatchReviewEpoch && token.revision === decisionRevision && token.request === matchReviewRequest && (token.pollRequest === null || token.pollRequest === supplementalImpactRequest);
+    }
+    function clearReviewProgress() {
+      reviewProgress = null;
+      const progress = document.getElementById('supplemental-impact-progress');
+      if (progress) progress.hidden = true;
+      const status = document.getElementById('supplemental-impact-status');
+      if (status && status.textContent) status.textContent = '';
+    }
+    function beginReviewProgress(phase, owner = publicationViewSnapshot()) {
+      if (!samePublicationView(owner) || pendingDecisions.size || hasUncertainMatchActions() || !reviewQueueFacts().empty) return null;
+      const token = {owner, epoch:dispatchReviewEpoch, revision:decisionRevision, request:matchReviewRequest, pollRequest:phase==='results' ? supplementalImpactRequest : null, phase, error:false};
+      reviewProgress = token;
+      renderSupplementalImpact(supplementalImpactResult || matchReview?.supplementalImpact, owner);
+      return token;
+    }
+    function finishReviewProgress(token, success) {
+      if (!ownsReviewProgress(token)) return;
+      const facts = reviewQueueFacts();
+      const impact = supplementalImpactResult || matchReview?.supplementalImpact;
+      if (success && facts.valid && (!facts.empty || facts.zero)) reviewProgress = null;
+      else { token.error = true; token.phase = 'retry'; }
+      renderSupplementalImpact(impact, token.owner);
+    }
+    function updateReviewQueue(latest) {
+      // Counts/tokens advance without replacing or reordering an active page.
+      matchReview.supplementalImpact=latest.supplementalImpact;
+      matchReview.reviewStatus=latest.reviewStatus;
+      matchReview.supplemental=latest.supplemental;
+      matchReview.supplementalMerged=latest.supplementalMerged;
+      matchReview.candidateCount=latest.candidateCount;
+      matchReview.candidateStreamCount=latest.candidateStreamCount;
+      matchReview.decisionTokens={...matchReview.decisionTokens,...latest.decisionTokens};
+      workflowRemote.dispatch=matchReview;
+    }
+    async function reconcileWorkflowReview(review, owner, read) {
+      if (!matchReview || !Array.isArray(matchReview.candidates) || matchReview.candidates.length ||
+          !['complete','idle'].includes(review?.supplementalImpact?.state) ||
+          read.request !== validationAcceptedRead || read.editRevision !== localEditRevision || !samePublicationView(owner)) return;
+      // A newer accepted terminal read retires older status callbacks. Reuse an
+      // owned load/retry instead of starting a second refill or poll loop.
+      const latest=mergeSupplementalReview(review);
+      const facts=reviewQueueFacts(latest);
+      const existing=ownsReviewProgress() ? reviewProgress : null;
+      if (existing) existing.pollRequest=null;
+      clearTimeout(validationPollTimer);
+      ++supplementalImpactRequest;
+      if (existing && ((!existing.error && existing.phase==='proposals') || (existing.error && !facts.zero))) return;
+      const progress=existing || beginReviewProgress('results',owner);
+      if (!progress) return;
+      progress.pollRequest=null;
+      if (!facts.valid || (latest.candidateCount===0 && latest.candidates.length)) {
+        finishReviewProgress(progress,false); return;
+      }
+      if (facts.zero) loadMatchReview.failed=false;
+      updateReviewQueue(latest);
+      renderMatchReview();
+      try {
+        await refillResolvedPage();
+        finishReviewProgress(progress,!reviewQueueFacts().empty || (read.request===validationAcceptedRead && read.editRevision===localEditRevision));
+      } catch (_) { finishReviewProgress(progress,false); }
+    }
     let validationPollTimer;
     function renderSupplementalImpact(result, owner = publicationViewSnapshot()) {
       result = result || {state:'unknown',rows:[]};
       if (!samePublicationView(owner)) return;
       const status=document.getElementById('supplemental-impact-status'); if (!status) return;
+      // Generic renders may still carry the old page's impact after workflow ingress.
+      if (samePublicationView(matchReviewImpactOwner) && supplementalImpactResult && !pendingDecisions.size) result = supplementalImpactResult;
       const active=['queued','preparing','running'].includes(result.state);
-      const failed = ['failed','stale','unknown'].includes(result.state);
-      const review=matchReview;
-      const noProposals=!!review && review.candidateCount===0 && !(review.candidates||[]).length;
-      status.textContent = failed ? 'Saved-choice validation is unavailable. Reload review to retry.'
-        : active && noProposals ? 'Finishing review checks… Additional matches may appear.' : '';
+      const failed = !['queued','preparing','running','idle','complete'].includes(result.state);
+      const facts=reviewQueueFacts();
+      const token=ownsReviewProgress(reviewProgress) ? reviewProgress : null;
+      const writes=pendingDecisions.size>0 || hasUncertainMatchActions();
+      const progress=document.getElementById('supplemental-impact-progress');
+      let text='';
+      let loading=false;
+      if (result.state==='refresh-required' || matchReview?.reviewStatus==='refresh-required') text='Refresh streams to rebuild the current review.';
+      else if (failed || !facts.valid) text='Saved-choice validation is unavailable. Reload review to retry.';
+      else if (!writes && facts.empty && token && !token.error) {
+        loading=true; text=token.phase==='results' ? 'Loading review results…' : 'Loading review proposals…';
+      } else if (!writes && facts.zero && active && !token?.error) {
+        loading=true; text={queued:'Waiting to check saved choices…',preparing:'Preparing review checks…',running:'Checking saved choices…'}[result.state];
+      } else if (!writes && token?.error) text='Review results could not be loaded. Reload review or use Load more to retry.';
+      if (progress) progress.hidden=!loading;
+      if (status.textContent!==text) status.textContent=text;
       renderReviewBoundaryStatus(result);
       const reload = document.getElementById('match-reload');
-      if (reload) reload.hidden = !failed && !(typeof loadMatchReview === 'function' && loadMatchReview.failed);
+      if (reload) reload.hidden = !failed && facts.valid && !token?.error && !(typeof loadMatchReview === 'function' && loadMatchReview.failed);
       const container=document.getElementById('supplemental-impact-results');container.replaceChildren();
       for (const row of result.rows || []) {
         const problems = [];
-        for (const [label, values] of [['Additional match to review',row.extra],['Missing match',row.missed],['Saved confirmation conflict',row.protectedConflicts],['Same-name conflict',row.sameNameConflicts]]) {
+        for (const [label, values] of [['Missing match',row.missed],['Saved confirmation conflict',row.protectedConflicts],['Same-name conflict',row.sameNameConflicts]]) {
           for (const value of values || []) problems.push(`${label}: “${typeof value === 'string' ? value : value.name}”`);
         }
         if (problems.length) {
           const text=document.createElement('p');
-          text.textContent=`${row.channelNumber} ${row.channelName}: ${problems.join('; ')}. Review this channel’s proposals or use Undo in Reviewed matches. Saved confirmations are preserved.`;
+          text.textContent=`${row.channelNumber} ${row.channelName}: ${problems.join('; ')}. Saved confirmations are preserved.`;
           container.append(text);
         }
       }
-      if (result.unresolved && !container.childNodes.length) container.append(emptyMessage('Saved choices still need review. Review the remaining proposals and saved confirmation conflicts.'));
     }
     function renderReviewBoundaryStatus(result = matchReview?.supplementalImpact) {
       result = result || {state:'unknown'};
@@ -1618,22 +1708,28 @@
           if (pendingDecisions.size) {scheduleValidationPoll();return;}
           const result=acceptSupplementalImpact(response,owner,observationRead);
           if (matchReview) matchReview.supplementalImpact=result;
+          const progress=['complete','idle'].includes(result.state) ? beginReviewProgress('results',owner) : null;
           renderSupplementalImpact(result,owner);
           if (['queued','preparing','running'].includes(result.state)) scheduleValidationPoll();
           if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
           if (['complete','idle'].includes(result.state) && !pendingDecisions.size) {
+            const terminalRead=validationReadSnapshot(owner);
             const latest=mergeSupplementalReview(await api(`/api/lineuparr/dispatcharr/review?limit=${matchReviewLimit}`));
             if (!current() || pendingDecisions.size) return;
+            if (terminalRead.request < validationAcceptedRead || terminalRead.editRevision !== localEditRevision) { finishReviewProgress(progress,false); renderGuidedWorkflow(); return; }
+            if (!reviewQueueFacts(latest).valid || (latest.candidateCount === 0 && latest.candidates.length > 0)) throw new Error('Review queue metadata unavailable. Reload review to retry.');
             // New findings update the union count, never replace/re-sort the
             // operator's active page or clear a newer optimistic choice.
-            matchReview.candidateCount=latest.candidateCount;
-            matchReview.candidateStreamCount=latest.candidateStreamCount;
-            matchReview.decisionTokens={...matchReview.decisionTokens,...latest.decisionTokens};
+            latest.supplementalImpact=acceptSupplementalImpact(latest.supplementalImpact,owner,terminalRead);
+            updateReviewQueue(latest);
             renderMatchReview();
             await refillResolvedPage();
+            finishReviewProgress(progress,true);
+            if (current() && ['queued','preparing','running'].includes(matchReview?.supplementalImpact?.state)) scheduleValidationPoll();
           }
           renderGuidedWorkflow();
         } catch (error) {if(current()) {
+          if (ownsReviewProgress(reviewProgress)) finishReviewProgress(reviewProgress,false);
           const result=acceptSupplementalImpact({state:'failed',message:`Validation status unavailable: ${error.message}. Reload review to recover.`},owner,observationRead);
           if (matchReview) matchReview.supplementalImpact=result;
           if (workflowRemote.dispatch) workflowRemote.dispatch.supplementalImpact=result;
@@ -1811,15 +1907,14 @@
         candidateCount:review.candidateCount+(extra.candidateCount || 0),
         candidateStreamCount:(review.candidateStreamCount || 0)+(extra.candidateStreamCount || 0),
         confirmedCount:review.confirmedCount+(extra.confirmedCount || 0), deniedCount:review.deniedCount+(extra.deniedCount || 0),
-        candidates:[...(review.candidates || []),...(extra.candidates || [])], decisions:[...(review.decisions || []),...(extra.decisions || [])]};
+        candidates:Array.isArray(review.candidates) ? [...review.candidates,...(extra.candidates || [])] : undefined, decisions:[...(review.decisions || []),...(extra.decisions || [])]};
     }
 
     function renderMatchReview() {
       renderMatchRecovery();
       renderAutomaticExclusions(matchReview?.automatic);
       renderMatchCoverage(matchReview?.coverage);
-      if (!matchReview) return;
-      if (typeof renderSupplementalImpact === 'function') renderSupplementalImpact(matchReview.supplementalImpact,matchReviewImpactOwner);
+      if (!matchReview) { if (typeof clearReviewProgress === 'function') clearReviewProgress(); return; }
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
       const unsettled = (matchReview.decisions || []).filter(item => pendingDecisions.has(item.key) && !['saved','failed','cancelled'].includes(matchActionState(item.key).state));
@@ -1858,6 +1953,7 @@
       els.decisionList.replaceChildren();
       for (const decision of matchReview.decisions || []) els.decisionList.append(decisionRow(decision));
       els.decisionHistory.hidden = !(matchReview.decisions || []).length;
+      if (typeof renderSupplementalImpact === 'function') renderSupplementalImpact(matchReview.supplementalImpact,matchReviewImpactOwner);
       if (typeof setDispatchControls === 'function') setDispatchControls();
     }
 
@@ -2063,7 +2159,11 @@
       pendingDecisions.add(key);
       decisionRevision++;
       if (typeof scheduleValidationPoll==='function') scheduleValidationPoll();
-      if (typeof matchReview !== 'undefined' && matchReview) matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'queued'};
+      if (typeof clearReviewProgress === 'function') clearReviewProgress();
+      if (typeof matchReview !== 'undefined' && matchReview) {
+        matchReview.supplementalImpact={...matchReview.supplementalImpact,state:'queued'};
+        if (typeof supplementalImpactResult !== 'undefined') supplementalImpactResult=matchReview.supplementalImpact;
+      }
       clearTimeout(matchReconcileTimer);
       workflowRemote.dispatch = null;
       workflowRemote.dispatchReady = false;
@@ -2187,13 +2287,7 @@
         if (source === draft.sourceFingerprint && ownsHistory()) matchReview.candidates = matchReview.candidates.filter(item => !ownsProposal(item));
         if (decisionEpoch !== dispatchReviewEpoch) return;
         for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== key);
-        const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
-        if (alternatives.length) {
-          offerMatchAlternatives(candidate);
-          showMessage(`${decision === 'confirmed' ? 'Match confirmed.' : 'Match denied.'} Review the other qualifying possibilities or close this list.`);
-        } else {
-          showMessage(candidate.origin ? `Choice ${decision}. Saved names will be validated in the background.` : decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
-        }
+        showMessage(candidate.origin ? `Choice ${decision}. Saved names will be validated in the background.` : decision === 'confirmed' ? (candidate.minimumScore >= 95 ? 'Match review confirmed; no inclusion alias added.' : 'Match confirmed and eligible inclusion aliases updated.') : 'Match denied.');
       } catch (error) {
         if (saved || !ownsJob()) return;
         // Only roll back our own optimistic entry. A newer server response or
@@ -2316,6 +2410,7 @@
       let saved = false;
       showMessage('Undoing match review…');
       ++dispatchReviewEpoch;
+      if (typeof clearReviewProgress === 'function') clearReviewProgress();
       dispatchBusy = true; setDispatchControls(); renderGuidedWorkflow();
       try {
         await api('/api/lineuparr/dispatcharr/decision', {
@@ -2783,9 +2878,9 @@
       let best='',score=0;
       for (const alias of channel.aliasEvidence||[]) {
         const methods=(alias.methods||[]).join(' ').toLowerCase();
-        const sources=(alias.sources||[]).map(v=>String(v).toLowerCase());
-        if (/historical|position id|channel number plus|event callsign/.test(methods) || !valid(alias.value) || String(alias.value).toLowerCase()===callSign.toLowerCase()) continue;
-        const external=sources.some(source=>source!=='gracenote'&&!source.startsWith('dispatcharr'));
+        const sources=(alias.sources||[]).map(v=>String(v).trim().toLowerCase());
+        if (/historical|position id|event callsign/.test(methods) || !valid(alias.value) || String(alias.value).toLowerCase()===callSign.toLowerCase()) continue;
+        const external=sources.some(source=>source&&source!=='gracenote'&&!source.startsWith('dispatcharr'));
         if (!external && !/affiliate/.test(methods)) continue;
         let weight=external?1:0;
         if (/exact/.test(methods)&&/station id/.test(methods)) weight=3;
@@ -3279,8 +3374,9 @@
           if (review) review.supplementalImpact=acceptSupplementalImpact(review.supplementalImpact,owner,observationRead);
           workflowRemote.dispatch = review;
           if (['queued','preparing','running'].includes(review?.supplementalImpact?.state)) scheduleValidationPoll();
-          renderReviewBoundaryStatus();
           workflowRemote.dispatchReady = !!workflowRemote.dispatch;
+          await reconcileWorkflowReview(review,owner,observationRead);
+          renderSupplementalImpact(review?.supplementalImpact,owner);
         } else if (workflowRemote.dispatchConfig) {
           workflowRemote.dispatch = null; workflowRemote.dispatchReady = true;
         }
@@ -3310,7 +3406,7 @@
         {step:3, panel:document.getElementById('tmdb-category-panel'), ready:workflowRemote.tmdb !== undefined && workflowProgress !== null, complete:workflowProgress.tmdbDisposition === 'complete' || tmdbSkipped, skipped:tmdbSkipped},
         {step:4, panel:document.getElementById('category-review-panel'), ready:true, complete:reviewPending === 0, count:reviewPending},
         {step:5, panel:document.querySelector('.builder-panel'), ready:true, complete:!!workflowProgress.customizationSignature && workflowProgress.customizationSignature === draft.customizationSignature},
-        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false && (['idle','complete'].includes(supplementalImpact.state) && !supplementalImpact.unresolved)}
+        {step:6, panel:document.getElementById('dispatch-panel'), ready:!!workflowRemote.dispatchReady, complete:!!workflowRemote.dispatchConfig?.configured && !dispatchBusy && pendingDecisions.size === 0 && !hasUncertainMatchActions() && !dispatchConnectionError && workflowRemote.dispatch?.reviewStatus === 'current' && workflowRemote.dispatch?.candidateCount === 0 && Array.isArray(workflowRemote.dispatch?.candidates) && workflowRemote.dispatch.candidates.length === 0 && !(typeof ownsReviewProgress === 'function' && ownsReviewProgress()) && (!workflowRemote.dispatch?.supplemental || workflowRemote.dispatch.supplementalMerged || workflowRemote.dispatch.supplemental.candidateCount === 0) && workflowRemote.dispatch?.supplemental?.complete !== false && (['idle','complete'].includes(supplementalImpact.state) && !supplementalImpact.unresolved)}
       ].filter(state => state.panel);
     }
 

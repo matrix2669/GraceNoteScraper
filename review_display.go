@@ -13,12 +13,33 @@ import (
 // input are never replaced. Current eligible service families outrank historical
 // aliases, even when an old alias is longer or has more provider provenance.
 func reviewDisplayName(c builder.DraftChannel) string {
+	normalize := func(value string) string {
+		return strings.Map(func(r rune) rune {
+			if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+				return r
+			}
+			return -1
+		}, strings.ToLower(value))
+	}
+	rejected := map[string]bool{}
+	for _, value := range []string{c.CallSign, c.StationID, c.PlacementID, c.Number, c.Number + " " + c.CallSign} {
+		if key := normalize(value); key != "" {
+			rejected[key] = true
+		}
+	}
+	valid := func(value string) bool {
+		value = strings.TrimSpace(value)
+		if value == "" || rejected[normalize(value)] {
+			return false
+		}
+		return strings.Trim(value, "0123456789") != ""
+	}
 	// These descriptors have already passed exact-station/current-call and
 	// suppression gates in the immutable builder projection. They are review
 	// labels only, never aliases or downstream identity proof.
 	for _, e := range c.SupplementalEvidence {
-		if e.RootStationID == c.StationID && e.Value != "" {
-			return e.Value
+		if e.RootStationID == c.StationID && valid(e.Value) {
+			return strings.TrimSpace(e.Value)
 		}
 	}
 	family := ""
@@ -42,23 +63,24 @@ func reviewDisplayName(c builder.DraftChannel) string {
 			family = e.ServiceFamily
 		}
 	}
-	if family != "" {
+	if family != "" && valid(family) {
 		return family
 	}
-	if c.Name != "" && !strings.EqualFold(c.Name, c.CallSign) && !strings.HasPrefix(c.NameSource, "dispatcharr") {
-		return c.Name
+	if valid(c.Name) && !strings.HasPrefix(strings.ToLower(c.NameSource), "dispatcharr") {
+		return strings.TrimSpace(c.Name)
 	}
-	best, score := c.Affiliate, 0
+	best, score := "", 0
 	for _, a := range c.AliasEvidence {
 		methods := strings.ToLower(strings.Join(a.Methods, " "))
-		if strings.Contains(methods, "historical") || strings.Contains(methods, "position id") || strings.Contains(methods, "channel number plus") || strings.Contains(methods, "event callsign") {
+		if strings.Contains(methods, "historical") || strings.Contains(methods, "position id") || strings.Contains(methods, "event callsign") {
 			continue
 		}
 		external := false
 		for _, source := range a.Sources {
-			external = external || source != "gracenote" && !strings.HasPrefix(source, "dispatcharr")
+			source = strings.ToLower(strings.TrimSpace(source))
+			external = external || source != "" && source != "gracenote" && !strings.HasPrefix(source, "dispatcharr")
 		}
-		if !external || strings.TrimSpace(a.Value) == "" || strings.EqualFold(a.Value, c.CallSign) {
+		if !external || !valid(a.Value) {
 			continue
 		}
 		weight := 1
@@ -73,11 +95,14 @@ func reviewDisplayName(c builder.DraftChannel) string {
 			}
 		}
 		if weight > score {
-			best, score = a.Value, weight
+			best, score = strings.TrimSpace(a.Value), weight
 		}
 	}
 	if best != "" {
 		return best
+	}
+	if valid(c.Affiliate) {
+		return strings.TrimSpace(c.Affiliate)
 	}
 	return c.Name
 }
