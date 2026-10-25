@@ -195,7 +195,7 @@ async function transportCases(){
     return {step6:reviewStates().find(s=>s.step===6).complete,status:document.getElementById('supplemental-impact-status').textContent,findings:document.getElementById('supplemental-impact-results').textContent,reloadHidden:document.getElementById('match-reload').hidden,remaining:document.getElementById('match-candidates').textContent};
    },{html,state});
    assert.equal(active.step6,false,state+' must keep Step6 incomplete');
-   assert.match(active.status,/Background validation is pending.*not yet complete/,state+' must explain incompleteness');
+   assert.equal(active.status,'Finishing review checks…',state+' should explain only the final validation blocker');
    assert.equal(active.remaining,'0');assert.equal(active.findings,'');assert.equal(active.reloadHidden,true);
    assert.equal(await page.locator('#supplemental-impact-status').isVisible(),true);
    assert.equal(await page.getByText('Validation details',{exact:true}).count(),0);
