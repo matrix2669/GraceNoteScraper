@@ -599,11 +599,14 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		snapshot.streamCount = 0
 		snapshot.fetchedAt = time.Time{}
 	}
+	// Historical reviews retain their original revision and scores. That is a
+	// visible advisory, not evidence that this newly captured snapshot is stale.
+	snapshotStale := warning != ""
 	stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
 	matcherDecisions := make(map[string]dispatcharr.Decision, len(stored))
 	for _, decision := range stored {
 		if decision.MatcherVersion != lineuparrmatcher.Revision {
-			warning = strings.TrimSpace(warning + " Some saved reviews use an older matcher. Undo and refresh to review them with the current matcher.")
+			warning = strings.TrimSpace(warning + " Some saved reviews use an older matcher; their choices and original scores remain in force. Undo individual choices only if you want to reconsider them.")
 			break
 		}
 	}
@@ -689,7 +692,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	status := "refresh-required"
 	if validSnapshot {
 		status = "current"
-		if warning != "" {
+		if snapshotStale {
 			status = "stale"
 		}
 	}

@@ -231,3 +231,41 @@ func TestAffiliateBulkRejectsRefreshPartialGroupAndGuideChange(t *testing.T) {
 		t.Fatal("guide replacement crossed commit fence", err)
 	}
 }
+
+func TestHistoricalMatcherAdvisoryDoesNotInvalidateFreshSnapshot(t *testing.T) {
+	s, api := affiliateTestServer(t)
+	cfg, _, _ := s.lineup.store.Get()
+	preview := affiliatePreviewTest(t, s)
+	if w := affiliateRequest(s, http.MethodPost, map[string]any{"token": preview.Token, "keys": affiliateKeys(preview)}); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	historical := []builder.MatchDecision{}
+	for _, d := range s.lineup.builder.MatchDecisions(cfg.Fingerprint()) {
+		d.MatcherVersion = "historical-preserved-revision"
+		historical = append(historical, d)
+	}
+	if err := s.lineup.builder.SetMatchDecisions(cfg.Fingerprint(), historical); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := json.Marshal(s.lineup.builder.MatchDecisions(cfg.Fingerprint()))
+	view := snapshotReview(t, s, false)
+	if view.ReviewStatus != "current" || !strings.Contains(view.Warning, "older matcher") {
+		t.Fatalf("historical advisory invalidated a fresh capture: status=%s warning=%q", view.ReviewStatus, view.Warning)
+	}
+	if w := affiliateRequest(s, http.MethodGet, nil); w.Code != 200 {
+		t.Fatal("historical choices blocked current preview", w.Code, w.Body.String())
+	}
+	after, _ := json.Marshal(s.lineup.builder.MatchDecisions(cfg.Fingerprint()))
+	if string(before) != string(after) || api.streamCalls != 1 {
+		t.Fatal("read migrated historical choices or fetched streams")
+	}
+	s.snapshot.warning = "Failed capture; previous complete snapshot retained"
+	if stale := snapshotReview(t, s, false); stale.ReviewStatus != "stale" {
+		t.Fatalf("real snapshot warning lost its stale guard: %+v", stale)
+	}
+	s.snapshot.warning = ""
+	s.snapshot.digest = "outdated-inputs"
+	if stale := snapshotReview(t, s, false); stale.ReviewStatus != "refresh-required" {
+		t.Fatalf("input invalidation guard lost: %+v", stale)
+	}
+}

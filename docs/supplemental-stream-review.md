@@ -155,3 +155,8 @@ unchanged. A newly improved match conflicting with a prior Deny, including one
 below95 that did not export an exclusion, is a protected conflict to report, not
 permission to invent a new Deny, migrate a score or publish. The full discovery
 profile and exact consumer source hashes are in `lineuparr_matcher/README.md`.
+
+An older matcher revision on saved history is advisory, not fresh-snapshot
+invalidation. After an explicit successful refresh, those choices and original
+scores remain in force without requiring Undo. Real snapshot failure, inventory
+drift, changed inputs and in-progress refreshes retain their stale/current guards.
