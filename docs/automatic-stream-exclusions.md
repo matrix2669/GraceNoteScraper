@@ -39,3 +39,17 @@ The unchanged consumer removes literal exclusions before applying its region pre
 `go test ./...` and `go test -race ./...` cover automatic classification, manual choices, source/snapshot changes, grouped raw constituents, stale leases and publication. `scripts/check_automatic_exclusion_contract.py` validates actual Go-generated JSON using the unchanged pinned consumer at 70/95; synthetic candidate scores 0/70/71/80/94/95/100 separately test automatic eligibility. UI scripts retain their prior affiliate filenames but now test the automatic inspection panel. All fixtures are public synthetic data; retained private provider evidence is excluded.
 
 `scripts/check_inventory_exclusion_contract.py` exercises actual generated JSON with the unchanged consumer at 70/95: Travel/FX fallback, proper West targets, preserved Cinemax confirmation and literal escaping. Server tests assert one unchanged matcher invocation, immutable inventory, no unscored primary candidates, deterministic exports and failure/reset/concurrent-export fencing.
+
+## Scoped provider-wrapper evidence
+
+Captured discovery now supplies a separate comparison name keyed to each physical
+stream. Raw names, IDs, fingerprints and literal negative selectors remain intact.
+Existing feed and supplemental parsers inspect original and supported comparison
+forms without a second matcher invocation. Unsupported accounts/groups cannot
+borrow another scope's wrapper evidence. Primary scored feed checks use the
+winning comparison provenance; inventory-only feed checks retain their independent
+identity requirement and never manufacture a positive score. Conflicting explicit
+confirmations still win, while impact reports actual per-physical outcomes and
+raw-selector limitations. No provider allowlist, saved-score migration or automatic
+publication is introduced. See `lineuparr_matcher/README.md` for the exact pin and
+conservative `scoped-prefix-v1` policy.

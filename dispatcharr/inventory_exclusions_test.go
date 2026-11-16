@@ -110,3 +110,13 @@ func TestInventoryProjectionAndOrderAreStable(t *testing.T) {
 		t.Fatal("nondeterministic constraints")
 	}
 }
+
+func TestProjectIdentityInventoryPreservesScopedGroupIdentity(t *testing.T) {
+	group := int64(42)
+	input := []Stream{{ID: 1, Name: "Fixture", M3UAccountID: 7, GroupName: "Group", ChannelGroupID: &group}, {ID: 2, Name: "Fixture", M3UAccountID: 8, GroupName: "Group"}}
+	got := ProjectIdentityInventory(input)
+	group = 99
+	if got[0].AccountID != 7 || !got[0].GroupKnown || got[0].GroupID != 42 || got[1].AccountID != 8 || got[1].GroupKnown {
+		t.Fatalf("scope lost or aliased: %+v", got)
+	}
+}

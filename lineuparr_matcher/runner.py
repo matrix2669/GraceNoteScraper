@@ -60,28 +60,28 @@ def main():
     streams = request.get("streams") or []
     names = list(dict.fromkeys(stream["name"] for stream in streams if stream.get("name")))
     matcher.precompute_normalizations(names)
-    by_name = {}
-    for stream in streams:
-        by_name.setdefault(stream.get("name"), []).append(stream)
+    context = matcher.prepare_stream_context(streams,
+        [title for channel in (request.get("channels") or [])
+         for title in [channel.get("name", ""), *(channel.get("aliases") or [])]])
     matches = []
     channels = request.get("channels") or []
     for index, channel in enumerate(channels):
         name = channel.get("name", "")
         aliases = {name: channel.get("aliases") or []}
-        lookup = exact_alias_lookup(matcher, aliases[name])
-        for matched_name, score, match_type in matcher.match_all_streams(
-            name, names, aliases, channel_number(channel.get("number")), lineup_country=request.get("country")
+        for match in matcher.match_stream_occurrences(
+            name, context, aliases, channel_number(channel.get("number")),
+            lineup_country=request.get("country"), candidate_countries={}
         ):
-            for stream in by_name.get(matched_name, []):
-                matches.append({
-                    "channelId": channel["id"], "streamKey": stream["key"],
-                    "score": score, "reason": "Lineuparr " + match_type,
-                    "exactAlias": exact_alias_evidence(matcher, lookup, matched_name, match_type),
-                })
-                if len(matches) > 250000:
-                    raise ValueError("Match result exceeds 250000 pairs")
+            matches.append({
+                "channelId": channel["id"], "streamKey": match.key,
+                "score": match.score, "reason": "Lineuparr " + match.match_type,
+                "exactAlias": match.exact_alias,
+                "comparisonName": match.comparison_name if match.origin != "original" else "",
+            })
+            if len(matches) > 250000:
+                raise ValueError("Match result exceeds 250000 pairs")
         print("GNS_PROGRESS %d %d" % (index + 1, len(channels)), file=sys.stderr, flush=True)
-    json.dump({"matches": matches, "matcherVersion": "c766a6bb582ca8ef28ae9548d83af1e61f6cde5d"}, sys.stdout, separators=(",", ":"))
+    json.dump({"matches": matches, "comparisonNames": {key: v.comparison for v in context.views if v.origin != "original" for key in v.keys}, "matcherVersion": "17fa3f69e1706e902af45a82c57584e884e3e0ab"}, sys.stdout, separators=(",", ":"))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -143,7 +144,7 @@ func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *bu
 	proposedJSON, _ := json.Marshal(builder.ExportFromDraft(draft))
 	req := dispatcharr.ImpactRequest{Country: "US", Baseline: string(baselineJSON), Proposed: string(proposedJSON)}
 	for _, s := range inventory {
-		req.Streams = append(req.Streams, dispatcharr.ImpactStream{Name: s.Name, GroupName: s.GroupName})
+		req.Streams = append(req.Streams, dispatcharr.ImpactStream{Key: fmt.Sprintf("%d:%d", s.AccountID, s.ID), Name: s.Name, GroupName: s.GroupName, AccountID: s.AccountID, GroupID: s.GroupID, GroupKnown: s.GroupKnown})
 	}
 	result, err := dispatcharr.CheckSupplementalImpact(context.Background(), req)
 	if err != nil {
@@ -176,4 +177,158 @@ func runRetainedSupplementalReplay(t *testing.T, svc *builder.Service, draft *bu
 		t.Fatal(err)
 	}
 	t.Logf("supplemental40/240: %d/44 physical accepted, %d/17 News12 review, %d proposals, retrieval %s, 15 decisions unchanged; consumer report %s", len(accepted), reviewRetrieved, len(candidates), elapsed, output)
+}
+
+// TestProviderPrefixPrivateProspectiveExport is opt-in and uses sanitized copies
+// only. It runs production pure projection/export functions, never a live server,
+// acquisition, decision save, reset, or publication. Outputs stay at the explicit
+// private input location, outside the repository.
+func TestProviderPrefixPrivateProspectiveExport(t *testing.T) {
+	dir := os.Getenv("PROVIDER_PREFIX_REPLAY_DIR")
+	if dir == "" {
+		t.Skip("private captured replay not requested")
+	}
+	read := func(name string, value any) {
+		t.Helper()
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = json.Unmarshal(data, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write := func(name string, value any) {
+		t.Helper()
+		data, err := json.MarshalIndent(value, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var capture struct {
+		Country  string                 `json:"country"`
+		Source   string                 `json:"sourceFingerprint"`
+		Channels []builder.DraftChannel `json:"channels"`
+	}
+	read("active_targets.json", &capture)
+	draft := &builder.Draft{Channels: capture.Channels, CountryCode: capture.Country, SourceFingerprint: capture.Source}
+	var inventory []struct {
+		ID        int64    `json:"id"`
+		Name      string   `json:"name"`
+		TVGID     string   `json:"tvg_id"`
+		Account   int64    `json:"m3u_account_id"`
+		Group     *int64   `json:"channel_group_id"`
+		GroupName string   `json:"group_name"`
+		Number    *float64 `json:"stream_chno"`
+	}
+	read("inventory.json", &inventory)
+	streams := []dispatcharr.Stream{}
+	streamByKey := map[string]dispatcharr.Stream{}
+	for _, row := range inventory {
+		stream := dispatcharr.Stream{ID: row.ID, Name: row.Name, TVGID: row.TVGID, M3UAccountID: row.Account, ChannelGroupID: row.Group, GroupName: row.GroupName, StreamChannelNo: row.Number}
+		streams = append(streams, stream)
+		streamByKey[stream.Key()] = stream
+	}
+	var saved struct {
+		Primary      map[string]builder.MatchDecision        `json:"matchDecisions"`
+		Supplemental map[string]builder.SupplementalDecision `json:"supplementalDecisions"`
+	}
+	read("protected_decisions.json", &saved)
+	source := ""
+	decisions := []dispatcharr.Decision{}
+	for _, d := range saved.Primary {
+		if source == "" {
+			source = d.DispatcharrFingerprint
+		}
+		if source != d.DispatcharrFingerprint {
+			t.Fatal("multiple connection scopes need explicit replay separation")
+		}
+		decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: d.DispatcharrFingerprint, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, Decision: d.Decision})
+	}
+	for _, d := range saved.Supplemental {
+		protected := false
+		for _, old := range saved.Primary {
+			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
+				protected = true
+				break
+			}
+		}
+		target := builderChannelIdentity(draft, d.ChannelID)
+		if !protected && d.DispatcharrFingerprint == source && target.StationID == d.StationID && target.PlacementID == d.PlacementID && target.CallSign == d.RawCallSign {
+			decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: source, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, Decision: d.Decision})
+		}
+	}
+	var predicted struct {
+		Matches []struct {
+			ChannelID  string `json:"channelId"`
+			StreamKey  string `json:"streamKey"`
+			Score      int    `json:"score"`
+			Reason     string `json:"reason"`
+			Comparison string `json:"comparisonName"`
+		} `json:"matches"`
+		Comparisons map[string]string `json:"comparisonNames"`
+	}
+	read("new_primary.json", &predicted)
+	candidates := []dispatcharr.Candidate{}
+	for _, m := range predicted.Matches {
+		s, ok := streamByKey[m.StreamKey]
+		if !ok {
+			t.Fatal("unrecognized physical prediction")
+		}
+		candidates = append(candidates, dispatcharr.Candidate{Key: m.ChannelID + "\x00" + s.Key(), ChannelID: m.ChannelID, StreamID: s.ID, M3UAccountID: s.M3UAccountID, StreamKey: s.Key(), StreamName: s.Name, StreamHash: s.Fingerprint(), Source: source, Score: m.Score, NameScore: m.Score, Reason: m.Reason, ComparisonName: m.Comparison})
+	}
+	cfg := appconfig.Config{}
+	cfg.Gracenote.Country = capture.Country
+	feeds, codes := stationFeedCatalog(draft, cfg)
+	targets := map[string]dispatcharr.AffiliateTarget{}
+	feedTargets := []dispatcharr.FeedTarget{}
+	for _, c := range draft.Channels {
+		targets[c.ID] = dispatcharr.AffiliateTarget{Country: affiliateCountry(capture.Country), CallSign: c.CallSign}
+		feedTargets = append(feedTargets, dispatcharr.FeedTarget{ID: c.ID, Name: c.Name, Number: c.Number, Country: affiliateCountry(capture.Country), Feed: feeds[c.ID]})
+	}
+	automatic := dispatcharr.DeriveAutomaticExclusions(candidates, targets, feeds, codes, decisions)
+	identities := dispatcharr.WithComparisonEvidence(dispatcharr.ProjectIdentityInventory(streams), predicted.Comparisons)
+	automatic.InventoryRows = dispatcharr.DeriveInventoryFeedExclusions(source, identities, feedTargets, codes, decisions, automatic.Rows)
+	for i := range draft.Channels {
+		c := &draft.Channels[i]
+		oldAutomatic := map[string]bool{}
+		for _, name := range c.AutomaticExcludedAliases {
+			oldAutomatic[supplementalLiteral(name)] = true
+		}
+		kept := []string{}
+		for _, name := range c.ExcludedAliases {
+			if !oldAutomatic[supplementalLiteral(name)] {
+				kept = append(kept, name)
+			}
+		}
+		c.ExcludedAliases = kept
+		add := func(name string, conflict bool) {
+			if !conflict {
+				c.ExcludedAliases = append(c.ExcludedAliases, name)
+			}
+		}
+		for _, row := range automatic.Rows {
+			if row.Candidate.ChannelID == c.ID {
+				add(row.Candidate.StreamName, row.Conflict)
+			}
+		}
+		for _, row := range automatic.InventoryRows {
+			if row.ChannelID == c.ID {
+				add(row.StreamName, row.Conflict)
+			}
+		}
+	}
+	exported := builder.ExportFromDraft(draft)
+	write("prospective_go_export.json", exported)
+	indexes := []map[string]any{}
+	for cat, rows := range exported.Categories {
+		for i, row := range rows {
+			indexes = append(indexes, map[string]any{"category": cat, "entryIndex": i, "channelId": row.ChannelID, "name": row.Name, "number": fmt.Sprint(row.Number)})
+		}
+	}
+	write("prospective_target_index.json", indexes)
+	write("prospective_projection_summary.json", map[string]any{"physicalStreams": len(streams), "targets": len(draft.Channels), "primaryDecisionsRetained": len(saved.Primary), "supplementalDecisionsRetained": len(saved.Supplemental), "scoredAutomaticRows": len(automatic.Rows), "inventoryAutomaticRows": len(automatic.InventoryRows), "scope": "sanitized capture; production pure identity/projection/export functions; no live write or new saved choice"})
 }

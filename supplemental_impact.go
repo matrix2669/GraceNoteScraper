@@ -223,7 +223,7 @@ func (s *dispatcharrServer) startSupplementalImpact(w http.ResponseWriter, r *ht
 	request := dispatcharr.ImpactRequest{Country: draft.CountryCode, Baseline: string(before), Proposed: string(proposed)}
 	missingGroups := false
 	for _, stream := range snapshot.identityStreams {
-		request.Streams = append(request.Streams, dispatcharr.ImpactStream{Name: stream.Name, GroupName: stream.GroupName})
+		request.Streams = append(request.Streams, dispatcharr.ImpactStream{Key: fmt.Sprintf("%d:%d", stream.AccountID, stream.ID), Name: stream.Name, GroupName: stream.GroupName, AccountID: stream.AccountID, GroupID: stream.GroupID, GroupKnown: stream.GroupKnown})
 		if stream.GroupName == "" {
 			missingGroups = true
 		}
@@ -330,7 +330,7 @@ func (s *dispatcharrServer) startSupplementalImpact(w http.ResponseWriter, r *ht
 			}
 			s.impactCompleted = job
 			job.response.CheckedAt = time.Now().UTC()
-			job.response.Message = "Validated this captured inventory and prospective JSON. Extra names require Confirm/Deny. Equal raw names share account outcomes; future inventory and custom consumer settings remain outside this check."
+			job.response.Message = "Validated this captured inventory and prospective JSON. Extra names require Confirm/Deny. Raw-name selectors can share account outcomes; scoped comparison evidence does not; future inventory and custom consumer settings remain outside this check."
 			if missingGroups {
 				job.response.Message += " Some captured streams lack group-country metadata, limiting country-filter coverage."
 			}
@@ -417,8 +417,8 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 				continue
 			}
 			set := map[string]bool{}
-			for _, name := range r.Names {
-				set[name] = true
+			for _, key := range r.Keys {
+				set[key] = true
 			}
 			phase.dest[entries[r.EntryIndex].ChannelID] = set
 		}
@@ -456,7 +456,7 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 						break
 					}
 				}
-				if !present || !proposed[d.StreamName] {
+				if !present || !proposed[fmt.Sprintf("%d:%d", d.M3UAccountID, d.StreamID)] {
 					row.Missed = append(row.Missed, physical)
 				}
 			}
@@ -471,15 +471,15 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 		}
 		for _, stream := range inventory {
 			physical := supplementalImpactPhysical{stream.Name, stream.AccountID, stream.ID}
-			if proposed[stream.Name] {
+			if proposed[fmt.Sprintf("%d:%d", stream.AccountID, stream.ID)] {
 				row.Matched = append(row.Matched, physical)
 				coveredByPrimary := primaryCoveredPhysical[stream.Fingerprint] || primaryCoveredNames[supplementalLiteral(stream.Name)]
-				if !selected[stream.Fingerprint] && !coveredByPrimary && !baseline[stream.Name] {
+				if !selected[stream.Fingerprint] && !coveredByPrimary && !baseline[fmt.Sprintf("%d:%d", stream.AccountID, stream.ID)] {
 					row.Extra = append(row.Extra, physical)
 				}
 			}
 			literal := supplementalLiteral(stream.Name)
-			if selectedNames[literal] && !selected[stream.Fingerprint] {
+			if selectedNames[literal] && !selected[stream.Fingerprint] && proposed[fmt.Sprintf("%d:%d", stream.AccountID, stream.ID)] {
 				row.SameNameConflicts = appendUniqueReviewString(row.SameNameConflicts, stream.Name+" expands across unselected physical streams/accounts")
 			}
 			if selectedNames[literal] && deniedNames[literal] {
@@ -495,10 +495,18 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 			if d.ChannelID != c.ID {
 				continue
 			}
-			if d.Decision == "confirmed" && !proposed[d.StreamName] {
+			matched := false
+			for _, stream := range inventory {
+				if stream.Fingerprint == d.StreamFingerprint || (d.Decision == "denied" && supplementalLiteral(stream.Name) == supplementalLiteral(d.StreamName)) {
+					if proposed[fmt.Sprintf("%d:%d", stream.AccountID, stream.ID)] {
+						matched = true
+					}
+				}
+			}
+			if d.Decision == "confirmed" && !matched {
 				row.ProtectedConflicts = appendUniqueReviewString(row.ProtectedConflicts, "Saved primary confirmation is missing: "+d.StreamName)
 			}
-			if d.Decision == "denied" && proposed[d.StreamName] {
+			if d.Decision == "denied" && matched {
 				row.ProtectedConflicts = appendUniqueReviewString(row.ProtectedConflicts, "Saved primary denial still matches: "+d.StreamName)
 			}
 		}

@@ -59,6 +59,7 @@ type Decision struct {
 type Candidate struct {
 	// Display-only metadata is deliberately separate from the bounded saved reason.
 	// Keep these values comparable for generation-bound admission equality.
+	ComparisonName     string   `json:"comparisonName,omitempty"`
 	ReviewWarning      string   `json:"reviewWarning,omitempty"`
 	ExactAlias         string   `json:"exactAlias,omitempty"`
 	ChannelDisplayName string   `json:"channelDisplayName,omitempty"`
@@ -90,8 +91,9 @@ type Candidate struct {
 // from the same bounded matching pass. The browser receives only grouped
 // summaries, while the server keeps All available for alternate review.
 type CandidateSet struct {
-	Primary []Candidate
-	All     []Candidate
+	ComparisonNames map[string]string // Captured, per-physical-key discovery evidence; never raw identity.
+	Primary         []Candidate
+	All             []Candidate
 }
 
 type TVGIDEvidence struct {

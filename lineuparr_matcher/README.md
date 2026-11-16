@@ -1,68 +1,63 @@
 # Vendored Lineuparr matcher
 
-The unmodified `fuzzy_matcher.py` and `matching_core.py` come from
-PiratesIRC/Dispatcharr-Lineuparr-Plugin revision
-`c766a6bb582ca8ef28ae9548d83af1e61f6cde5d` (PR #26). They were compared
-byte-for-byte with the installed Lineuparr beta.5 on 2026-09-07.
-The upstream MIT license is included in LICENSE.
+The unchanged canonical modules below are pinned to local consumer source revision
+`17fa3f69e1706e902af45a82c57584e884e3e0ab` on the isolated provider-prefix work branch. Its prerequisite
+composition is current upstream `b38a4e5d6134db8a752003f10ed491ab9c583c72` plus
+PR26 `c766a6bb582ca8ef28ae9548d83af1e61f6cde5d`, assembled at local commit
+`270f44856d48be7e1552f41b46a913ac74de0986`. The MIT license is included.
+This is source provenance, not a claim of publication or installed runtime parity.
 
 SHA-256:
 
-- fuzzy_matcher.py: `04c66ac8156f5cbdd7a8c43a9ea0b8ae83ef1a89888d15da5e6a5ae3fa39ee91`
+- fuzzy_matcher.py: `0692ca7234762229712546dcd7203ac4392af3df6403de5ad6b637991f783b3e`
+- provider_prefixes.py: `078644e564413ce4bf85615e5833debe24bc3130bb77e49d211426b140a5f8b4`
 - matching_core.py: `33ca1c61dad02d16a9362dab4e4f3b1edb3347db0a377eae592b44812449231d`
+- aliases.py: `756d3bafc79a93ab2439a5a0b8d56f02528eb97f3cc7bedb2deddc7af45e52f8`
 
-`runner.py` is GraceNoteScraper's adapter. It creates one matcher at 70,
-precomputes unique stream names once, and returns every accepted pair with the
-consumer's returned score. There is no second Exact/95 pass in primary prediction and no Go score
-adjustment or EPG-based candidate admission.
+## Primary prediction
 
-The input profile uses the active lineup's country, channel numbers, and base
-embedded aliases. Optional quality filtering, custom ignored tags, external
-consumer alias catalogs, and provider-group country overrides are not supplied.
-Score equivalence requires the same source revision and inputs; changing
-Lineuparr's optional settings can change results. Generated review aliases and
-exclusions are applied after scoring, so saved decisions do not alter the scan.
+`runner.py` creates one matcher at70 and one operation-local discovery context.
+Original and scoped comparison views enter one scoring pipeline per channel;
+actual winning scores/type/exact-alias provenance return by physical stream key.
+There is no second Exact95 pass, Go score boost or EPG-based admission. Base aliases
+only are supplied; generated review aliases and exclusions apply after scoring.
+The profile uses active lineup country and channel-number boost; optional quality
+filtering, ignored tags and external consumer alias catalogues remain absent.
+Original candidates retain the prior no-group-country profile; new variants must
+also satisfy their captured group country. Equivalent scores require equivalent
+profiles, not merely the same threshold or revision.
 
-The consumer can boost a name accepted at threshold 70 from 91 to 96, even when
-an independent threshold-95 run would reject it before boosting. This adapter
-deliberately retains that returned 96 under the operator-selected single-pass
-contract. Equal returned scores are not proof of identical threshold admission.
+The generic `scoped-prefix-v1` discovery policy is documented in the consumer README.
+It requires known account/group scope, five distinct tails, three complete
+catalogue-title/base-alias corroborations and 80% group coverage. It refuses
+semantic prefixes and requires complete target/explicit-alias identity agreement
+for new stripped paths. Sparse or ambiguous inputs retain original-only matching.
+Raw names, keys and fingerprints never change. Separate immutable comparison
+evidence feeds the existing Go feed/inventory/supplemental identity checks without
+changing raw literal exclusions or persisted choices.
 
-Go embeds the scripts and extracts them into a private temporary directory for
-each refresh. Python runs with isolated imports, a minimal environment, a
-five-minute deadline, and bounded output (64 MiB / 250000 pairs). The temporary
-files are removed after exit. Normal reads and decisions do not spawn Python. Channel removals reuse the remaining cached pairs; additions or re-inclusions hide results until explicit refresh.
+## Explicit impact and physical identity
 
-Docker supplies Python 3.13 and RapidFuzz 3.14.5. Native installations need
-Python 3 (set LINEUPARR_MATCHER_PYTHON to its executable if necessary).
-RapidFuzz is optional for native use; the canonical fallback returns the same
-similarity calculation but can be slower.
+`impact_runner.py` decodes actual baseline/prospective exported JSON and uses the
+same occurrence API at Exact95 with built-in/country/embedded aliases, specific
+numbering (no boost), quality filtering off and captured group-country metadata.
+It mirrors consumer channel-country-prefix rewriting. Each exported target is
+identified by category plus entry position, while each accepted stream is returned
+by physical key. Names remain display-only. The Go comparison cannot spread a
+supported scope's match to another occurrence with an equal raw name.
 
-When upgrading: replace both canonical files unchanged, retain their license,
-update the revision in embed.go and runner.py, update hashes here and in the
-provenance test, and run Go/Python integration tests against the intended
-consumer revision. Existing saved reviews retain their historical revision;
-use Undo and refresh to review them with the new matcher.
+Raw exported aliases/exclusions can still affect equal names in multiple accounts;
+the JSON schema has not acquired account-specific selectors. Saved scores, Deny
+eligibility, confirmations, suppression and Undo are not migrated or reinterpreted.
+Protected-decision replay must report conflicts rather than inventing new choices.
 
-## Explicit supplemental impact adapter
+Go extracts embedded scripts into a private temporary directory for an explicit
+refresh or impact action. Python runs isolated (`-I -B`), with a minimal environment,
+a five-minute deadline and bounded output (64MiB/250000 pairs). Normal reads and
+choices spawn no matcher; failed or stale refreshes cannot replace a complete
+snapshot. Discovery is captured, immutable and operation-local, never global state.
 
-`impact_runner.py` is a separate GraceNoteScraper adapter invoked only by the
-explicit batched supplemental export-impact action. It serializes/decodes real
-export JSON, runs baseline and prospective lineups at Exact95 against the same
-captured names and group-country metadata, and returns names without assigning
-scores to supplemental proposals. The primary runner is unchanged.
-Results carry the category and entry position from the decoded JSON. The Go
-export keeps an internal target ID through the same stable sorting, omitted from
-the consumer JSON, so duplicate names and normalized numbers cannot merge impact
-results. The adapter reports every exported occurrence; comparison includes
-collateral changes and protected conflicts on targets without supplemental saves.
-
-The unchanged `aliases.py` from the same installed pinned revision supplies the
-consumer's built-in and country aliases. SHA-256:
-`b9d07af27658da4ee0a74fc996611d368b2332538ddef77403b1553321a42b3b`.
-Its upstream MIT license is the included LICENSE. The explicit profile uses
-specific numbering (no number boost), embedded aliases, quality filtering off,
-and no custom aliases/settings. Missing group-country metadata is reported.
-Ordinary reads, decisions and exports never invoke this adapter. The same process
-isolation, deadline and bounded-output rules apply. Cancellation/failure never
-writes decisions or publishes a lineup.
+Python3 with RapidFuzz is recommended; native fallback remains supported. Docker
+uses its pinned runtime. A changed consumer pin requires unchanged-module hashes,
+primary/impact/consumer physical parity and protected replay. Local source and
+synthetic tests do not authorize publication, live refresh or deployment.

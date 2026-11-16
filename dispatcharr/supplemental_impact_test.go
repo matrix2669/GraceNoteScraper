@@ -3,6 +3,7 @@ package dispatcharr
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -14,8 +15,8 @@ func TestSupplementalImpactActualJSONLiteralMasksAndFutureExpansion(t *testing.T
 	}
 	names := []string{"US| Fixture Service HD", "US| Fixture Service West HD", "US| Fixture Service * literal", `US| Fixture Service \ path`, "Completely Different Service"}
 	request := ImpactRequest{Country: "US", Baseline: makeJSON(nil, nil), Proposed: makeJSON([]string{"US| Fixture Service HD"}, []string{`US| Fixture Service \* literal`, `US| Fixture Service \\ path`})}
-	for _, name := range names {
-		request.Streams = append(request.Streams, ImpactStream{Name: name, GroupName: "US| Entertainment"})
+	for i, name := range names {
+		request.Streams = append(request.Streams, ImpactStream{Key: fmt.Sprint(i), Name: name, GroupName: "US| Entertainment"})
 	}
 	r, err := CheckSupplementalImpact(context.Background(), request)
 	if err != nil {
@@ -30,7 +31,7 @@ func TestSupplementalImpactActualJSONLiteralMasksAndFutureExpansion(t *testing.T
 	}
 	// Future same-service names can match a saved positive selector. The earlier
 	// captured-inventory check must never be represented as future protection.
-	request.Streams = append(request.Streams, ImpactStream{Name: "US: Fixture Service HD", GroupName: "US| Entertainment"})
+	request.Streams = append(request.Streams, ImpactStream{Key: "future", Name: "US: Fixture Service HD", GroupName: "US| Entertainment"})
 	r, err = CheckSupplementalImpact(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)

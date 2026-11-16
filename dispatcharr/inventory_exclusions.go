@@ -11,19 +11,42 @@ import (
 // IdentityStream is an immutable value projection of one successfully fetched
 // stream. It contains no URLs, credentials, mutable pointers or positive score.
 type IdentityStream struct {
-	GroupName   string
-	ID          int64
-	Name        string
-	AccountID   int64
-	Fingerprint string
+	ComparisonName string // Optional captured scoped evidence, never a saved/raw name.
+	GroupName      string
+	ID             int64
+	Name           string
+	AccountID      int64
+	GroupID        int64
+	GroupKnown     bool
+	Fingerprint    string
 }
 
 func ProjectIdentityInventory(streams []Stream) []IdentityStream {
 	result := make([]IdentityStream, len(streams))
 	for i, stream := range streams {
 		result[i] = IdentityStream{GroupName: stream.GroupName, ID: stream.ID, Name: stream.Name, AccountID: stream.M3UAccountID, Fingerprint: stream.Fingerprint()}
+		if stream.ChannelGroupID != nil {
+			result[i].GroupID, result[i].GroupKnown = *stream.ChannelGroupID, true
+		}
 	}
 	return result
+}
+
+// WithComparisonEvidence returns fresh inventory values bound to this successful
+// matcher capture. Callers cannot mutate the original inventory or its identity.
+func WithComparisonEvidence(streams []IdentityStream, names map[string]string) []IdentityStream {
+	result := append([]IdentityStream(nil), streams...)
+	for i := range result {
+		result[i].ComparisonName = names[fmt.Sprintf("%d:%d", result[i].AccountID, result[i].ID)]
+	}
+	return result
+}
+
+func (s IdentityStream) comparisonNames() []string {
+	if s.ComparisonName != "" && s.ComparisonName != s.Name {
+		return []string{s.Name, s.ComparisonName}
+	}
+	return []string{s.Name}
 }
 
 type FeedTarget struct {
@@ -78,18 +101,21 @@ func DeriveInventoryFeedExclusions(source string, streams []IdentityStream, targ
 	}
 	type parsedStream struct {
 		stream IdentityStream
+		name   string
 		feed   FeedIdentity
 	}
 	byFamily := map[string][]parsedStream{}
 	for _, stream := range streams {
-		feed := StreamFeed(stream.Name, codes)
-		if feed.Family != "" && (feed.Region == "east" || feed.Region == "west") {
-			byFamily[feed.Family] = append(byFamily[feed.Family], parsedStream{stream, feed})
-		}
-		// Index the prospective family for efficiency, but do not admit it until
-		// StreamFeedForTarget proves membership against the current target below.
-		if internal := internalFeedLabel(stream.Name, feed); internal.Region != "" && internal.Family != feed.Family {
-			byFamily[internal.Family] = append(byFamily[internal.Family], parsedStream{stream, internal})
+		for _, comparison := range stream.comparisonNames() {
+			feed := StreamFeed(comparison, codes)
+			if feed.Family != "" && (feed.Region == "east" || feed.Region == "west") {
+				byFamily[feed.Family] = append(byFamily[feed.Family], parsedStream{stream, comparison, feed})
+			}
+			// Index the prospective family for efficiency, but do not admit it until
+			// StreamFeedForTarget proves membership against the current target below.
+			if internal := internalFeedLabel(comparison, feed); internal.Region != "" && internal.Family != feed.Family {
+				byFamily[internal.Family] = append(byFamily[internal.Family], parsedStream{stream, comparison, internal})
+			}
 		}
 	}
 	rows := map[string]InventoryFeedExclusion{}
@@ -102,7 +128,7 @@ func DeriveInventoryFeedExclusions(source string, streams []IdentityStream, targ
 			for _, parsed := range byFamily[family] {
 				stream := parsed.stream
 				id := key(target.ID, stream.Name, stream.AccountID)
-				feed := StreamFeedForTarget(stream.Name, codes, target.Feed)
+				feed := StreamFeedForTarget(parsed.name, codes, target.Feed)
 				if covered[id] || feed.Region == "" || !sameFeedFamily(feed.Family, target.Feed) || feed.Region == target.Feed.Region || !inventoryCountryCompatible(stream.Name, target.Country) {
 					continue
 				}

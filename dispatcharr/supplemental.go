@@ -109,10 +109,13 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 	}
 	index := make([]indexed, 0, len(streams))
 	for _, s := range streams {
-		feed := StreamFeed(s.Name, nil)
-		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed)})
+		for _, comparison := range s.comparisonNames() {
+			feed := StreamFeed(comparison, nil)
+			index = append(index, indexed{s, supplementalText(comparison), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(comparison, feed)})
+		}
 	}
 	out := []SupplementalCandidate{}
+	emitted := map[string]int{}
 	for _, t := range targets {
 		type termLabel struct {
 			term, value, evidence string
@@ -185,7 +188,16 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 					reason += "; feed unresolved (numeric decoration is not identity)"
 				}
 			}
-			out = append(out, SupplementalCandidate{Target: t, Stream: s, Rank: rank, Reason: reason, Evidence: evidence, Descriptor: descriptor})
+			proposal := SupplementalCandidate{Target: t, Stream: s, Rank: rank, Reason: reason, Evidence: evidence, Descriptor: descriptor}
+			key := t.ID + "\x00" + s.Fingerprint
+			if at, exists := emitted[key]; exists {
+				if rank < out[at].Rank {
+					out[at] = proposal
+				}
+				continue
+			}
+			emitted[key] = len(out)
+			out = append(out, proposal)
 			if len(out) >= 250000 {
 				return out, false
 			}

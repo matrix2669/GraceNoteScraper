@@ -95,3 +95,16 @@ func TestSuccessfulFetchThenMatcherFailureRetainsObservedDrift(t *testing.T) {
 		t.Fatalf("matcher failure blocked fresh advisory generation: %v", err)
 	}
 }
+
+func TestStreamInventoryDigestIncludesGroupIdentity(t *testing.T) {
+	first, second := int64(1), int64(2)
+	base := dispatcharr.Stream{ID: 42, M3UAccountID: 3, Name: "Fixture", GroupName: "Same name"}
+	missing := streamInventoryDigest([]dispatcharr.Stream{base})
+	base.ChannelGroupID = &first
+	one := streamInventoryDigest([]dispatcharr.Stream{base})
+	base.ChannelGroupID = &second
+	two := streamInventoryDigest([]dispatcharr.Stream{base})
+	if missing == one || one == two || missing == two {
+		t.Fatal("group identity did not invalidate inventory")
+	}
+}

@@ -35,15 +35,15 @@ class AttributionTests(unittest.TestCase):
             for name,score,kind in m.match_all_streams(c['name'],names,{c['name']:c['aliases']},runner.channel_number(c['number']),lineup_country='US'):
                 expected.append(dict(channelId=c['id'],streamKey=str(names.index(name)),score=score,reason='Lineuparr '+kind))
         calls=[]
-        original=FuzzyMatcher.match_all_streams
+        original=FuzzyMatcher.match_stream_occurrences
         def spy(self,*args,**kwargs):
             calls.append((args,kwargs)); return original(self,*args,**kwargs)
         output=io.StringIO()
-        with patch.object(sys,'stdin',io.StringIO(json.dumps(request))), patch.object(FuzzyMatcher,'match_all_streams',spy), redirect_stdout(output):
+        with patch.object(sys,'stdin',io.StringIO(json.dumps(request))), patch.object(FuzzyMatcher,'match_stream_occurrences',spy), redirect_stdout(output):
             runner.main()
         actual=json.loads(output.getvalue())['matches']
         self.assertEqual(len(calls),len(channels))
-        self.assertEqual([{k:v for k,v in row.items() if k!='exactAlias'} for row in actual],expected)
+        self.assertEqual([{k:v for k,v in row.items() if k not in {'exactAlias', 'comparisonName'}} for row in actual],expected)
         self.assertTrue(any(row['exactAlias'] for row in actual if row['channelId']=='h'))
         self.assertTrue(any(row['channelId']=='f' and row['reason']=='Lineuparr alias' and not row['exactAlias'] for row in actual))
         self.assertFalse(any(row['channelId']=='b' for row in actual))

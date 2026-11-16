@@ -538,6 +538,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 				s.setMatchProgress("matching", done, total)
 			})
 			matches, version, fetchErr = matcher(matchContext, dispatchConfig.Fingerprint(), country, channels, streams, nil)
+			if fetchErr == nil {
+				identityStreams = dispatcharr.WithComparisonEvidence(identityStreams, matches.ComparisonNames)
+			}
 			s.setMatchProgress("finishing", len(channels), len(channels))
 			failureMessage = "Matching failed. Check that Python 3 is installed (LINEUPARR_MATCHER_PYTHON), or retry with a smaller stream inventory if the match exceeded five minutes."
 		}

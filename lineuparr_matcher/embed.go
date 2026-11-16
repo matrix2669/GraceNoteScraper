@@ -4,7 +4,7 @@ package lineuparrmatcher
 
 import "embed"
 
-//go:embed runner.py impact_runner.py fuzzy_matcher.py matching_core.py aliases.py LICENSE
+//go:embed runner.py impact_runner.py fuzzy_matcher.py provider_prefixes.py matching_core.py aliases.py LICENSE
 var Files embed.FS
 
-const Revision = "c766a6bb582ca8ef28ae9548d83af1e61f6cde5d"
+const Revision = "17fa3f69e1706e902af45a82c57584e884e3e0ab"

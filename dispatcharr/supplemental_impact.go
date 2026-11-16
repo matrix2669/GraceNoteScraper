@@ -13,11 +13,15 @@ import (
 	"time"
 )
 
-const ImpactProfile = "exact95-c766a6b-builtins-country-embedded-specific-numbering-quality-off-v1"
+const ImpactProfile = "exact95-17fa3f6-scoped-prefix-v1-builtins-country-embedded-specific-numbering-quality-off-v2"
 
 type ImpactStream struct {
-	Name      string `json:"name"`
-	GroupName string `json:"groupName,omitempty"`
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	GroupName  string `json:"groupName,omitempty"`
+	AccountID  int64  `json:"accountId,omitempty"`
+	GroupID    int64  `json:"groupId,omitempty"`
+	GroupKnown bool   `json:"groupKnown,omitempty"`
 }
 type ImpactRequest struct {
 	Country  string         `json:"country"`
@@ -31,6 +35,7 @@ type ImpactMatch struct {
 	Name       string   `json:"name"`
 	Number     string   `json:"number"`
 	Names      []string `json:"names"`
+	Keys       []string `json:"keys"`
 }
 type ImpactResult struct {
 	Baseline []ImpactMatch `json:"baseline"`
@@ -42,6 +47,13 @@ type ImpactResult struct {
 // unchanged matcher/alias modules run in a separate, bounded, one-shot process.
 func CheckSupplementalImpact(ctx context.Context, request ImpactRequest) (ImpactResult, error) {
 	var result ImpactResult
+	known := make(map[string]bool)
+	for _, stream := range request.Streams {
+		if stream.Key == "" || known[stream.Key] {
+			return result, errors.New("missing or duplicate impact occurrence key")
+		}
+		known[stream.Key] = true
+	}
 	payload, err := json.Marshal(request)
 	if err != nil {
 		return result, err
@@ -51,7 +63,7 @@ func CheckSupplementalImpact(ctx context.Context, request ImpactRequest) (Impact
 		return result, err
 	}
 	defer os.RemoveAll(dir)
-	for _, name := range []string{"impact_runner.py", "fuzzy_matcher.py", "matching_core.py", "aliases.py", "LICENSE"} {
+	for _, name := range []string{"impact_runner.py", "fuzzy_matcher.py", "provider_prefixes.py", "matching_core.py", "aliases.py", "LICENSE"} {
 		data, e := matcher.Files.ReadFile(name)
 		if e != nil {
 			return result, e
@@ -83,6 +95,22 @@ func CheckSupplementalImpact(ctx context.Context, request ImpactRequest) (Impact
 	}
 	if result.Revision != matcher.Revision {
 		return result, errors.New("unexpected impact consumer revision")
+	}
+	for _, rows := range [][]ImpactMatch{result.Baseline, result.Proposed} {
+		pairs := 0
+		for _, row := range rows {
+			seen := make(map[string]bool)
+			for _, key := range row.Keys {
+				if !known[key] || seen[key] {
+					return ImpactResult{}, errors.New("invalid impact occurrence key")
+				}
+				seen[key] = true
+				pairs++
+			}
+		}
+		if pairs > 250000 {
+			return ImpactResult{}, errors.New("impact occurrence bound exceeded")
+		}
 	}
 	return result, nil
 }

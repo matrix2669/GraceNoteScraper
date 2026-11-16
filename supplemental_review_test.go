@@ -206,7 +206,13 @@ func TestSupplementalImpactPhysicalConflictsAndExtraAdmission(t *testing.T) {
 		result := dispatcharr.ImpactResult{}
 		for category, entries := range exported.Categories {
 			for i, entry := range entries {
-				result.Proposed = append(result.Proposed, dispatcharr.ImpactMatch{Category: category, EntryIndex: i, Name: entry.Name, Number: fmt.Sprint(entry.Number), Names: []string{g.StreamNames[0], "Unexpected literal * extra"}})
+				keys := []string{}
+				for _, stream := range req.Streams {
+					if stream.Name == g.StreamNames[0] || stream.Name == "Unexpected literal * extra" {
+						keys = append(keys, stream.Key)
+					}
+				}
+				result.Proposed = append(result.Proposed, dispatcharr.ImpactMatch{Category: category, EntryIndex: i, Name: entry.Name, Number: fmt.Sprint(entry.Number), Names: []string{g.StreamNames[0], "Unexpected literal * extra"}, Keys: keys})
 			}
 		}
 		return result, nil
@@ -312,7 +318,7 @@ func TestSupplementalImpactSameNameAccountAndProtectedBaseline(t *testing.T) {
 	denied.M3UAccountID = 3
 	denied.StreamFingerprint = "second"
 	inventory := []dispatcharr.IdentityStream{{Name: "Equal Name", ID: 1, AccountID: 2, Fingerprint: "first"}, {Name: "Equal Name", ID: 2, AccountID: 3, Fingerprint: "second"}, {Name: "Protected Prior", ID: 4, AccountID: 5, Fingerprint: "protected"}}
-	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Protected Prior"}}}, Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Equal Name"}}}}
+	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Protected Prior"}, Keys: []string{"5:4"}}}, Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: "Canonical", Number: "1", Names: []string{"Equal Name"}, Keys: []string{"2:1", "3:2"}}}}
 	rows := compareSupplementalImpact(draft, inventory, map[string]builder.SupplementalDecision{"a": selected, "b": denied}, nil, result, "conn")
 	if len(rows) != 1 || len(rows[0].Extra) != 1 || len(rows[0].SameNameConflicts) != 2 || len(rows[0].ProtectedConflicts) != 1 {
 		t.Fatalf("account/baseline conflicts hidden: %+v", rows)
@@ -331,7 +337,7 @@ func TestSupplementalImpactPrimaryCoverageMatchesQueueAndKeepsConflicts(t *testi
 		"literal":      {ChannelID: c.ID, Decision: "denied", StreamFingerprint: "other-physical", StreamName: "Denied literal"},
 		"other-target": {ChannelID: "another-target", Decision: "denied", StreamFingerprint: "other", StreamName: "Uncovered extra"},
 	}
-	result := dispatcharr.ImpactResult{Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", EntryIndex: 0, Name: "Canonical", Number: "1", Names: []string{"Confirmed physical", "Denied literal", "Uncovered extra"}}}}
+	result := dispatcharr.ImpactResult{Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", EntryIndex: 0, Name: "Canonical", Number: "1", Names: []string{"Confirmed physical", "Denied literal", "Uncovered extra"}, Keys: []string{"2:1", "4:3", "6:5"}}}}
 	rows := compareSupplementalImpact(draft, inventory, nil, primary, result, "conn")
 	if len(rows) != 1 {
 		t.Fatalf("target row missing: %+v", rows)
@@ -369,5 +375,25 @@ func TestSupplementalProjectionDoesNotSeedPrimary(t *testing.T) {
 	}
 	if after.SupplementalDecisionCount == 0 {
 		t.Fatal("supplemental alias missing from export draft")
+	}
+}
+
+func TestScopedImpactDoesNotBorrowSameNamePhysicalOutcomes(t *testing.T) {
+	c := builder.DraftChannel{ID: "target", Name: "Alpha Network", Number: "1", Included: true}
+	draft := &builder.Draft{Channels: []builder.DraftChannel{c}}
+	inventory := []dispatcharr.IdentityStream{{Name: "ZetaNet: Alpha Network", ID: 1, AccountID: 1, Fingerprint: "supported"}, {Name: "ZetaNet: Alpha Network", ID: 2, AccountID: 2, Fingerprint: "unsupported"}}
+	result := dispatcharr.ImpactResult{Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", EntryIndex: 0, Name: c.Name, Number: "1", Names: []string{inventory[0].Name}, Keys: []string{"1:1"}}}}
+	saved := map[string]builder.MatchDecision{
+		"confirmed": {ChannelID: c.ID, StreamName: inventory[1].Name, StreamID: 2, M3UAccountID: 2, StreamFingerprint: "unsupported", Decision: "confirmed", Score: 87, NameScore: 87},
+		"denied":    {ChannelID: c.ID, StreamName: inventory[0].Name, StreamID: 1, M3UAccountID: 1, StreamFingerprint: "supported", Decision: "denied", Score: 70, NameScore: 70},
+	}
+	before, _ := json.Marshal(saved)
+	rows := compareSupplementalImpact(draft, inventory, nil, saved, result, "conn")
+	after, _ := json.Marshal(saved)
+	if len(rows) != 1 || len(rows[0].Matched) != 1 || rows[0].Matched[0].AccountID != 1 || len(rows[0].ProtectedConflicts) != 2 {
+		t.Fatalf("physical/protected outcomes collapsed: %+v", rows)
+	}
+	if string(before) != string(after) {
+		t.Fatal("impact mutated protected decisions")
 	}
 }

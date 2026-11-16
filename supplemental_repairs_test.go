@@ -36,7 +36,7 @@ func repairImpact(t *testing.T, baseline []byte, draft *builder.Draft, inventory
 	proposed, _ := json.Marshal(builder.ExportFromDraft(draft))
 	req := dispatcharr.ImpactRequest{Country: "US", Baseline: string(baseline), Proposed: string(proposed)}
 	for _, s := range inventory {
-		req.Streams = append(req.Streams, dispatcharr.ImpactStream{Name: s.Name, GroupName: s.GroupName})
+		req.Streams = append(req.Streams, dispatcharr.ImpactStream{Key: fmt.Sprintf("%d:%d", s.AccountID, s.ID), Name: s.Name, GroupName: s.GroupName, AccountID: s.AccountID, GroupID: s.GroupID, GroupKnown: s.GroupKnown})
 	}
 	result, err := dispatcharr.CheckSupplementalImpact(context.Background(), req)
 	if err != nil {
@@ -216,7 +216,7 @@ func TestSupplementalRepairSerializedNumericForms(t *testing.T) {
 
 func TestSupplementalRepairUnsavedTargetProtectedConflict(t *testing.T) {
 	_, draft, _, inventory := repairFixture(t, "1")
-	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: draft.Channels[0].Name, Number: "1", Names: []string{inventory[0].Name}}}, Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: draft.Channels[0].Name, Number: "1"}}}
+	result := dispatcharr.ImpactResult{Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: draft.Channels[0].Name, Number: "1", Names: []string{inventory[0].Name}, Keys: []string{fmt.Sprintf("%d:%d", inventory[0].AccountID, inventory[0].ID)}}}, Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Name: draft.Channels[0].Name, Number: "1"}}}
 	rows := compareSupplementalImpact(draft, inventory, nil, nil, result, "conn")
 	if len(rows) != 1 || len(rows[0].ProtectedConflicts) != 1 {
 		t.Fatalf("unsaved target's lost baseline hidden: %+v", rows)

@@ -137,3 +137,21 @@ active alias or matching/export relationship. The original Verizon PDF/positione
 row, region context and applicability are unavailable. No channel blacklist,
 number-recovery quarantine or alias deletion is justified. ADR036 provider-local
 recovery and ADR039 eligibility remain unchanged pending original-row evidence.
+
+## Scoped comparison evidence
+
+The pinned occurrence-aware consumer now discovers opaque provider wrappers only
+from complete, corroborated account/group inventory evidence. The original raw
+name remains available for all occurrences; a supported stripped comparison is
+available only within its captured scope. Primary scores and Exact95 impact
+outcomes are therefore per physical key, not shared merely because names are
+identical. Impact reports join category/entry target identity and account/stream
+identity. They cannot turn one account's match into another account's match.
+
+This does not change saved raw-name selector semantics. Confirm/Deny suppression
+still follows the established literal-name policy, and JSON aliases/exclusions
+can affect identical names across accounts. Historical scores and choices remain
+unchanged. A newly improved match conflicting with a prior Deny, including one
+below95 that did not export an exclusion, is a protected conflict to report, not
+permission to invent a new Deny, migrate a score or publish. The full discovery
+profile and exact consumer source hashes are in `lineuparr_matcher/README.md`.

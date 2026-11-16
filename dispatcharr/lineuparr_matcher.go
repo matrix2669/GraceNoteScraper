@@ -15,12 +15,14 @@ import (
 )
 
 type lineuparrMatcherResult struct {
-	Matches []struct {
-		ExactAlias string `json:"exactAlias,omitempty"`
-		ChannelID  string `json:"channelId"`
-		StreamKey  string `json:"streamKey"`
-		Score      int    `json:"score"`
-		Reason     string `json:"reason"`
+	ComparisonNames map[string]string `json:"comparisonNames"`
+	Matches         []struct {
+		ComparisonName string `json:"comparisonName,omitempty"`
+		ExactAlias     string `json:"exactAlias,omitempty"`
+		ChannelID      string `json:"channelId"`
+		StreamKey      string `json:"streamKey"`
+		Score          int    `json:"score"`
+		Reason         string `json:"reason"`
 	} `json:"matches"`
 	MatcherVersion string `json:"matcherVersion"`
 }
@@ -31,8 +33,12 @@ type matcherChannel struct {
 	Aliases []string `json:"aliases"`
 }
 type matcherStream struct {
-	Key  string `json:"key"`
-	Name string `json:"name"`
+	Key        string `json:"key"`
+	Name       string `json:"name"`
+	AccountID  int64  `json:"accountId"`
+	GroupID    *int64 `json:"groupId"`
+	GroupKnown bool   `json:"groupKnown"`
+	GroupName  string `json:"groupName"`
 }
 
 // MatchStreamCandidatesWithLineuparr executes the pinned consumer once at 70.
@@ -53,11 +59,15 @@ func MatchStreamCandidatesWithLineuparr(ctx context.Context, source, country str
 		request.Channels = append(request.Channels, matcherChannel{c.ID, c.Name, c.Number, c.Aliases})
 	}
 	for _, s := range streams {
-		if _, exists := byStream[s.Key()]; exists {
+		if old, exists := byStream[s.Key()]; exists {
+			sameGroup := old.ChannelGroupID == nil && s.ChannelGroupID == nil || old.ChannelGroupID != nil && s.ChannelGroupID != nil && *old.ChannelGroupID == *s.ChannelGroupID
+			if old.Fingerprint() != s.Fingerprint() || !sameGroup || old.GroupName != s.GroupName {
+				return CandidateSet{}, "", errors.New("conflicting records for one stream occurrence")
+			}
 			continue
 		}
 		byStream[s.Key()] = s
-		request.Streams = append(request.Streams, matcherStream{s.Key(), s.Name})
+		request.Streams = append(request.Streams, matcherStream{s.Key(), s.Name, s.M3UAccountID, s.ChannelGroupID, s.ChannelGroupID != nil, s.GroupName})
 	}
 	payload, err := json.Marshal(request)
 	if err != nil {
@@ -68,7 +78,7 @@ func MatchStreamCandidatesWithLineuparr(ctx context.Context, source, country str
 		return CandidateSet{}, "", err
 	}
 	defer os.RemoveAll(directory)
-	for _, name := range []string{"runner.py", "fuzzy_matcher.py", "matching_core.py", "LICENSE"} {
+	for _, name := range []string{"runner.py", "fuzzy_matcher.py", "provider_prefixes.py", "matching_core.py", "LICENSE"} {
 		data, err := lineuparrmatcher.Files.ReadFile(name)
 		if err != nil {
 			return CandidateSet{}, "", err
@@ -102,12 +112,18 @@ func MatchStreamCandidatesWithLineuparr(ctx context.Context, source, country str
 	if result.MatcherVersion != lineuparrmatcher.Revision {
 		return CandidateSet{}, "", errors.New("unexpected matcher revision")
 	}
-	set := CandidateSet{}
+	set := CandidateSet{ComparisonNames: result.ComparisonNames}
+	for key, comparison := range result.ComparisonNames {
+		stream, ok := byStream[key]
+		if !ok || stream.ChannelGroupID == nil || *stream.ChannelGroupID <= 0 || stream.M3UAccountID <= 0 || comparison == "" || comparison == stream.Name || !strings.HasSuffix(strings.TrimSpace(stream.Name), comparison) {
+			return CandidateSet{}, "", errors.New("invalid scoped comparison evidence")
+		}
+	}
 	seen := make(map[string]bool)
 	for _, match := range result.Matches {
 		channel, okc := byChannel[match.ChannelID]
 		stream, oks := byStream[match.StreamKey]
-		if !okc || !oks || match.Score < 70 || match.Score > 100 || match.Reason == "" {
+		if !okc || !oks || match.Score < 70 || match.Score > 100 || match.Reason == "" || (match.ComparisonName != "" && result.ComparisonNames[match.StreamKey] != match.ComparisonName) {
 			return CandidateSet{}, "", errors.New("invalid matcher result")
 		}
 		hash := stream.Fingerprint()
@@ -127,7 +143,7 @@ func MatchStreamCandidatesWithLineuparr(ctx context.Context, source, country str
 			StreamID: stream.ID, StreamKey: stream.Key(), StreamName: stream.Name, TVGID: stream.TVGID,
 			M3UAccountID: stream.M3UAccountID, ChannelGroupID: stream.ChannelGroupID, StreamChannelNo: stream.StreamChannelNo,
 			StreamHash: hash, Source: source, Score: match.Score, NameScore: match.Score,
-			Reason: match.Reason, ExactAlias: match.ExactAlias, NormalizedAlias: NormalizeStreamAlias(stream), KnownEPGID: known,
+			Reason: match.Reason, ComparisonName: match.ComparisonName, ExactAlias: match.ExactAlias, NormalizedAlias: NormalizeStreamAlias(stream), KnownEPGID: known,
 		})
 	}
 	included := make(map[string]bool)

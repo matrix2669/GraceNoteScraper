@@ -7,6 +7,7 @@ Forked from Stream-Mapparr's fuzzy_matcher.py (v26.018.0100) with enhancements:
 """
 
 import re
+import time
 import logging
 import unicodedata
 
@@ -27,6 +28,21 @@ except ImportError:  # script/test context without the package parent on sys.pat
         _is_decorative_char,
         _normalize_emoji,
         _strip_stylized_tokens,
+    )
+
+try:
+    from .provider_prefixes import (
+        CandidateView,
+        OccurrenceMatch,
+        identity,
+        prepare_context,
+    )
+except ImportError:
+    from provider_prefixes import (
+        CandidateView,
+        OccurrenceMatch,
+        identity,
+        prepare_context,
     )
 
 __version__ = "1.3.4"
@@ -190,6 +206,15 @@ _KNOWN_COUNTRY_CODES = {
     # SI=Arena Sport, ET=Ethiopia via "ETH: Addis TV"). "MT" is NOT added: in
     # these feeds it tags theme channels (Cooking/Clubbing 4K), not Malta.
     "VN", "PK", "SI", "ET",
+    # Qatar, for the beIN MENA lineup. ONLY QA: that lineup is regional,
+    # the filter is single-country, and the MENA channels are tagged by
+    # LANGUAGE in these feeds ("AR: beIN DRAMA HD", 2710 AR-prefixed names
+    # in a 53,992-name export) rather than by country. Recognizing SA, AE,
+    # LB and the rest would make a QA lineup drop streams it legitimately
+    # carries: the correct "SA: beIN SPORTS 1" feeds read as untagged today
+    # and are kept, and they must stay that way. "AR" stays excluded for the
+    # reason given above: it tags Arabic, not Argentina.
+    "QA",
 }
 
 # ISO-3 or colloquial codes seen in M3U streams → ISO-2.
@@ -412,6 +437,13 @@ def country_codes_in_text(text):
     return codes
 
 
+# Names between yields in precompute_normalizations. Dispatcharr runs plugins
+# under gevent with early monkey-patching, where time.sleep(0) is gevent.sleep(0)
+# and hands the worker back; on this installation 23,240 EPG names held it for 1.5 s with no yield
+# (measured 2026-10-17). Elsewhere time.sleep(0) does nothing.
+PRECOMPUTE_YIELD_EVERY = 500
+
+
 class FuzzyMatcher(FuzzyMatcherCore):
     """Handles fuzzy matching for Lineuparr with alias support and channel number boosting."""
 
@@ -446,7 +478,9 @@ class FuzzyMatcher(FuzzyMatcherCore):
         self._processed_cache.clear()
         self._callsign_cache.clear()
 
-        for name in names:
+        for index, name in enumerate(names):
+            if index and index % PRECOMPUTE_YIELD_EVERY == 0:
+                time.sleep(0)
             if self._is_group_header(name):
                 continue
             norm = self.normalize_name(name, user_ignored_tags)
@@ -787,6 +821,56 @@ class FuzzyMatcher(FuzzyMatcherCore):
     def match_all_streams(self, lineup_name, candidate_names, alias_map, channel_number=None,
                           user_ignored_tags=None, lineup_country=None, quality_aware=False,
                           candidate_countries=None, excluded_aliases=None):
+        """Legacy context-free API, including EPG. No discovery is performed."""
+        views = [CandidateView(n, n, "original", (), None) for n in dict.fromkeys(candidate_names)]
+        return [(v.raw, score, kind) for v, score, kind in self._match_views(
+            lineup_name, views, alias_map, channel_number, user_ignored_tags,
+            lineup_country, quality_aware, candidate_countries, excluded_aliases)]
+
+    def prepare_stream_context(self, streams, reference_names):
+        """Capture immutable occurrence and discovery evidence once per operation."""
+        return prepare_context(streams, reference_names, detect_stream_country,
+                               detect_category_country, self._alias_callsign)
+
+    def match_stream_occurrences(self, lineup_name, context, alias_map, channel_number=None,
+                                 user_ignored_tags=None, lineup_country=None, quality_aware=False,
+                                 candidate_countries=None, excluded_aliases=None):
+        """One scoring pipeline, then reduce only across each physical occurrence."""
+        if candidate_countries is None:
+            candidate_countries = dict(context.countries)
+        # Discovery proves a wrapper, not permission to erase identity tokens.
+        # New paths require complete target/declared-alias identity agreement.
+        complete = {identity(lineup_name), *(identity(a) for a in alias_map.get(lineup_name, []))}
+        views = tuple(v for v in context.views if v.origin == "original" or identity(v.comparison) in complete)
+        scored = self._match_views(lineup_name, views, alias_map, channel_number,
+            user_ignored_tags, lineup_country, quality_aware, candidate_countries, excluded_aliases)
+        aliases = alias_map.get(lineup_name, [])
+        lookup = {}
+        for alias in aliases:
+            norm = self.normalize_name(alias, user_ignored_tags)
+            if norm:
+                norm = norm.lower()
+                lookup[norm] = alias
+                lookup[re.sub(r'[\s&\-]+', '', norm)] = alias
+        winners = {}
+        for view, score, kind in scored:
+            exact_alias = ""
+            if kind == "alias":
+                lower, compact = self._get_cached_norm(view.comparison, user_ignored_tags)
+                exact_alias = lookup.get(lower, lookup.get(compact, ""))
+            for key in view.keys:
+                match = OccurrenceMatch(key, view.raw, score, kind, view.origin, view.comparison, exact_alias)
+                old = winners.get(key)
+                if old is None or score > old.score or (score == old.score and view.origin == "original" and old.origin != "original"):
+                    winners[key] = match
+        # Keep pipeline ranking; use physical key only to resolve exact ties.
+        rank = {v: i for i, (v, _, _) in enumerate(scored)}
+        order = {(v.raw, v.comparison, v.origin): rank[v] for v, _, _ in scored}
+        return sorted(winners.values(), key=lambda m: (-m.score, order[(m.raw_name, m.comparison_name, m.origin)], m.key))
+
+    def _match_views(self, lineup_name, candidate_names, alias_map, channel_number=None,
+                          user_ignored_tags=None, lineup_country=None, quality_aware=False,
+                          candidate_countries=None, excluded_aliases=None):
         """
         Full matching pipeline for Lineuparr: alias → exact → substring → fuzzy, with number boost.
         Returns ALL matching streams sorted by score.
@@ -826,7 +910,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
         if exclusions:
             candidate_names = [
                 candidate for candidate in candidate_names
-                if not self._candidate_is_excluded(candidate, exclusions)
+                if not self._candidate_is_excluded(candidate.raw, exclusions)
             ]
             if not candidate_names:
                 return []
@@ -847,12 +931,12 @@ class FuzzyMatcher(FuzzyMatcherCore):
                     if self.normalize_name(a, ignore_quality=False)
                 }
                 for c in candidate_names:
-                    norm_c = self.normalize_name(c, ignore_quality=False)
+                    norm_c = self.normalize_name(c.raw, ignore_quality=False)
                     if norm_c and norm_c.lower() in norm_aliases:
                         explicit_bypass.add(c)
             candidate_names = [
                 c for c in candidate_names
-                if has_upgrade_quality(c) == lineup_is_upgrade or c in explicit_bypass
+                if has_upgrade_quality(c.raw) == lineup_is_upgrade or c in explicit_bypass
             ]
             if not candidate_names:
                 return []
@@ -867,10 +951,14 @@ class FuzzyMatcher(FuzzyMatcherCore):
         all_matches = {}  # stream_name -> (score, match_type)
 
         # Stage 0: Alias matching
-        alias_results = self.alias_match(lineup_name, candidate_names, alias_map, user_ignored_tags)
-        for stream_name, score, mtype in alias_results:
-            if stream_name not in all_matches or score > all_matches[stream_name][0]:
-                all_matches[stream_name] = (score, mtype)
+        # Alias scoring shares a single batch of comparison strings. Attribution
+        # stays on immutable views, never a raw-name global normalization cache.
+        alias_results = {name: (score, kind) for name, score, kind in self.alias_match(
+            lineup_name, list(dict.fromkeys(v.comparison for v in candidate_names)),
+            alias_map, user_ignored_tags)}
+        for view in candidate_names:
+            if view.comparison in alias_results:
+                all_matches[view] = alias_results[view.comparison]
 
         # Stages 1-3: Standard fuzzy matching
         # We need to collect ALL matches above threshold, not just the best
@@ -892,15 +980,15 @@ class FuzzyMatcher(FuzzyMatcherCore):
             for candidate in candidate_names:
                 if candidate in all_matches:
                     continue  # Already matched via alias
-                if self._is_group_header(candidate):
+                if self._is_group_header(candidate.raw):
                     continue  # Skip M3U group/section separators
 
                 # Use cached normalizations for performance
-                candidate_lower, candidate_nospace = self._get_cached_norm(candidate, user_ignored_tags)
+                candidate_lower, candidate_nospace = self._get_cached_norm(candidate.comparison, user_ignored_tags)
                 if not candidate_lower:
                     continue
 
-                cand_is_shift = bool(_PLUS_SHIFT_RE.search(candidate))
+                cand_is_shift = bool(_PLUS_SHIFT_RE.search(candidate.raw))
                 if query_is_shift != cand_is_shift:
                     continue  # Shift channel (+1/+2) must only match shift streams
 
@@ -937,7 +1025,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
 
                 # Fuzzy token-sort
                 if not mtype:
-                    processed_candidate = self._get_cached_processed(candidate, user_ignored_tags)
+                    processed_candidate = self._get_cached_processed(candidate.comparison, user_ignored_tags)
                     if processed_candidate:
                         ratio = self.calculate_similarity(processed_query, processed_candidate, min_ratio=self.match_threshold / 100.0)
                         fuzzy_score = int(ratio * 100)
@@ -949,7 +1037,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
 
                 if mtype and score > 0:
                     # Apply channel number boost
-                    boost = self._channel_number_boost(candidate, channel_number)
+                    boost = self._channel_number_boost(candidate.raw, channel_number)
                     all_matches[candidate] = (min(score + boost, 100), mtype)
 
         # Callsign anchor: a shared high-confidence callsign rescues an
@@ -960,7 +1048,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
         # is not a reliable callsign and must not floor or reject.
         if query_callsign_norm and query_cs_hc:
             for candidate in candidate_names:
-                cand_cs, cand_hc = self._extract_callsign_with_confidence(candidate)
+                cand_cs, cand_hc = self._extract_callsign_with_confidence(candidate.raw)
                 if not cand_cs or not cand_hc:
                     continue
                 if self.normalize_callsign(cand_cs) == query_callsign_norm:
@@ -972,134 +1060,141 @@ class FuzzyMatcher(FuzzyMatcherCore):
                     # High-confidence callsign disagreement → hard reject.
                     all_matches.pop(candidate, None)
 
-        # Filter out wrong-country matches. A stream whose name carries a
-        # recognized country marker (e.g. "UK: Discovery Channel", "(IN) Bloomberg",
-        # "(PLUTO Brazil) MTV") and that marker differs from the lineup's country
-        # is dropped. Streams without a country marker are kept - we can't prove
-        # they're wrong and over-filtering breaks lineups whose M3U sources don't
-        # tag country at all.
-        #
-        # Matching is STRICT by default: only the lineup's own country passes.
-        # The single exception is a channel that is genuinely the same feed
-        # across a border (e.g. US Spanish networks tagged MEX) - see
-        # _CROSS_BORDER_SHARED. This deliberately rejects same-name-different-
-        # channel cases like "(CA) Food Network" or "(MX) ESPN" for a US lineup.
-        if lineup_country:
-            lc = lineup_country.upper()
-            # Defensive: if caller passes an unrecognized code, skip filtering
-            # rather than drop every country-marked candidate.
-            if lc in _KNOWN_COUNTRY_CODES:
-                nq_fold = _fold_key(normalized_query)
-                kept = {}
-                for name, val in all_matches.items():
-                    sc = detect_stream_country(name)
-                    if sc is None or sc == lc:
-                        kept[name] = val
-                        continue
-                    shared = _CROSS_BORDER_SHARED.get(frozenset({lc, sc}))
-                    if shared and nq_fold in shared:
-                        kept[name] = val  # genuinely-shared cross-border feed
-                        continue
-                    self.country_filter_drops += 1
-                all_matches = kept
-
-                # Second pass, on the provider GROUP rather than the name. A
-                # provider that prefixes streams by platform ("GO:", "RK:",
-                # "PRIME:") leaves every name untagged, so the pass above keeps
-                # all of them and a United States feed reaches an Australian
-                # lineup. The group the stream came from is named for its
-                # country, so use it wherever the name said nothing.
-                #
-                # Skipped entirely when it would remove every remaining
-                # candidate, which is the same escape the regionless branch of
-                # the region filter uses below. A provider whose groups are
-                # mislabelled therefore loses no matches, it just gains nothing.
-                if candidate_countries:
-                    group_kept = {}
+        def filter_pool(all_matches, strict=False):
+            # Filter out wrong-country matches. A stream whose name carries a
+            # recognized country marker (e.g. "UK: Discovery Channel", "(IN) Bloomberg",
+            # "(PLUTO Brazil) MTV") and that marker differs from the lineup's country
+            # is dropped. Streams without a country marker are kept - we can't prove
+            # they're wrong and over-filtering breaks lineups whose M3U sources don't
+            # tag country at all.
+            #
+            # Matching is STRICT by default: only the lineup's own country passes.
+            # The single exception is a channel that is genuinely the same feed
+            # across a border (e.g. US Spanish networks tagged MEX) - see
+            # _CROSS_BORDER_SHARED. This deliberately rejects same-name-different-
+            # channel cases like "(CA) Food Network" or "(MX) ESPN" for a US lineup.
+            if lineup_country:
+                lc = lineup_country.upper()
+                # Defensive: if caller passes an unrecognized code, skip filtering
+                # rather than drop every country-marked candidate.
+                if lc in _KNOWN_COUNTRY_CODES:
+                    nq_fold = _fold_key(normalized_query)
+                    kept = {}
                     for name, val in all_matches.items():
-                        if detect_stream_country(name) is not None:
-                            group_kept[name] = val  # already judged on its name
+                        sc = detect_stream_country(name.raw) or (detect_stream_country(name.comparison) if name.origin != "original" else None)
+                        if sc is None or sc == lc:
+                            kept[name] = val
                             continue
-                        gc = candidate_countries.get(name)
-                        if gc is None or gc == lc:
-                            group_kept[name] = val
-                            continue
-                        shared = _CROSS_BORDER_SHARED.get(frozenset({lc, gc}))
+                        shared = _CROSS_BORDER_SHARED.get(frozenset({lc, sc}))
                         if shared and nq_fold in shared:
-                            group_kept[name] = val
+                            kept[name] = val  # genuinely-shared cross-border feed
                             continue
-                    if group_kept:
-                        self.country_filter_drops += len(all_matches) - len(group_kept)
-                        all_matches = group_kept
+                        self.country_filter_drops += 1
+                    all_matches = kept
 
-        # Filter out wrong-region matches (East vs West vs Pacific).
-        # Detect the lineup channel's region from the ORIGINAL un-normalized
-        # name: normalize_name now strips East/West/Eastern (and Pacific via
-        # REGIONAL_PATTERNS) for scoring, so the normalized form no longer
-        # carries the region word. "east" as a substring also catches the
-        # adjective "Eastern"; for west we require the word but exclude the
-        # "western"/"westerns" genre.
-        original_lower = (lineup_name or "").lower()
-        # Detect (e)/(w)/(p) abbreviations in the original name
-        _has_abbrev_east = bool(re.search(r'\(\s*e\s*\)', original_lower))
-        _has_abbrev_west = bool(re.search(r'\(\s*w\s*\)', original_lower))
-        _has_abbrev_pacific = bool(re.search(r'\(\s*p\s*\)', original_lower))
-        query_has_east = "east" in original_lower or _has_abbrev_east
-        query_has_west = ("west" in original_lower and "western" not in original_lower) or _has_abbrev_west
-        query_has_pacific = ("pacific" in original_lower) or _has_abbrev_pacific
+                    # Second pass, on the provider GROUP rather than the name. A
+                    # provider that prefixes streams by platform ("GO:", "RK:",
+                    # "PRIME:") leaves every name untagged, so the pass above keeps
+                    # all of them and a United States feed reaches an Australian
+                    # lineup. The group the stream came from is named for its
+                    # country, so use it wherever the name said nothing.
+                    #
+                    # Skipped entirely when it would remove every remaining
+                    # candidate, which is the same escape the regionless branch of
+                    # the region filter uses below. A provider whose groups are
+                    # mislabelled therefore loses no matches, it just gains nothing.
+                    if candidate_countries or strict:
+                        group_kept = {}
+                        for name, val in all_matches.items():
+                            if (detect_stream_country(name.raw) or (detect_stream_country(name.comparison) if name.origin != "original" else None)) is not None:
+                                group_kept[name] = val  # already judged on its name
+                                continue
+                            gc = name.country if strict else (candidate_countries or {}).get(name.raw)
+                            if gc is None or gc == lc:
+                                group_kept[name] = val
+                                continue
+                            shared = _CROSS_BORDER_SHARED.get(frozenset({lc, gc}))
+                            if shared and nq_fold in shared:
+                                group_kept[name] = val
+                                continue
+                        if group_kept or strict:
+                            self.country_filter_drops += len(all_matches) - len(group_kept)
+                            all_matches = group_kept
 
-        if query_has_east or query_has_west or query_has_pacific:
-            filtered = {}
-            for stream_name, (score, mtype) in all_matches.items():
-                if stream_name in callsign_anchored:
+            # Filter out wrong-region matches (East vs West vs Pacific).
+            # Detect the lineup channel's region from the ORIGINAL un-normalized
+            # name: normalize_name now strips East/West/Eastern (and Pacific via
+            # REGIONAL_PATTERNS) for scoring, so the normalized form no longer
+            # carries the region word. "east" as a substring also catches the
+            # adjective "Eastern"; for west we require the word but exclude the
+            # "western"/"westerns" genre.
+            original_lower = (lineup_name or "").lower()
+            # Detect (e)/(w)/(p) abbreviations in the original name
+            _has_abbrev_east = bool(re.search(r'\(\s*e\s*\)', original_lower))
+            _has_abbrev_west = bool(re.search(r'\(\s*w\s*\)', original_lower))
+            _has_abbrev_pacific = bool(re.search(r'\(\s*p\s*\)', original_lower))
+            query_has_east = "east" in original_lower or _has_abbrev_east
+            query_has_west = ("west" in original_lower and "western" not in original_lower) or _has_abbrev_west
+            query_has_pacific = ("pacific" in original_lower) or _has_abbrev_pacific
+
+            if query_has_east or query_has_west or query_has_pacific:
+                filtered = {}
+                for stream_name, (score, mtype) in all_matches.items():
+                    if stream_name in callsign_anchored:
+                        filtered[stream_name] = (score, mtype)
+                        continue
+                    sn_lower = stream_name.raw.lower()
+                    stream_has_east = "east" in sn_lower
+                    stream_has_west = "west" in sn_lower and "western" not in sn_lower
+                    stream_has_pacific = "pacific" in sn_lower
+                    stream_has_region = stream_has_east or stream_has_west or stream_has_pacific
+
+                    if query_has_east:
+                        # East channel: match East streams or regionless (assume East)
+                        if stream_has_west and not stream_has_east:
+                            continue  # Skip West-only streams
+                        if stream_has_pacific and not stream_has_east:
+                            continue  # Skip Pacific-only streams
+                    elif query_has_west:
+                        # West channel: match West or Pacific streams (Pacific is West-coast)
+                        if stream_has_east and not stream_has_west and not stream_has_pacific:
+                            continue  # Skip East-only streams
+                        if not stream_has_region:
+                            continue  # Skip regionless streams (they default to East)
+                    elif query_has_pacific:
+                        # Pacific channel: only match Pacific streams
+                        if stream_has_east and not stream_has_pacific:
+                            continue  # Skip East-only streams
+                        if stream_has_west and not stream_has_pacific:
+                            continue  # Skip West-only streams
+                        if not stream_has_region:
+                            continue  # Skip regionless streams (they default to East)
+
                     filtered[stream_name] = (score, mtype)
-                    continue
-                sn_lower = stream_name.lower()
-                stream_has_east = "east" in sn_lower
-                stream_has_west = "west" in sn_lower and "western" not in sn_lower
-                stream_has_pacific = "pacific" in sn_lower
-                stream_has_region = stream_has_east or stream_has_west or stream_has_pacific
-
-                if query_has_east:
-                    # East channel: match East streams or regionless (assume East)
-                    if stream_has_west and not stream_has_east:
-                        continue  # Skip West-only streams
-                    if stream_has_pacific and not stream_has_east:
-                        continue  # Skip Pacific-only streams
-                elif query_has_west:
-                    # West channel: match West or Pacific streams (Pacific is West-coast)
-                    if stream_has_east and not stream_has_west and not stream_has_pacific:
-                        continue  # Skip East-only streams
-                    if not stream_has_region:
-                        continue  # Skip regionless streams (they default to East)
-                elif query_has_pacific:
-                    # Pacific channel: only match Pacific streams
-                    if stream_has_east and not stream_has_pacific:
-                        continue  # Skip East-only streams
-                    if stream_has_west and not stream_has_pacific:
-                        continue  # Skip West-only streams
-                    if not stream_has_region:
-                        continue  # Skip regionless streams (they default to East)
-
-                filtered[stream_name] = (score, mtype)
-            all_matches = filtered
-
-        else:
-            # Regionless channel: prefer regionless EPG entries, reject Pacific/West
-            filtered = {}
-            for stream_name, (score, mtype) in all_matches.items():
-                if stream_name in callsign_anchored:
-                    filtered[stream_name] = (score, mtype)
-                    continue
-                sn_lower = stream_name.lower()
-                stream_has_pacific = "pacific" in sn_lower
-                stream_has_west = "west" in sn_lower and "western" not in sn_lower
-                if stream_has_pacific or stream_has_west:
-                    continue  # Skip Pacific/West for regionless channels (default East)
-                filtered[stream_name] = (score, mtype)
-            # Only apply filter if it doesn't eliminate all matches
-            if filtered:
                 all_matches = filtered
+
+            else:
+                # Regionless channel: prefer regionless EPG entries, reject Pacific/West
+                filtered = {}
+                for stream_name, (score, mtype) in all_matches.items():
+                    if stream_name in callsign_anchored:
+                        filtered[stream_name] = (score, mtype)
+                        continue
+                    sn_lower = stream_name.raw.lower()
+                    stream_has_pacific = "pacific" in sn_lower
+                    stream_has_west = "west" in sn_lower and "western" not in sn_lower
+                    if stream_has_pacific or stream_has_west:
+                        continue  # Skip Pacific/West for regionless channels (default East)
+                    filtered[stream_name] = (score, mtype)
+                # Only apply filter if it doesn't eliminate all matches
+                if filtered or strict:
+                    all_matches = filtered
+
+            return all_matches
+
+        originals = filter_pool({v: score for v, score in all_matches.items() if v.origin == "original"})
+        variants = filter_pool({v: score for v, score in all_matches.items() if v.origin != "original"}, strict=True)
+        all_matches = {**originals, **variants}
 
         # Convert to sorted list. Primary key is score (desc); secondary key is
         # the overlap between the candidate's ORIGINAL tokens and the lineup
@@ -1113,7 +1208,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
         lineup_tokens = set(re.findall(r'[a-z0-9]+', (lineup_name or "").lower()))
 
         def _orig_overlap(candidate_name):
-            cand_tokens = set(re.findall(r'[a-z0-9]+', candidate_name.lower()))
+            cand_tokens = set(re.findall(r'[a-z0-9]+', candidate_name.raw.lower()))
             return len(lineup_tokens & cand_tokens)
 
         # Secondary sort key: prefer streams whose country marker matches the
@@ -1126,7 +1221,7 @@ class FuzzyMatcher(FuzzyMatcherCore):
 
         def _country_key(candidate_name):
             if _sort_active:
-                sc = detect_stream_country(candidate_name)
+                sc = detect_stream_country(candidate_name.raw)
                 # Streams tagged with the lineup's own country rank first; any
                 # surviving cross-border-shared or untagged stream ranks below.
                 return 1 if sc == _sort_lc else 0
