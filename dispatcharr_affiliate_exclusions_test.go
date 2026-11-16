@@ -13,6 +13,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	lineuparrmatcher "github.com/daniel-widrick/GraceNoteScraper/lineuparr_matcher"
 )
 
 func affiliateTestServer(t *testing.T) (*dispatcharrServer, *fakeDispatcharrAPI) {
@@ -32,9 +33,9 @@ func affiliateTestServer(t *testing.T) (*dispatcharrServer, *fakeDispatcharrAPI)
 	s.matcher = func(_ context.Context, source, _ string, channels []dispatcharr.MatchChannel, streams []dispatcharr.Stream, _ map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error) {
 		all := []dispatcharr.Candidate{}
 		for _, stream := range streams {
-			all = append(all, dispatcharr.Candidate{MatcherVersion: "c766a6bb582ca8ef28ae9548d83af1e61f6cde5d", Key: stream.Key(), ChannelID: channels[0].ID, ChannelName: channels[0].Name, ChannelNumber: channels[0].Number, StreamName: stream.Name, StreamID: stream.ID, StreamKey: stream.Key(), StreamHash: stream.Fingerprint(), Source: source, M3UAccountID: stream.M3UAccountID, Score: 100, NameScore: 100, NormalizedAlias: dispatcharr.NormalizeAliasName(stream.Name), Reason: "Lineuparr alias"})
+			all = append(all, dispatcharr.Candidate{MatcherVersion: lineuparrmatcher.Revision, Key: stream.Key(), ChannelID: channels[0].ID, ChannelName: channels[0].Name, ChannelNumber: channels[0].Number, StreamName: stream.Name, StreamID: stream.ID, StreamKey: stream.Key(), StreamHash: stream.Fingerprint(), Source: source, M3UAccountID: stream.M3UAccountID, Score: 100, NameScore: 100, NormalizedAlias: dispatcharr.NormalizeAliasName(stream.Name), Reason: "Lineuparr alias"})
 		}
-		return dispatcharr.CandidateSet{All: all}, "c766a6bb582ca8ef28ae9548d83af1e61f6cde5d", nil
+		return dispatcharr.CandidateSet{All: all}, lineuparrmatcher.Revision, nil
 	}
 	snapshotReview(t, s, true)
 	return s, api
