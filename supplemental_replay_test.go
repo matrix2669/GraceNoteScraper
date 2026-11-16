@@ -215,6 +215,7 @@ func TestProviderPrefixPrivateProspectiveExport(t *testing.T) {
 	}
 	read("active_targets.json", &capture)
 	draft := &builder.Draft{Channels: capture.Channels, CountryCode: capture.Country, SourceFingerprint: capture.Source}
+	write("baseline_go_export.json", builder.ExportFromDraft(draft))
 	var inventory []struct {
 		ID        int64    `json:"id"`
 		Name      string   `json:"name"`

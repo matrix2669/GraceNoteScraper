@@ -25,9 +25,9 @@ def main():
                     accountId=s['m3u_account_id'], groupId=s['channel_group_id'],
                     groupKnown=s['channel_group_id'] is not None, groupName=s['group_name']) for s in inventory]
     prospective = read('prospective_go_export.json')
-    published = read('published_export.json')['data']
+    baseline = read('baseline_go_export.json')
     request = dict(country=read('active_targets.json')['country'], streams=streams,
-                   baseline=json.dumps(published), proposed=json.dumps(prospective))
+                   baseline=json.dumps(baseline), proposed=json.dumps(prospective))
     results = {}
     for label, modules in [('old', args.baseline_modules), ('new', args.candidate_modules)]:
         output = private / f'{label}_impact.json'
@@ -52,16 +52,16 @@ def main():
                 keys = {k for name in row['names'] for k in names.get(name, ())}
             pairs.update((target, key) for key in keys)
         return pairs
-    old = physical(results['old']['proposed'])
+    old = physical(results['old']['baseline'])
     new = physical(results['new']['proposed'])
     saved = read('protected_decisions.json')
     target_ids = set(targets.values())
-    report = {'oldProspectivePairs': len(old), 'newProspectivePairs': len(new),
+    report = {'oldBaselinePairs': len(old), 'newProspectivePairs': len(new),
               'addedPairs': len(new-old), 'lostPairs': len(old-new),
               'newlyMatchingDenials': [], 'previouslyMatchingDenials': [],
               'lostConfirmations': [], 'alreadyMissingConfirmations': [],
               'outOfActiveTargets': 0, 'newExcludedMatches': [],
-              'note': 'Read-only offline replay; no decision or publication mutation. Existing conflicts remain conflicts.'}
+              'note': 'Old consumer/current captured Go export versus new consumer/new projected Go export. Read-only offline replay; no decision or publication mutation. Existing conflicts remain conflicts.'}
     for kind, records in [('primary', saved['matchDecisions']), ('supplemental', saved['supplementalDecisions'])]:
         for key, decision in records.items():
             channel = decision['channelId']
