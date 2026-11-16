@@ -406,6 +406,10 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 	// Names and serialized numbers are not unique identifiers (005.10 and 5.1
 	// serialize alike); never join or overwrite results using those display fields.
 	exported := builder.ExportFromDraft(draft)
+	inventoryByKey := make(map[string]dispatcharr.IdentityStream, len(inventory))
+	for _, stream := range inventory {
+		inventoryByKey[fmt.Sprintf("%d:%d", stream.AccountID, stream.ID)] = stream
+	}
 	before, after := map[string]map[string]bool{}, map[string]map[string]bool{}
 	for _, phase := range []struct {
 		rows []dispatcharr.ImpactMatch
@@ -486,9 +490,13 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 				row.SameNameConflicts = appendUniqueReviewString(row.SameNameConflicts, stream.Name+" has opposing saved outcomes; current schema cannot represent them")
 			}
 		}
-		for name := range baseline {
-			if !proposed[name] {
-				row.ProtectedConflicts = append(row.ProtectedConflicts, "Previously matched name lost: "+name)
+		for key := range baseline {
+			if !proposed[key] {
+				description := "Unknown inventory stream (physical key " + key + ")"
+				if stream, ok := inventoryByKey[key]; ok {
+					description = fmt.Sprintf("%s (account %d, stream %d)", stream.Name, stream.AccountID, stream.ID)
+				}
+				row.ProtectedConflicts = append(row.ProtectedConflicts, "Previously matched stream lost: "+description)
 			}
 		}
 		for _, d := range primary {

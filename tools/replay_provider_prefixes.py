@@ -12,6 +12,16 @@ import sys
 from pathlib import Path
 
 
+
+def record_denied_pairs(report, detail, old, new, denied):
+    """Report each denied physical pair, without hiding additions behind siblings."""
+    for field, pairs in [('newlyMatchingDenials', (new - old) & denied),
+                         ('previouslyMatchingDenials', old & denied)]:
+        for channel, stream in sorted(pairs):
+            report[field].append(dict(detail, channelId=channel, streamKey=stream,
+                                      decisionStreamKey=detail['streamKey']))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--directory', type=Path, required=True)
@@ -77,8 +87,7 @@ def main():
             if decision['decision'] == 'denied':
                 denied = {(channel, k) for raw, keys in names.items()
                           if ' '.join(raw.casefold().split()) == ' '.join(decision['streamName'].casefold().split()) for k in keys}
-                if new & denied:
-                    report['previouslyMatchingDenials' if old & denied else 'newlyMatchingDenials'].append(detail)
+                record_denied_pairs(report, detail, old, new, denied)
     sys.path.insert(0, str(args.candidate_modules.resolve()))
     from fuzzy_matcher import FuzzyMatcher, _exclusion_parts, parse_excluded_aliases
     matcher = FuzzyMatcher(match_threshold=95)

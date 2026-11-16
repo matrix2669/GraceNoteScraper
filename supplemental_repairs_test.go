@@ -222,3 +222,20 @@ func TestSupplementalRepairUnsavedTargetProtectedConflict(t *testing.T) {
 		t.Fatalf("unsaved target's lost baseline hidden: %+v", rows)
 	}
 }
+
+func TestSupplementalImpactLostPhysicalDiagnostic(t *testing.T) {
+	_, draft, _, inventory := repairFixture(t, "1")
+	// Equal raw names on separate accounts must identify the lost occurrence.
+	other := inventory[0]
+	other.AccountID, other.ID = 4, 2
+	inventory = append(inventory, other)
+	result := dispatcharr.ImpactResult{
+		Baseline: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Keys: []string{"3:1", "4:2"}}},
+		Proposed: []dispatcharr.ImpactMatch{{Category: "Uncategorized", Keys: []string{"3:1"}}},
+	}
+	rows := compareSupplementalImpact(draft, inventory, nil, nil, result, "conn")
+	want := "Previously matched stream lost: " + other.Name + " (account 4, stream 2)"
+	if len(rows) != 1 || len(rows[0].ProtectedConflicts) != 1 || rows[0].ProtectedConflicts[0] != want {
+		t.Fatalf("lost occurrence needs raw name and physical identity, got %+v", rows)
+	}
+}
