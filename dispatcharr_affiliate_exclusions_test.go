@@ -261,11 +261,11 @@ func TestHistoricalMatcherAdvisoryDoesNotInvalidateFreshSnapshot(t *testing.T) {
 	}
 	s.snapshot.warning = "Failed capture; previous complete snapshot retained"
 	if stale := snapshotReview(t, s, false); stale.ReviewStatus != "stale" {
-		t.Fatalf("real snapshot warning lost its stale guard: %+v", stale)
+		t.Fatalf("real snapshot warning lost its stale guard: %s", stale.ReviewStatus)
 	}
 	s.snapshot.warning = ""
-	s.snapshot.digest = "outdated-inputs"
+	s.snapshot.lineupFingerprint = "outdated-source"
 	if stale := snapshotReview(t, s, false); stale.ReviewStatus != "refresh-required" {
-		t.Fatalf("input invalidation guard lost: %+v", stale)
+		t.Fatalf("input invalidation guard lost: %s", stale.ReviewStatus)
 	}
 }
