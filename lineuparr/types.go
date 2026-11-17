@@ -20,17 +20,18 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	SupplementalEvidence []ServiceIdentityEvidence
-	Key                  string
-	StationID            string
-	PlacementID          string
-	Number               string
-	CallSign             string
-	Affiliate            string
-	EventCallSigns       []string
-	PreferredName        *AttributedAlias
-	CategoryHint         *AttributedCategory
-	CategoryConflict     bool
+	SupplementalEvidence    []ServiceIdentityEvidence
+	CanonicalNameCandidates []AttributedAlias
+	Key                     string
+	StationID               string
+	PlacementID             string
+	Number                  string
+	CallSign                string
+	Affiliate               string
+	EventCallSigns          []string
+	PreferredName           *AttributedAlias
+	CategoryHint            *AttributedCategory
+	CategoryConflict        bool
 	// Independent schedule support is kept separate from CategoryHint. A
 	// provider category may be the selected proposal while the guide schedule
 	// independently confirms it (or disagrees and keeps review open).
@@ -118,6 +119,7 @@ type DraftChannel struct {
 	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
 	NameSource               string               `json:"nameSource"`
 	NameMethod               string               `json:"nameMethod"`
+	NameDiagnostic           string               `json:"nameDiagnostic,omitempty"`
 	CategorySource           string               `json:"categorySource"`
 	CategoryMethod           string               `json:"categoryMethod,omitempty"`
 	MatchedSources           []string             `json:"matchedSources,omitempty"`
@@ -167,6 +169,7 @@ type SourceMatch struct {
 }
 
 type AutomaticMatchLease struct {
+	CanonicalToken      string
 	EvidenceBound       bool
 	IndexRevision       uint64
 	TMDBRevision        uint64
@@ -178,36 +181,53 @@ type AutomaticMatchLease struct {
 	GuideToken          string
 }
 
+// CanonicalNameProposal is derived evidence only, not a user decision or export.
+type CanonicalNameProposal struct {
+	TargetID     string                  `json:"targetId"`
+	BeforeName   string                  `json:"beforeName"`
+	BeforeSource string                  `json:"beforeSource"`
+	BeforeMethod string                  `json:"beforeMethod"`
+	ProposedName string                  `json:"proposedName"`
+	Descriptor   string                  `json:"descriptor"`
+	Source       string                  `json:"source"`
+	Method       string                  `json:"method"`
+	Proof        ServiceIdentityEvidence `json:"proof"`
+	Hash         string                  `json:"hash"`
+	Status       string                  `json:"status"`
+	Reason       string                  `json:"reason,omitempty"`
+}
+
 type Draft struct {
-	SourceCapture             *SourceCapture        `json:"-"`
-	SupplementalMessage       string                `json:"supplementalMessage,omitempty"`
-	SupplementalDecisionCount int                   `json:"supplementalDecisionCount"`
-	ResetGeneration           uint64                `json:"resetGeneration"`
-	PublicationGeneration     uint64                `json:"publicationGeneration"`
-	AutomaticLease            *AutomaticMatchLease  `json:"-"`
-	AutomaticMatchingStatus   string                `json:"automaticMatchingStatus,omitempty"`
-	AutomaticMatchingMessage  string                `json:"automaticMatchingMessage,omitempty"`
-	AutomaticExclusionCount   int                   `json:"automaticExclusionCount"`
-	SourceFingerprint         string                `json:"sourceFingerprint"`
-	GeneratedAt               time.Time             `json:"generatedAt"`
-	Package                   string                `json:"package"`
-	ProviderName              string                `json:"providerName"`
-	PostalCode                string                `json:"postalCode"`
-	LineupID                  string                `json:"lineupId"`
-	CountryCode               string                `json:"countryCode"`
-	Channels                  []DraftChannel        `json:"channels"`
-	DuplicateSuggestions      []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups           []DuplicateGroup      `json:"duplicateGroups"`
-	Sources                   []SourceStatus        `json:"sources"`
-	Categories                []string              `json:"categories"`
-	Total                     int                   `json:"total"`
-	Included                  int                   `json:"included"`
-	Excluded                  int                   `json:"excluded"`
-	AliasCount                int                   `json:"aliasCount"`
-	Categorized               int                   `json:"categorized"`
-	Uncategorized             int                   `json:"uncategorized"`
-	CustomizationSignature    string                `json:"customizationSignature"`
-	ExportSignatures          ExportSignatures      `json:"exportSignatures"`
+	CanonicalNameProposals    []CanonicalNameProposal `json:"canonicalNameProposals,omitempty"`
+	SourceCapture             *SourceCapture          `json:"-"`
+	SupplementalMessage       string                  `json:"supplementalMessage,omitempty"`
+	SupplementalDecisionCount int                     `json:"supplementalDecisionCount"`
+	ResetGeneration           uint64                  `json:"resetGeneration"`
+	PublicationGeneration     uint64                  `json:"publicationGeneration"`
+	AutomaticLease            *AutomaticMatchLease    `json:"-"`
+	AutomaticMatchingStatus   string                  `json:"automaticMatchingStatus,omitempty"`
+	AutomaticMatchingMessage  string                  `json:"automaticMatchingMessage,omitempty"`
+	AutomaticExclusionCount   int                     `json:"automaticExclusionCount"`
+	SourceFingerprint         string                  `json:"sourceFingerprint"`
+	GeneratedAt               time.Time               `json:"generatedAt"`
+	Package                   string                  `json:"package"`
+	ProviderName              string                  `json:"providerName"`
+	PostalCode                string                  `json:"postalCode"`
+	LineupID                  string                  `json:"lineupId"`
+	CountryCode               string                  `json:"countryCode"`
+	Channels                  []DraftChannel          `json:"channels"`
+	DuplicateSuggestions      []DuplicateSuggestion   `json:"duplicateSuggestions"`
+	DuplicateGroups           []DuplicateGroup        `json:"duplicateGroups"`
+	Sources                   []SourceStatus          `json:"sources"`
+	Categories                []string                `json:"categories"`
+	Total                     int                     `json:"total"`
+	Included                  int                     `json:"included"`
+	Excluded                  int                     `json:"excluded"`
+	AliasCount                int                     `json:"aliasCount"`
+	Categorized               int                     `json:"categorized"`
+	Uncategorized             int                     `json:"uncategorized"`
+	CustomizationSignature    string                  `json:"customizationSignature"`
+	ExportSignatures          ExportSignatures        `json:"exportSignatures"`
 }
 
 type ExportSignatures struct {
@@ -259,6 +279,7 @@ type MatchDecision struct {
 }
 
 type State struct {
+	Lifecycle             *LifecycleState                 `json:"lifecycle,omitempty"`
 	SupplementalDecisions map[string]SupplementalDecision `json:"supplementalDecisions,omitempty"`
 	ResetGeneration       uint64                          `json:"resetGeneration,omitempty"`
 	PublicationGeneration uint64                          `json:"publicationGeneration,omitempty"`

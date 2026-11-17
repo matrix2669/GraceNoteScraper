@@ -161,6 +161,10 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 }
 
 func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot) (automaticMatchView, dispatcharr.AutomaticResult) {
+	return s.automaticViewFrom(draft, config, snapshot, s.lineup.builder)
+}
+
+func (s *dispatcharrServer) automaticViewFrom(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, reader builder.ReviewProjection) (automaticMatchView, dispatcharr.AutomaticResult) {
 	view := automaticMatchView{Status: "refresh-required", Message: "Refresh streams to derive current channel-scoped exclusions. Saved manual decisions remain unchanged.", Policy: automaticMatchPolicy, Rows: []automaticMatchRow{}, Hidden: map[string]bool{}}
 	empty := dispatcharr.AutomaticResult{Hidden: map[string]bool{}}
 	conn, connected := s.config.Get()
@@ -180,12 +184,12 @@ func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config a
 			candidates = append(candidates, c)
 		}
 	}
-	stored := s.lineup.builder.MatchDecisions(config.Fingerprint())
+	stored := reader.MatchDecisions(config.Fingerprint())
 	decisions := []dispatcharr.Decision{}
 	for _, d := range stored {
 		decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: d.DispatcharrFingerprint, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, NormalizedAlias: d.NormalizedAlias, Decision: d.Decision})
 	}
-	for _, d := range s.lineup.builder.SupplementalDecisions(config.Fingerprint()) {
+	for _, d := range reader.SupplementalDecisions(config.Fingerprint()) {
 		target := builderChannelIdentity(draft, d.ChannelID)
 		protected := false
 		for _, old := range stored {
@@ -222,15 +226,27 @@ func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config a
 }
 
 func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, config appconfig.Config) {
-	connection, _ := s.config.Get()
-	s.lineup.builder.ProjectSupplementalDecisions(draft, config.Fingerprint(), connection.Fingerprint())
-	evidence := s.lineup.reviewInputsRevision()
-	stateToken := s.lineup.builder.ReviewStateToken()
-	inventoryToken := s.inventoryObservationToken()
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
 	s.reviewMu.RUnlock()
-	view, result := s.automaticView(draft, config, snapshot)
+	actualToken := snapshotIdentity(snapshot)
+	selected, canonicalToken := s.canonicalProjection(draft, config, snapshot)
+	s.projectAutomaticExclusionsFrom(draft, config, selected, s.lineup.builder, s.lineup.reviewInputsRevision())
+	draft.AutomaticLease.SnapshotToken = actualToken
+	draft.AutomaticLease.CanonicalToken = canonicalToken
+}
+func (s *dispatcharrServer) projectAutomaticExclusionsFrom(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, reader builder.ReviewProjection, evidence reviewInputsRevision) {
+	connection, _ := s.config.Get()
+	reader.ProjectSupplementalDecisions(draft, config.Fingerprint(), connection.Fingerprint())
+	stateToken := reader.ReviewStateToken()
+	inventoryToken := s.inventoryObservationToken()
+	var view automaticMatchView
+	var result dispatcharr.AutomaticResult
+	if reader == s.lineup.builder {
+		view, result = s.automaticView(draft, config, snapshot)
+	} else {
+		view, result = s.automaticViewFrom(draft, config, snapshot, reader)
+	}
 	conn, connected := s.config.Get()
 	fingerprint := ""
 	if connected {
@@ -316,6 +332,13 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 					defer s.reviewMu.RUnlock()
 					s.cache.mu.Lock()
 					defer s.cache.mu.Unlock()
+					canonicalToken := ""
+					if s.canonical != nil {
+						canonicalToken = s.canonical.generation
+					}
+					if canonicalToken != lease.CanonicalToken {
+						return errAutomaticStale
+					}
 					if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.cache.observationTokenLocked() != lease.InventoryToken {
 						return errAutomaticStale
 					}

@@ -115,6 +115,11 @@ func applyVerifiedStationCatalogs(inputs []InputChannel, includeCategories bool)
 					method = "USER-ATTESTED historical rename; exact station and raw callsign; " + row.Revision + " " + row.RowID + "; not independently verified primary proof"
 				}
 				inputs[i].ExternalAliases = append(inputs[i].ExternalAliases, AttributedAlias{Value: alias, Source: row.SourceID, Method: method, Identity: proof})
+				// Only the attributable row descriptor, not an arbitrary alias, can
+				// nominate a canonical display name. The same owner census applies.
+				if strings.EqualFold(strings.TrimSpace(alias), strings.TrimSpace(row.Name)) {
+					inputs[i].CanonicalNameCandidates = append(inputs[i].CanonicalNameCandidates, AttributedAlias{Value: row.Name, Source: row.SourceID, Method: method, Identity: proof})
+				}
 			}
 			if includeCategories && row.Attestation != "USER-ATTESTED" {
 				applyVerifiedCategory(&inputs[i], row)

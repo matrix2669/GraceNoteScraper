@@ -33,39 +33,48 @@ type dispatcharrAPI interface {
 }
 
 type dispatcharrServer struct {
-	impactMu                sync.Mutex
-	impactLaunchMu          sync.Mutex
-	impactCompleted         *supplementalImpactJob
-	impactSignal            chan struct{}
-	impactContext           context.Context
-	impactStop              context.CancelFunc
-	impactStopped           chan struct{}
-	impactDirty             uint64
-	impactRequestedKey      string
-	impactRefreshes         int
-	impactLifecycle         string
-	impact                  *supplementalImpactJob
-	impactRunner            func(context.Context, dispatcharr.ImpactRequest) (dispatcharr.ImpactResult, error)
-	supplementalMu          sync.Mutex
-	supplementalPreparation supplementalPreparation
-	supplementalAdmission   supplementalAdmission
-	lineup                  *lineuparrServer
-	config                  *dispatcharr.ConfigStore
-	client                  dispatcharrAPI
-	configMu                sync.Mutex
-	cache                   dispatcharrStreamCache
-	reviewMu                sync.RWMutex
-	automaticMu             sync.Mutex
-	automaticCache          cachedAutomaticView
-	admission               reviewAdmission
-	operationScope          string
-	operations              map[string]reviewOperation
-	review                  dispatcharrCandidateCache
-	refreshMu               sync.Mutex
-	progressMu              sync.Mutex
-	progress                dispatcharrMatchProgress
-	snapshot                dispatcharrMatchSnapshot
-	matcher                 func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
+	canonical                            *canonicalValidation // guarded by reviewMu
+	canonicalCancel                      context.CancelFunc   // guarded by impactMu
+	canonicalDone                        chan struct{}        // guarded by impactMu
+	lifecycleStageCheck                  func(string) error   // isolated projection/fence fault injection; nil in production
+	lifecycleMu                          sync.Mutex
+	lifecycleSource, lifecycleConnection string
+	lifecycleResult                      lineuparrbuilder.LifecycleResult
+	lifecycleUnsafe                      bool
+	lifecycleProcessEpoch                string
+	impactMu                             sync.Mutex
+	impactLaunchMu                       sync.Mutex
+	impactCompleted                      *supplementalImpactJob
+	impactSignal                         chan struct{}
+	impactContext                        context.Context
+	impactStop                           context.CancelFunc
+	impactStopped                        chan struct{}
+	impactDirty                          uint64
+	impactRequestedKey                   string
+	impactRefreshes                      int
+	impactLifecycle                      string
+	impact                               *supplementalImpactJob
+	impactRunner                         func(context.Context, dispatcharr.ImpactRequest) (dispatcharr.ImpactResult, error)
+	supplementalMu                       sync.Mutex
+	supplementalPreparation              supplementalPreparation
+	supplementalAdmission                supplementalAdmission
+	lineup                               *lineuparrServer
+	config                               *dispatcharr.ConfigStore
+	client                               dispatcharrAPI
+	configMu                             sync.Mutex
+	cache                                dispatcharrStreamCache
+	reviewMu                             sync.RWMutex
+	automaticMu                          sync.Mutex
+	automaticCache                       cachedAutomaticView
+	admission                            reviewAdmission
+	operationScope                       string
+	operations                           map[string]reviewOperation
+	review                               dispatcharrCandidateCache
+	refreshMu                            sync.Mutex
+	progressMu                           sync.Mutex
+	progress                             dispatcharrMatchProgress
+	snapshot                             dispatcharrMatchSnapshot
+	matcher                              func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
 }
 
 type dispatcharrMatchProgress struct {
@@ -105,6 +114,7 @@ type dispatcharrMatchSnapshot struct {
 	digest                 string
 	candidates             []dispatcharr.Candidate
 	identityStreams        []dispatcharr.IdentityStream
+	safeStreams            []dispatcharr.Stream
 	streamCount            int
 	inventoryDigest        string
 	fetchedAt              time.Time
@@ -159,26 +169,27 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
-	ReviewItems          []any                        `json:"reviewItems"`
-	ReviewedItems        []any                        `json:"reviewedItems"`
-	SupplementalImpact   supplementalImpactResponse   `json:"supplementalImpact"`
-	Supplemental         supplementalReview           `json:"supplemental"`
-	OperationScope       string                       `json:"operationScope"`
-	DecisionTokens       map[string]string            `json:"decisionTokens"`
-	Coverage             dispatcharrCoverage          `json:"coverage"`
-	Automatic            automaticMatchView           `json:"automatic"`
-	ReviewStatus         string                       `json:"reviewStatus"`
-	StreamCount          int                          `json:"streamCount"`
-	CandidateCount       int                          `json:"candidateCount"`
-	CandidateStreamCount int                          `json:"candidateStreamCount"`
-	ConfirmedCount       int                          `json:"confirmedCount"`
-	DeniedCount          int                          `json:"deniedCount"`
-	FetchedAt            time.Time                    `json:"fetchedAt"`
-	Cached               bool                         `json:"cached"`
-	Warning              string                       `json:"warning,omitempty"`
-	VisibleLimit         int                          `json:"visibleLimit"`
-	Candidates           []dispatcharr.CandidateGroup `json:"candidates"`
-	Decisions            []dispatcharrReviewDecision  `json:"decisions"`
+	Lifecycle            lineuparrbuilder.LifecycleResult `json:"lifecycle"`
+	ReviewItems          []any                            `json:"reviewItems"`
+	ReviewedItems        []any                            `json:"reviewedItems"`
+	SupplementalImpact   supplementalImpactResponse       `json:"supplementalImpact"`
+	Supplemental         supplementalReview               `json:"supplemental"`
+	OperationScope       string                           `json:"operationScope"`
+	DecisionTokens       map[string]string                `json:"decisionTokens"`
+	Coverage             dispatcharrCoverage              `json:"coverage"`
+	Automatic            automaticMatchView               `json:"automatic"`
+	ReviewStatus         string                           `json:"reviewStatus"`
+	StreamCount          int                              `json:"streamCount"`
+	CandidateCount       int                              `json:"candidateCount"`
+	CandidateStreamCount int                              `json:"candidateStreamCount"`
+	ConfirmedCount       int                              `json:"confirmedCount"`
+	DeniedCount          int                              `json:"deniedCount"`
+	FetchedAt            time.Time                        `json:"fetchedAt"`
+	Cached               bool                             `json:"cached"`
+	Warning              string                           `json:"warning,omitempty"`
+	VisibleLimit         int                              `json:"visibleLimit"`
+	Candidates           []dispatcharr.CandidateGroup     `json:"candidates"`
+	Decisions            []dispatcharrReviewDecision      `json:"decisions"`
 }
 
 type dispatcharrReviewBuild struct {
@@ -487,10 +498,27 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		return dispatcharrReviewBuild{}, false
 	}
 	reviewState := s.lineup.builder.ReviewStateToken()
+	var lifecyclePlan *lineuparrbuilder.LifecycleProjection
+	lifecycleCommitted := false
+	defer func() {
+		if lifecyclePlan != nil && !lifecycleCommitted {
+			s.lifecycleMu.Lock()
+			s.lifecycleUnsafe = true
+			s.lifecycleMu.Unlock()
+		}
+	}()
+	var reader lineuparrbuilder.ReviewProjection = s.lineup.builder
+	lifecycle := lineuparrbuilder.LifecycleResult{Status: "not-checked", Reason: "Lifecycle is checked only during a successful explicit refresh"}
 	admissionInputs := s.lineup.reviewInputsRevision()
 	currentGuide := s.lineup.state.Get()
+	if !force {
+		lifecycle = s.previousLifecycle(admissionInputs.config.Fingerprint(), dispatchConfig.Fingerprint())
+	}
 	draft, lineupConfig, _, ok := s.lineup.buildDraft(w, r)
 	if !ok {
+		if force {
+			s.invalidateRefreshLifecycle(dispatchConfig, admissionInputs.config, admissionInputs, reviewState)
+		}
 		return dispatcharrReviewBuild{}, false
 	}
 
@@ -498,7 +526,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	digest := dispatcharrInputDigest(channels)
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
+	expectedSnapshot := snapshotIdentity(snapshot)
 	s.reviewMu.RUnlock()
+	snapshot = s.canonicalReviewSnapshot(channels, snapshot, admissionInputs)
 	// Removing targets can reuse the previous scan. Remember the reduced input
 	// set so a later addition is not silently treated as part of that review.
 	if snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && !snapshot.fetchedAt.IsZero() && dispatcharrInputsSubset(channels, snapshot.channels) {
@@ -508,9 +538,11 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		s.reviewMu.Lock()
 		if s.snapshot.digest == previousDigest && s.snapshot.fetchedAt.Equal(snapshot.fetchedAt) {
 			s.snapshot = snapshot
+			expectedSnapshot = snapshotIdentity(snapshot)
 		}
 		s.reviewMu.Unlock()
 	}
+
 	if force {
 		streams, fetchErr := s.client.Streams(r.Context(), dispatchConfig)
 		failureMessage := "Unable to fetch Dispatcharr streams. Check the connection and retry Refresh streams."
@@ -542,6 +574,19 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			failureMessage = "Matching failed. Check that Python 3 is installed (LINEUPARR_MATCHER_PYTHON), or retry with a smaller stream inventory if the match exceeded five minutes."
 		}
 		if fetchErr != nil {
+			invalidated := s.invalidateRefreshLifecycle(dispatchConfig, lineupConfig, admissionInputs, reviewState)
+			if invalidated {
+				reviewState = s.lineup.builder.ReviewStateToken()
+				admissionInputs = s.lineup.reviewInputsRevision()
+				draft, lineupConfig, _, ok = s.lineup.buildDraft(w, r)
+				if !ok {
+					return dispatcharrReviewBuild{}, false
+				}
+				channels, includedTargets = dispatcharrSnapshotChannels(draft)
+				digest = dispatcharrInputDigest(channels)
+			}
+			lifecycle = lineuparrbuilder.LifecycleResult{Status: "deferred", Reason: "Refresh failed; lifecycle choices preserved"}
+			s.rememberLifecycle(lineupConfig.Fingerprint(), dispatchConfig.Fingerprint(), lifecycle)
 			// The previous complete snapshot is retained. No partial results are published.
 			if snapshot.dispatcharrFingerprint != dispatchConfig.Fingerprint() || snapshot.lineupFingerprint != lineupConfig.Fingerprint() || snapshot.digest != digest || snapshot.fetchedAt.IsZero() {
 				http.Error(w, failureMessage, http.StatusBadGateway)
@@ -551,14 +596,41 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		} else {
 			currentDraft, currentLineup, currentInputs, valid := s.lineup.buildDraft(w, r)
 			if !valid {
+				s.invalidateRefreshLifecycle(dispatchConfig, lineupConfig, admissionInputs, reviewState)
 				return dispatcharrReviewBuild{}, false
 			}
 			currentChannels, currentIncluded := dispatcharrSnapshotChannels(currentDraft)
 			currentDispatch, connected := s.config.Get()
 			if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() || currentLineup.Fingerprint() != lineupConfig.Fingerprint() || !dispatcharrInputsSubset(currentChannels, channels) {
+				s.invalidateRefreshLifecycle(dispatchConfig, lineupConfig, admissionInputs, reviewState)
 				http.Error(w, "The lineup or connection changed during refresh; refresh streams again", http.StatusConflict)
 				return dispatcharrReviewBuild{}, false
 			}
+			lifecyclePlan, lifecycle = s.prepareRefreshLifecycle(r.Context(), dispatchConfig, lineupConfig, reviewState, currentDraft, streams)
+			if lifecyclePlan != nil {
+				if s.lifecycleStageCheck != nil {
+					if err := s.lifecycleStageCheck("projection"); err != nil {
+						http.Error(w, "Lifecycle projection failed; choices preserved", 500)
+						return dispatcharrReviewBuild{}, false
+					}
+				}
+				reader = lifecyclePlan
+				staged, err := reader.BuildCaptured(r.Context(), lineuparrbuilder.LineupContext{SourceFingerprint: lineupConfig.Fingerprint(), Country: lineupConfig.Gracenote.Country, PostalCode: lineupConfig.Gracenote.PostalCode, ProviderName: lineupConfig.Gracenote.ProviderName, LineupID: lineupConfig.Gracenote.LineupID}, copyReviewInputs(currentInputs), currentDraft.SourceCapture)
+				if err != nil {
+					http.Error(w, "Unable to stage lifecycle projection; choices preserved", 500)
+					return dispatcharrReviewBuild{}, false
+				}
+				currentDraft = staged
+				currentDraft.ResetGeneration = reader.ResetGeneration()
+				currentDraft.PublicationGeneration = reader.PublicationGeneration()
+				currentChannels, currentIncluded = dispatcharrSnapshotChannels(currentDraft)
+				if !dispatcharrInputsSubset(currentChannels, channels) {
+					http.Error(w, "Lifecycle changed primary inputs; choices preserved", 409)
+					return dispatcharrReviewBuild{}, false
+				}
+				admissionInputs.choices = reader.ReviewInputToken()
+			}
+			draft = currentDraft
 			generation := fmt.Sprintf("%s:%d", digest, time.Now().UnixNano())
 			for i := range matches.All {
 				matches.All[i].ReviewGeneration = generation
@@ -567,20 +639,17 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			snapshot = dispatcharrMatchSnapshot{
 				reviewInputs: copyReviewInputs(currentInputs), reviewSources: currentDraft.SourceCapture,
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
-				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
+				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, safeStreams: copySafeStreams(streams), streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
 			snapshot.channels = currentChannels
 			snapshot.digest = dispatcharrInputDigest(currentChannels)
 			digest = snapshot.digest
 		}
-		s.reviewMu.Lock()
-		s.snapshot = snapshot
-		s.reviewMu.Unlock()
 	}
 	capturedSnapshot := snapshotIdentity(snapshot)
 	capturedInventory := s.inventoryObservationToken()
-	resetGeneration := s.lineup.builder.ResetGeneration()
+	resetGeneration := reader.ResetGeneration()
 	currentDispatch, connected := s.config.Get()
 	if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() {
 		http.Error(w, "The Dispatcharr connection changed; reload match review", http.StatusConflict)
@@ -596,7 +665,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		snapshot.streamCount = 0
 		snapshot.fetchedAt = time.Time{}
 	}
-	stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
+	stored := reader.MatchDecisions(lineupConfig.Fingerprint())
 	matcherDecisions := make(map[string]dispatcharr.Decision, len(stored))
 	for _, decision := range stored {
 		if decision.MatcherVersion != lineuparrmatcher.Revision {
@@ -631,7 +700,12 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	automatic := automaticMatchView{Rows: []automaticMatchRow{}}
 	var derived dispatcharr.AutomaticResult
 	if s.lineup.automaticProjection != nil {
-		automatic, derived = s.automaticView(draft, lineupConfig, snapshot)
+		if lifecyclePlan != nil {
+			s.projectAutomaticExclusionsFrom(draft, lineupConfig, snapshot, reader, admissionInputs)
+			automatic, derived = s.automaticViewFrom(draft, lineupConfig, snapshot, reader)
+		} else {
+			automatic, derived = s.automaticView(draft, lineupConfig, snapshot)
+		}
 	}
 	if validSnapshot {
 		classified := append([]dispatcharr.Candidate(nil), snapshot.candidates...)
@@ -700,8 +774,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		status = "refreshing"
 	}
 	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
-	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, dispatcharrReviewMaxLimit)
+	supplemental, supplementalGroups := s.buildSupplementalReviewFrom(draft, lineupConfig, snapshot, admissionInputs, derived, admitCurrent, dispatcharrReviewMaxLimit, reader)
 	response := dispatcharrReviewResponse{
+		Lifecycle:    lifecycle,
 		Supplemental: supplemental, SupplementalImpact: s.impactResponse(),
 		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 		StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
@@ -761,17 +836,34 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	for _, g := range saved {
 		response.ReviewedItems = append(response.ReviewedItems, g.item)
 	}
+	if lifecyclePlan != nil && s.lifecycleStageCheck != nil {
+		if err := s.lifecycleStageCheck("publication"); err != nil {
+			http.Error(w, "Lifecycle publication preparation failed; choices preserved", 500)
+			return dispatcharrReviewBuild{}, false
+		}
+	}
 	// Validate all captured generations together, after expensive computation.
 	// Response data and admission become current at this publication point.
 	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
 		return s.commitAdmittedDecision(reviewAdmission{inputs: admissionInputs}, func() error {
-			return s.lineup.builder.WhileReviewState(reviewState, func() error {
+			publish := func(write func() error) error {
 				s.reviewMu.Lock()
 				defer s.reviewMu.Unlock()
 				s.cache.mu.Lock()
 				defer s.cache.mu.Unlock()
-				if snapshotIdentity(s.snapshot) != capturedSnapshot || s.cache.observationTokenLocked() != capturedInventory {
+				if snapshotIdentity(s.snapshot) != expectedSnapshot || s.cache.observationTokenLocked() != capturedInventory {
 					return lineuparrbuilder.ErrStaleReview
+				}
+				if err := r.Context().Err(); err != nil {
+					return err
+				}
+				if err := write(); err != nil {
+					return err
+				}
+				// No fallible work follows the durable commit.
+				s.snapshot = snapshot
+				if lifecyclePlan != nil {
+					s.retireLifecycleOperationsLocked(lifecyclePlan.RetiredKeys())
 				}
 				s.cacheCandidatesLocked(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
 				scope := reviewOperationScope(configurationToken(lineupConfig), dispatchConfig.Fingerprint(), capturedSnapshot, capturedInventory, resetGeneration, currentGuide)
@@ -785,10 +877,23 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 					}
 				}
 				return nil
-			})
+			}
+			if lifecyclePlan != nil {
+				return s.lineup.builder.CommitLifecycle(r.Context(), lifecyclePlan, publish)
+			}
+			return s.lineup.builder.WhileReviewState(reviewState, func() error { return publish(func() error { return nil }) })
 		})
 	}, w) {
 		return dispatcharrReviewBuild{}, false
+	}
+	if force {
+		s.rememberLifecycle(lineupConfig.Fingerprint(), dispatchConfig.Fingerprint(), lifecycle)
+	}
+	if lifecyclePlan != nil {
+		lifecycleCommitted = true
+		s.lifecycleMu.Lock()
+		s.lifecycleUnsafe = false
+		s.lifecycleMu.Unlock()
 	}
 	return dispatcharrReviewBuild{response: response, candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig}, true
 }
@@ -1100,4 +1205,21 @@ func dispatcharrInputsSubset(current, scanned []dispatcharr.MatchChannel) bool {
 		}
 	}
 	return true
+}
+
+// Snapshot owns immutable safe matcher fields; pointers must not alias API data.
+func copySafeStreams(in []dispatcharr.Stream) []dispatcharr.Stream {
+	out := make([]dispatcharr.Stream, len(in))
+	copy(out, in)
+	for i := range out {
+		if in[i].ChannelGroupID != nil {
+			v := *in[i].ChannelGroupID
+			out[i].ChannelGroupID = &v
+		}
+		if in[i].StreamChannelNo != nil {
+			v := *in[i].StreamChannelNo
+			out[i].StreamChannelNo = &v
+		}
+	}
+	return out
 }

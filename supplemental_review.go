@@ -90,6 +90,11 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 	if old.snapshot == key && old.inputs == inputs {
 		return old.candidates, old.complete
 	}
+	candidates, complete := s.prepareSupplementalUncached(draft, config, snapshot)
+	s.supplementalPreparation = supplementalPreparation{inputs, key, candidates, complete}
+	return candidates, complete
+}
+func (s *dispatcharrServer) prepareSupplementalUncached(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot) ([]dispatcharr.SupplementalCandidate, bool) {
 	feeds, _ := stationFeedCatalog(draft, config)
 	targets := []dispatcharr.SupplementalTarget{}
 	for _, c := range draft.Channels {
@@ -120,7 +125,6 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 		targets = append(targets, dispatcharr.SupplementalTarget{ID: c.ID, StationID: c.StationID, PlacementID: c.PlacementID, Number: c.Number, Name: c.Name, CallSign: c.CallSign, Country: affiliateCountry(config.Gracenote.Country), Labels: labels, Feed: feeds[c.ID]})
 	}
 	candidates, complete := dispatcharr.RetrieveSupplemental(targets, snapshot.identityStreams, snapshot.candidates)
-	s.supplementalPreparation = supplementalPreparation{inputs, key, candidates, complete}
 	return candidates, complete
 }
 func supplementalDecision(c dispatcharr.SupplementalCandidate, source, connection, snapshot string) builder.SupplementalDecision {
@@ -215,9 +219,12 @@ func filterSupplementalAutomatic(candidates []dispatcharr.SupplementalCandidate,
 }
 
 func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int) (supplementalReview, []supplementalGroup) {
+	return s.buildSupplementalReviewFrom(draft, config, snapshot, inputs, automatic, valid, limit, s.lineup.builder)
+}
+func (s *dispatcharrServer) buildSupplementalReviewFrom(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int, reader builder.ReviewProjection) (supplementalReview, []supplementalGroup) {
 	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, validation runs automatically in the background. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
-	stored := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
-	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
+	stored := reader.SupplementalDecisions(config.Fingerprint())
+	primary := reader.MatchDecisions(config.Fingerprint())
 	history := []builder.SupplementalDecision{}
 	for _, d := range stored {
 		history = append(history, d)
@@ -260,8 +267,15 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 	if !valid || snapshot.warning != "" || !supplementalEvidenceCurrent(snapshot, inputs) {
 		return response, nil
 	}
-	candidates, complete := s.prepareSupplemental(draft, config, snapshot, inputs)
+	var candidates []dispatcharr.SupplementalCandidate
+	var complete bool
+	if reader == s.lineup.builder {
+		candidates, complete = s.prepareSupplemental(draft, config, snapshot, inputs)
+	} else {
+		candidates, complete = s.prepareSupplementalUncached(draft, config, snapshot)
+	}
 	candidates = append(append([]dispatcharr.SupplementalCandidate(nil), candidates...), s.impactExtraCandidates(draft, snapshot, inputs)...)
+	candidates = append(candidates, s.canonicalLeads(draft, snapshot, inputs)...)
 	candidates = filterSupplementalAutomatic(candidates, automatic)
 	response.Complete = complete
 	response.Status = "current"
