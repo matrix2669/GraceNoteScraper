@@ -428,16 +428,19 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 		if !c.Included {
 			continue
 		}
-		selected := map[string]bool{}
 		selectedNames := map[string]bool{}
+		selectedCounts := map[string]int{}
+		selectedFingerprints := map[string]bool{}
+		currentCounts := map[string]int{}
 		deniedNames := map[string]bool{}
 		saved := []builder.SupplementalDecision{}
 		for _, d := range decisions {
 			if d.ChannelID == c.ID && d.StationID == c.StationID && d.PlacementID == c.PlacementID && d.RawCallSign == c.CallSign && d.DispatcharrFingerprint == connection {
 				saved = append(saved, d)
 				if d.Decision == "confirmed" {
-					selected[d.StreamFingerprint] = true
+					selectedFingerprints[supplementalLiteral(d.StreamName)+"\x00"+d.StreamFingerprint] = true
 					selectedNames[supplementalLiteral(d.StreamName)] = true
+					selectedCounts[supplementalLiteral(d.StreamName)]++
 				} else {
 					deniedNames[supplementalLiteral(d.StreamName)] = true
 				}
@@ -445,18 +448,23 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 		}
 		row := supplementalImpactRow{ChannelID: c.ID, ChannelName: c.Name, ChannelNumber: c.Number, Selected: []supplementalImpactPhysical{}, Matched: []supplementalImpactPhysical{}, Extra: []supplementalImpactPhysical{}, Missed: []supplementalImpactPhysical{}, ProtectedConflicts: []string{}, SameNameConflicts: []string{}}
 		baseline, proposed := before[c.ID], after[c.ID]
+		for _, stream := range inventory {
+			currentCounts[supplementalLiteral(stream.Name)]++
+		}
 		for _, d := range saved {
 			if d.Decision == "confirmed" {
 				physical := supplementalImpactPhysical{d.StreamName, d.M3UAccountID, d.StreamID}
 				row.Selected = append(row.Selected, physical)
-				present := false
+				present, matchedName := false, true
 				for _, stream := range inventory {
-					if stream.Fingerprint == d.StreamFingerprint {
+					if supplementalLiteral(d.StreamName) != "" && supplementalLiteral(stream.Name) == supplementalLiteral(d.StreamName) {
 						present = true
-						break
+						if !proposed[stream.Name] {
+							matchedName = false
+						}
 					}
 				}
-				if !present || !proposed[d.StreamName] {
+				if !present || !matchedName {
 					row.Missed = append(row.Missed, physical)
 				}
 			}
@@ -469,17 +477,44 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 				primaryCoveredNames[supplementalLiteral(d.StreamName)] = true
 			}
 		}
+		// Exact historical members consume slots first. Remaining slots may be
+		// occupied by replacement IDs with the same name; no provenance is
+		// rewritten. Additional same-name members remain visible as expansion.
+		replacementSlots := map[string]int{}
+		unmatchedCounts := map[string]int{}
+		for name, count := range selectedCounts {
+			replacementSlots[name] = count
+		}
+		for _, stream := range inventory {
+			literal := supplementalLiteral(stream.Name)
+			if selectedFingerprints[literal+"\x00"+stream.Fingerprint] && replacementSlots[literal] > 0 {
+				replacementSlots[literal]--
+			} else {
+				unmatchedCounts[literal]++
+			}
+		}
 		for _, stream := range inventory {
 			physical := supplementalImpactPhysical{stream.Name, stream.AccountID, stream.ID}
+			literal := supplementalLiteral(stream.Name)
+			selectedMember := selectedFingerprints[literal+"\x00"+stream.Fingerprint] && selectedNames[literal]
+			if !selectedMember && replacementSlots[literal] > 0 {
+				selectedMember = true
+				// If multiple candidates compete for fewer missing historical
+				// members, no physical replacement can be identified honestly.
+				// Report the name-level ambiguity instead of arbitrary extras.
+				if unmatchedCounts[literal] <= replacementSlots[literal] {
+					replacementSlots[literal]--
+					unmatchedCounts[literal]--
+				}
+			}
 			if proposed[stream.Name] {
 				row.Matched = append(row.Matched, physical)
 				coveredByPrimary := primaryCoveredPhysical[stream.Fingerprint] || primaryCoveredNames[supplementalLiteral(stream.Name)]
-				if !selected[stream.Fingerprint] && !coveredByPrimary && !baseline[stream.Name] {
+				if !selectedMember && !coveredByPrimary && !baseline[stream.Name] {
 					row.Extra = append(row.Extra, physical)
 				}
 			}
-			literal := supplementalLiteral(stream.Name)
-			if selectedNames[literal] && !selected[stream.Fingerprint] {
+			if selectedNames[literal] && currentCounts[literal] > selectedCounts[literal] {
 				row.SameNameConflicts = appendUniqueReviewString(row.SameNameConflicts, stream.Name+" expands across unselected physical streams/accounts")
 			}
 			if selectedNames[literal] && deniedNames[literal] {

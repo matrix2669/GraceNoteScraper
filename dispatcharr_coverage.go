@@ -76,7 +76,7 @@ func (s *dispatcharrServer) inventoryObservationToken() string {
 
 // Absence from a new complete candidate snapshot is a review warning, never
 // an instruction to reverse a saved choice or invent a negative constraint.
-func annotateUnsupportedConfirmations(history []dispatcharrReviewDecision, candidates []dispatcharr.Candidate) {
+func annotateUnsupportedConfirmations(history []dispatcharrReviewDecision, candidates []dispatcharr.Candidate, inventory []dispatcharr.IdentityStream) {
 	supported := map[string]bool{}
 	key := func(channel, raw string) string {
 		return channel + "\x00" + strings.ToLower(strings.Join(strings.Fields(raw), " "))
@@ -84,18 +84,31 @@ func annotateUnsupportedConfirmations(history []dispatcharrReviewDecision, candi
 	for _, c := range candidates {
 		supported[key(c.ChannelID, c.StreamName)] = true
 	}
+	present := map[string]bool{}
+	for _, stream := range inventory {
+		if literal := supplementalLiteral(stream.Name); literal != "" {
+			present[literal] = true
+		}
+	}
 	for i := range history {
 		h := &history[i]
 		if h.Decision != "confirmed" {
 			continue
 		}
+		missing, unscored := false, false
 		for _, raw := range h.StreamNames {
-			if !supported[key(h.ChannelID, raw)] {
-				h.NeedsReview = true
+			if !present[supplementalLiteral(raw)] {
+				missing = true
+			} else if !supported[key(h.ChannelID, raw)] {
+				unscored = true
 			}
 		}
-		if h.NeedsReview {
-			h.ReviewWarning = "Saved confirmation preserved, but one or more raw names no longer have a scored candidate in this snapshot. Inspect the names and Undo if inappropriate; the stream may also have disappeared."
+		if missing {
+			h.NeedsReview = true
+			h.ReviewWarning = "Saved confirmation preserved, but one or more literal names are absent from this inventory. Inspect the names and Undo if inappropriate."
+		} else if unscored {
+			h.NeedsReview = true
+			h.ReviewWarning = "Saved confirmation preserved. Its literal name is present, but no scored candidate exists for this target in this snapshot."
 		}
 	}
 }

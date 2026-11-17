@@ -109,6 +109,20 @@ func (s *Service) SaveSupplementalDecisions(source, inputToken string, decisions
 	if retryOnly || identical != 0 {
 		return ErrStaleReview
 	}
+	// Offers are admitted outside this lock and saved choices are deliberately
+	// excluded from the input token. Reject a stale offer if an earlier save has
+	// already settled the same literal name in this exact source/target scope.
+	// Members within this one admitted batch may share a name; historic records
+	// and the idempotent complete-batch retry above are left untouched.
+	for _, d := range decisions {
+		for _, old := range s.store.state.SupplementalDecisions {
+			if old.SourceFingerprint == d.SourceFingerprint && old.DispatcharrFingerprint == d.DispatcharrFingerprint &&
+				old.ChannelID == d.ChannelID && old.StationID == d.StationID && old.PlacementID == d.PlacementID && old.RawCallSign == d.RawCallSign &&
+				literalSupplementalName(d.StreamName) != "" && literalSupplementalName(old.StreamName) == literalSupplementalName(d.StreamName) {
+				return ErrStaleReview
+			}
+		}
+	}
 	previous := s.store.state
 	s.store.state = cloneReviewState(previous)
 	s.store.ensureSourceLocked(source)

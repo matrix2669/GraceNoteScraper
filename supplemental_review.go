@@ -66,6 +66,18 @@ type supplementalAdmission struct {
 func supplementalLiteral(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
+
+// sameSupplementalScope deliberately excludes physical stream identity: the
+// user's literal-name choice survives inventory ID changes, not target changes.
+func sameSupplementalScope(a, b builder.SupplementalDecision) bool {
+	return a.SourceFingerprint == b.SourceFingerprint && a.DispatcharrFingerprint == b.DispatcharrFingerprint &&
+		a.ChannelID == b.ChannelID && a.StationID == b.StationID && a.PlacementID == b.PlacementID && a.RawCallSign == b.RawCallSign
+}
+
+func supplementalChoiceCovers(saved, candidate builder.SupplementalDecision) bool {
+	return sameSupplementalScope(saved, candidate) && supplementalLiteral(saved.StreamName) != "" && supplementalLiteral(saved.StreamName) == supplementalLiteral(candidate.StreamName)
+}
+
 func supplementalHash(value any) string {
 	data, _ := json.Marshal(value)
 	return fmt.Sprintf("%x", sha256.Sum256(data))
@@ -226,6 +238,13 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		d := g.Constituents[0]
 		c := current[d.ChannelID]
 		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
+		for _, other := range stored {
+			if supplementalChoiceCovers(other, d) && other.Decision != d.Decision {
+				g.NeedsReview = true
+				g.ReviewWarning = "Opposing saved decisions share this literal name. Review the preserved history; the export cannot represent both outcomes."
+				break
+			}
+		}
 		for _, old := range primary {
 			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
 				g.NeedsReview = true
@@ -260,7 +279,16 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		}
 		seen[d.Key] = true
 		descriptors[d.Key] = c.Descriptor
-		if _, settled := stored[d.Key]; settled {
+		// A saved literal-name choice carries across replacement stream IDs,
+		// but only within the same source, connection and target identity.
+		settled := false
+		for _, old := range stored {
+			if supplementalChoiceCovers(old, d) {
+				settled = true
+				break
+			}
+		}
+		if settled {
 			continue
 		}
 		reviewed := false
