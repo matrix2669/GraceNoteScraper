@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-const SupplementalRevision = "supplemental-retrieval-v2"
+const SupplementalRevision = "supplemental-retrieval-v3"
 
 type SupplementalLabel struct{ Value, Evidence string }
 type SupplementalTarget struct {
@@ -96,6 +96,7 @@ func supplementalNews12Region(text string) bool {
 // or attributed abbreviation anchors each proposal; arbitrary token overlap does
 // not. Rank is a retrieval ordering tier, never a confidence or primary score.
 func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream, primary []Candidate) ([]SupplementalCandidate, bool) {
+	prefixes, complete := discoverSupplementalPrefixes(targets, streams)
 	scored := map[string]bool{}
 	for _, c := range primary {
 		scored[c.ChannelID+"\x00"+c.StreamHash] = true
@@ -106,13 +107,19 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 		spanish        bool
 		event          bool
 		feed, internal FeedIdentity
+		prefix         string
 	}
 	index := make([]indexed, 0, len(streams))
 	for _, s := range streams {
 		feed := StreamFeed(s.Name, nil)
-		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed)})
+		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed), ""})
+		if p, ok := prefixes[s.Fingerprint]; ok {
+			f := StreamFeed(p.residual, nil)
+			index = append(index, indexed{s, supplementalText(p.residual), strings.Contains(strings.ToLower(p.residual), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), f, internalFeedLabel(p.residual, f), p.label})
+		}
 	}
 	out := []SupplementalCandidate{}
+	seen := map[string]bool{}
 	for _, t := range targets {
 		type termLabel struct {
 			term, value, evidence string
@@ -138,6 +145,9 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 			streamFeed := targetFeed(item.feed, item.internal, t.Feed)
 			rank, reason, evidence, descriptor := 0, "", "", ""
 			for _, label := range labels {
+				if item.prefix != "" && strings.TrimSpace(label.evidence) == "" {
+					continue
+				}
 				term := label.term
 				if item.spanish != label.spanish {
 					continue
@@ -176,6 +186,14 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 			if rank == 0 {
 				continue
 			}
+			if item.prefix != "" {
+				reason += "; " + prefixReason(item.prefix)
+			}
+			key := t.ID + "\x00" + s.Fingerprint
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			if t.Feed.Region == "unknown" {
 				reason += "; target feed unresolved"
 			} else if t.Feed.Region != "" {
@@ -207,7 +225,7 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 		}
 		return a.Stream.ID < b.Stream.ID
 	})
-	return out, true
+	return out, complete
 }
 
 func supplementalAffiliate(raw string) string {
