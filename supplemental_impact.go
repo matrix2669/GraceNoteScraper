@@ -89,13 +89,13 @@ func (s *dispatcharrServer) impactResponse() supplementalImpactResponse {
 		return response
 	}
 	if job == nil {
-		return supplementalImpactResponse{State: "idle", Profile: dispatcharr.ImpactProfile, Message: "No saved name effects require validation. Generation remains available."}
+		return s.canonicalImpactStatus(supplementalImpactResponse{State: "idle", Profile: dispatcharr.ImpactProfile, Message: "No saved name effects require validation. Generation remains available."})
 	}
 	if response.State != "idle" && response.State != "refresh-required" && !(response.State == "failed" && response.ID == "") && !s.impactCurrent(job) {
 		response.State = "stale"
 		response.Message = "Inputs or decisions changed. This prior impact is stale; validation requires current inputs. Reload review to recover a failed check, or Refresh streams if the inventory changed. Future inventory is not protected."
 	}
-	return response
+	return s.canonicalImpactStatus(response)
 }
 func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")

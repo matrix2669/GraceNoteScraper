@@ -261,7 +261,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 		resultChannels = append(resultChannels, channel.draft)
 	}
-	resolveCanonicalNames(resultChannels, channels)
+	canonicalProposals := collectCanonicalNameProposals(resultChannels, channels, overrides)
 	sort.SliceStable(resultChannels, func(i, j int) bool {
 		if resultChannels[i].Number != resultChannels[j].Number {
 			return numberLess(resultChannels[i].Number, resultChannels[j].Number)
@@ -284,19 +284,20 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	populateSourceMatches(statuses, resultChannels)
 
 	draft := &Draft{
-		SourceCapture:        sourceCapture,
-		GeneratedAt:          time.Now().UTC(),
-		Package:              packageName(lineup),
-		ProviderName:         lineup.ProviderName,
-		PostalCode:           lineup.PostalCode,
-		LineupID:             lineup.LineupID,
-		CountryCode:          countryAlpha2(lineup.Country),
-		Channels:             resultChannels,
-		DuplicateSuggestions: duplicates,
-		DuplicateGroups:      duplicateReviewGroups(resultChannels, duplicates),
-		Sources:              statuses,
-		Categories:           append(channelcategory.Categories(), uncategorized),
-		Total:                len(resultChannels),
+		CanonicalNameProposals: canonicalProposals,
+		SourceCapture:          sourceCapture,
+		GeneratedAt:            time.Now().UTC(),
+		Package:                packageName(lineup),
+		ProviderName:           lineup.ProviderName,
+		PostalCode:             lineup.PostalCode,
+		LineupID:               lineup.LineupID,
+		CountryCode:            countryAlpha2(lineup.Country),
+		Channels:               resultChannels,
+		DuplicateSuggestions:   duplicates,
+		DuplicateGroups:        duplicateReviewGroups(resultChannels, duplicates),
+		Sources:                statuses,
+		Categories:             append(channelcategory.Categories(), uncategorized),
+		Total:                  len(resultChannels),
 	}
 	for _, channel := range resultChannels {
 		if channel.Included {
