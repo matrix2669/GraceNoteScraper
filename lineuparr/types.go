@@ -20,17 +20,18 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	SupplementalEvidence []ServiceIdentityEvidence
-	Key                  string
-	StationID            string
-	PlacementID          string
-	Number               string
-	CallSign             string
-	Affiliate            string
-	EventCallSigns       []string
-	PreferredName        *AttributedAlias
-	CategoryHint         *AttributedCategory
-	CategoryConflict     bool
+	SupplementalEvidence    []ServiceIdentityEvidence
+	CanonicalNameCandidates []AttributedAlias
+	Key                     string
+	StationID               string
+	PlacementID             string
+	Number                  string
+	CallSign                string
+	Affiliate               string
+	EventCallSigns          []string
+	PreferredName           *AttributedAlias
+	CategoryHint            *AttributedCategory
+	CategoryConflict        bool
 	// Independent schedule support is kept separate from CategoryHint. A
 	// provider category may be the selected proposal while the guide schedule
 	// independently confirms it (or disagrees and keeps review open).
@@ -118,6 +119,7 @@ type DraftChannel struct {
 	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
 	NameSource               string               `json:"nameSource"`
 	NameMethod               string               `json:"nameMethod"`
+	NameDiagnostic           string               `json:"nameDiagnostic,omitempty"`
 	CategorySource           string               `json:"categorySource"`
 	CategoryMethod           string               `json:"categoryMethod,omitempty"`
 	MatchedSources           []string             `json:"matchedSources,omitempty"`
