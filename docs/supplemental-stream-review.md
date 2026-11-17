@@ -151,3 +151,51 @@ active alias or matching/export relationship. The original Verizon PDF/positione
 row, region context and applicability are unavailable. No channel blacklist,
 number-recovery quarantine or alias deletion is justified. ADR036 provider-local
 recovery and ADR039 eligibility remain unchanged pending original-row evidence.
+
+### Obsolete confirmation lifecycle
+
+A successful explicit stream refresh also checks a separate retained-inventory
+receipt. Matching and published JSON remain independent of this check. A saved
+confirmation is eligible for retirement only if its original stream ID is gone
+and no current stream has the same literal name (ignoring case and repeated
+whitespace). Existing IDs, same-name replacements, denials, unresolved target
+identity and opposing choices remain untouched. Inactive, stale or manual
+streams are not treated as missing. Incomplete, empty, unsupported, stale or
+changing evidence defers cleanup without failing the ordinary match review.
+
+The first accepted inventory seeds a baseline. A candidate already absent at
+bootstrap needs another complete refresh at least 60 seconds later. Once a
+baseline is established, an ordinary noncatastrophic removal may retire on a
+complete refresh. A loss of at least half the distinct names globally or for
+any one account is held until three complete observations spanning at least five
+minutes show that candidate still missing without a newly worsening loss. A
+restored candidate cancels its hold; unrelated additions do not reset it. These
+are built-in conservative safety intervals, not user-configurable settings.
+Empty inventories are never used for absence. Later explicit refreshes retry
+holds automatically; two consistent captures do not create a transactional
+snapshot or guarantee no concurrent upstream change.
+
+Each retirement has a private content-addressed pre-state backup and an atomic
+append-only audit containing the original record and receipt provenance. Backup
+or state-write failure preserves choices. Reset and source changes preserve the
+audit but discard old pending evidence. Lifecycle cleanup does not regenerate,
+publish or delete a LineupARR export. The review response reports lifecycle
+status and counts; the original matcher and its scoring remain unchanged.
+
+A failed explicit refresh clears pending hold continuity without changing user
+choices; a later successful refresh starts fresh evidence. If that invalidation
+cannot be saved, lifecycle evidence is treated as unsafe in the running process.
+After any process restart, previously pending evidence is retained in the
+private audit but is counted from the beginning. This conservative reset keeps
+a storage failure from silently advancing a hold across restart.
+
+Retirement is staged before it is committed. The application computes a private
+proposed state, builds the complete review from the successful refresh's captured
+sources, and checks the current source, choices and inventory again. Only then
+are retirement and audit saved together, followed by publication of the prepared
+review. A failed rebuild, cancelled request before commit, or stale final fence
+cannot remove a confirmation. No live builder is swapped during preparation.
+If the process or transport is lost after the atomic save, the audit and backup
+identify the committed operation; restart requires a fresh review snapshot and
+does not automatically restore retired confirmations. Published exports remain
+unchanged throughout this process.
