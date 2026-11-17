@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
@@ -65,6 +66,13 @@ func TestPrefixPrivateCaptureUnchangedBeforeChoice(t *testing.T) {
 	if !complete {
 		t.Fatal("incomplete retrieval")
 	}
+	attProposals := 0
+	for _, candidate := range candidates {
+		if strings.HasPrefix(candidate.Stream.Name, "AT&T:") && strings.Contains(candidate.Reason, "repeated provider prefix") {
+			attProposals++
+		}
+	}
+	t.Logf("AT&T-shaped learned-prefix retrieval rows before primary/automatic filtering: %d", attProposals)
 	after, _ := json.Marshal(builder.ExportFromDraft(&draft))
 	if string(before) != string(after) {
 		t.Fatal("retrieval mutated export")
@@ -117,5 +125,5 @@ func TestPrefixPrivateCaptureUnchangedBeforeChoice(t *testing.T) {
 	for _, d := range state.SupplementalDecisions {
 		classify(d.ChannelID, d.StreamName, d.StreamFingerprint, d.Decision)
 	}
-	t.Logf("private capture: %d primary, %d supplemental decisions intact, %d streams, %d targets, %d proposals; newly matching denied physical pairs=0, previously matching denied physical pairs=%d, lost confirmations=0, baseline missing confirmations=%d; consumer revision %s", len(state.MatchDecisions), len(state.SupplementalDecisions), len(streams), len(draft.Channels), len(candidates), len(priorDenied), len(baselineMisses), impact.Revision)
+	t.Logf("private capture: %d primary, %d supplemental decisions intact, %d streams, %d targets, %d retrieval rows before primary/automatic filtering; newly matching denied physical pairs=0, previously matching denied physical pairs=%d, lost confirmations=0, baseline missing confirmations=%d; consumer revision %s", len(state.MatchDecisions), len(state.SupplementalDecisions), len(streams), len(draft.Channels), len(candidates), len(priorDenied), len(baselineMisses), impact.Revision)
 }

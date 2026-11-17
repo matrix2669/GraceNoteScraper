@@ -66,7 +66,7 @@ func TestPrefixEvidenceConservative(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"US: Alpha", "EAST: Alpha", "KABC: Alpha", "HD: Alpha", "Mystery: US: Alpha", "Mystery: Alpha vs Bravo", "###: Alpha", "Mystery 2: Alpha"} {
+	for _, name := range []string{"US: Alpha", "EAST: Alpha", "KABC: Alpha", "HD: Alpha", "Mystery: US: Alpha", "Mystery: Alpha vs Bravo", "###: Alpha", "Mystery 2: Alpha", "Pacific: Alpha", "Pacific Coast: Alpha", "Pacific.Coast: Alpha"} {
 		if _, _, ok := splitProviderPrefix(name); ok {
 			t.Errorf("accepted %q", name)
 		}
@@ -84,5 +84,22 @@ func TestPrefixConflictingFingerprintAndBounds(t *testing.T) {
 	_, complete := discoverSupplementalPrefixes(targets, make([]IdentityStream, maxPrefixInventory+1))
 	if complete {
 		t.Fatal("truncation reported complete")
+	}
+}
+
+func TestPrefixFeedLabelsAreNeverLearned(t *testing.T) {
+	for _, label := range []string{"Pacific", "Pacific Coast", "Pacific.Coast"} {
+		targets, streams := prefixFixture()
+		for i := range streams {
+			streams[i].Name = strings.Replace(streams[i].Name, "Mystery", label, 1)
+		}
+		learned, complete := discoverSupplementalPrefixes(targets, streams)
+		if !complete || len(learned) != 0 {
+			t.Fatalf("learned feed label %q: %+v", label, learned)
+		}
+		rows, complete := RetrieveSupplemental(targets, streams, nil)
+		if !complete || len(rows) != 0 {
+			t.Fatalf("retrieved stripped feed label %q: %+v", label, rows)
+		}
 	}
 }

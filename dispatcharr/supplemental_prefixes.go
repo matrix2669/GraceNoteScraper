@@ -13,7 +13,7 @@ type prefixScope struct{ account, group int64 }
 type discoveredPrefix struct{ label, residual string }
 
 var providerLabel = regexp.MustCompile(`^([^:|]{2,32})\s*[:|]\s*(.+)$`)
-var unsafeLabel = regexp.MustCompile(`(?i)^(?:us|usa|ca|can|uk|gb|au|aus|fr|nl|de|es|it|pt|br|mx|east|west|eastern|western|feed|hd|sd|fhd|uhd|4k|8k|raw|tv|live|sports?|news|movies?|channels?|entertainment|premium|local|national|international|english|spanish|latino|ppv|events?|plus|\+\d+|[kw][a-z]{2,4}(?:-?dt\d*)?)$`)
+var unsafeLabel = regexp.MustCompile(`(?i)^(?:us|usa|ca|can|uk|gb|au|aus|fr|nl|de|es|it|pt|br|mx|east|west|eastern|western|pacific|coast|feed|hd|sd|fhd|uhd|4k|8k|raw|tv|live|sports?|news|movies?|channels?|entertainment|premium|local|national|international|english|spanish|latino|ppv|events?|plus|\+\d+|[kw][a-z]{2,4}(?:-?dt\d*)?)$`)
 
 func splitProviderPrefix(raw string) (string, string, bool) {
 	m := providerLabel.FindStringSubmatch(strings.TrimSpace(raw))
@@ -24,19 +24,20 @@ func splitProviderPrefix(raw string) (string, string, bool) {
 	if unsafeLabel.MatchString(label) || strings.ContainsAny(rest, ":|") || supplementalHeader.MatchString(raw) || supplementalEvent.MatchString(raw) {
 		return "", "", false
 	}
-	// Reject catalogue/header-like labels and labels bearing digits, punctuation,
-	// or feed modifiers. These can encode service identities rather than providers.
+	// Bounded punctuation is common in provider names. Inspect letter tokens
+	// independently so punctuation cannot disguise a feed or catalogue marker.
 	for _, r := range label {
-		if !unicode.IsLetter(r) && r != ' ' && r != '-' && r != '\'' {
+		if !unicode.IsLetter(r) && r != ' ' && r != '-' && r != '\'' && r != '&' && r != '.' {
 			return "", "", false
 		}
 	}
 	words := strings.Fields(strings.ToLower(label))
-	if len(words) == 0 || len(words) > 3 {
+	tokens := strings.FieldsFunc(strings.ToLower(label), func(r rune) bool { return !unicode.IsLetter(r) })
+	if len(words) == 0 || len(words) > 3 || len(tokens) == 0 || len(tokens) > 6 {
 		return "", "", false
 	}
-	for _, w := range words {
-		if unsafeLabel.MatchString(w) {
+	for _, token := range tokens {
+		if unsafeLabel.MatchString(token) {
 			return "", "", false
 		}
 	}
