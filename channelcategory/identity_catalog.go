@@ -3,8 +3,9 @@ package channelcategory
 import "strings"
 
 const (
-	MaintainedIdentityPriority = 1
-	MaintainedIdentityMethod   = "exact maintained channel category identity"
+	MaintainedIdentityPriority  = 1
+	MaintainedIdentityMethod    = "exact maintained channel category identity"
+	ExplicitEventIdentityMethod = "explicit package or event-feed channel identity"
 )
 
 type identityDefinition struct {
@@ -131,6 +132,45 @@ func resolveMaintainedIdentity(identities ...string) (Match, bool) {
 		}
 	}
 	return result, result.Category != ""
+}
+
+// resolveExplicitEventIdentity recognizes only identities that name a known
+// event product or feed. It runs after the maintained exact catalog so a
+// permanent network cannot be reclassified by a contaminated event alias.
+func resolveExplicitEventIdentity(identities ...string) (Match, bool) {
+	for _, identity := range identities {
+		if !isExplicitEventIdentity(identity) {
+			continue
+		}
+		return Match{
+			Category:     PPVEvents,
+			MatchedAlias: strings.TrimSpace(identity),
+			Method:       ExplicitEventIdentityMethod,
+			Confidence:   1,
+			Priority:     MaintainedIdentityPriority,
+		}, true
+	}
+	return Match{}, false
+}
+
+func isExplicitEventIdentity(identity string) bool {
+	key := strings.ToUpper(compact(identity))
+	switch key {
+	case "NFLNRZ", "NFLNRZD", "NFLREDZONE":
+		return true
+	}
+	normalized := " " + normalize(identity) + " "
+	for _, phrase := range []string{
+		" ppv ", " pay per view ", " special event ", " event channel ", " event feed ",
+		" season pass ", " sports package ", " league pass ", " sunday ticket ",
+		" extra innings ", " center ice ", " direct kick ", " full court ",
+		" game plan ", " redzone ", " red zone ",
+	} {
+		if strings.Contains(normalized, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func channelIdentityKey(value string) string {
