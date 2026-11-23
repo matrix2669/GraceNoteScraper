@@ -84,7 +84,7 @@ func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, req
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{{
-			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "exact provider channel number",
+			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "unique exact provider callsign or name",
 		}},
 		Sources: []EvidenceSourceRecord{{ID: "directv-official", Label: "DIRECTV official lineup", Status: StatusComplete, Matched: 1, Categories: 1}},
 	}, nil
