@@ -16,23 +16,26 @@ import (
 )
 
 type supplementalGroup struct {
-	Origin        string                         `json:"origin"`
-	Key           string                         `json:"key"`
-	ChannelID     string                         `json:"channelId"`
-	ChannelNumber string                         `json:"channelNumber"`
-	ChannelName   string                         `json:"channelName"`
-	Alias         string                         `json:"alias"`
-	StreamNames   []string                       `json:"streamNames"`
-	M3UAccountIDs []int64                        `json:"m3uAccountIds"`
-	StreamCount   int                            `json:"streamCount"`
-	RetrievalRank int                            `json:"retrievalRank"`
-	Reasons       []string                       `json:"reasons"`
-	Constituents  []builder.SupplementalDecision `json:"constituents"`
-	Decision      string                         `json:"decision,omitempty"`
-	StreamName    string                         `json:"streamName,omitempty"`
-	UpdatedAt     time.Time                      `json:"updatedAt,omitempty"`
-	NeedsReview   bool                           `json:"needsReview,omitempty"`
-	ReviewWarning string                         `json:"reviewWarning,omitempty"`
+	ChannelDisplayName   string                         `json:"channelDisplayName,omitempty"`
+	ChannelCallSign      string                         `json:"channelCallSign,omitempty"`
+	RetrievalDescriptors []string                       `json:"retrievalDescriptors,omitempty"`
+	Origin               string                         `json:"origin"`
+	Key                  string                         `json:"key"`
+	ChannelID            string                         `json:"channelId"`
+	ChannelNumber        string                         `json:"channelNumber"`
+	ChannelName          string                         `json:"channelName"`
+	Alias                string                         `json:"alias"`
+	StreamNames          []string                       `json:"streamNames"`
+	M3UAccountIDs        []int64                        `json:"m3uAccountIds"`
+	StreamCount          int                            `json:"streamCount"`
+	RetrievalRank        int                            `json:"retrievalRank"`
+	Reasons              []string                       `json:"reasons"`
+	Constituents         []builder.SupplementalDecision `json:"constituents"`
+	Decision             string                         `json:"decision,omitempty"`
+	StreamName           string                         `json:"streamName,omitempty"`
+	UpdatedAt            time.Time                      `json:"updatedAt,omitempty"`
+	NeedsReview          bool                           `json:"needsReview,omitempty"`
+	ReviewWarning        string                         `json:"reviewWarning,omitempty"`
 }
 type supplementalReview struct {
 	Status               string              `json:"status"`
@@ -108,7 +111,7 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 	return candidates, complete
 }
 func supplementalDecision(c dispatcharr.SupplementalCandidate, source, connection, snapshot string) builder.SupplementalDecision {
-	d := builder.SupplementalDecision{Origin: builder.SupplementalOrigin, SourceFingerprint: source, DispatcharrFingerprint: connection, ChannelID: c.Target.ID, StationID: c.Target.StationID, PlacementID: c.Target.PlacementID, ChannelName: c.Target.Name, ChannelNumber: c.Target.Number, RawCallSign: c.Target.CallSign, StreamID: c.Stream.ID, M3UAccountID: c.Stream.AccountID, StreamName: c.Stream.Name, StreamFingerprint: c.Stream.Fingerprint, RetrievalVersion: dispatcharr.SupplementalRevision, RetrievalRank: c.Rank, RetrievalReason: c.Reason, EvidenceRefs: []string{c.Evidence}, AdmittedSnapshot: snapshot}
+	d := builder.SupplementalDecision{Origin: builder.SupplementalOrigin, SourceFingerprint: source, DispatcharrFingerprint: connection, ChannelID: c.Target.ID, StationID: c.Target.StationID, PlacementID: c.Target.PlacementID, ChannelName: c.Target.Name, ChannelNumber: c.Target.Number, RawCallSign: c.Target.CallSign, StreamID: c.Stream.ID, M3UAccountID: c.Stream.AccountID, StreamName: c.Stream.Name, StreamFingerprint: c.Stream.Fingerprint, RetrievalVersion: dispatcharr.SupplementalRevision, RetrievalRank: c.Rank, RetrievalReason: c.Reason, EvidenceRefs: []string{"Retrieval descriptor: " + c.Descriptor, c.Evidence}, AdmittedSnapshot: snapshot}
 	d.Key = builder.SupplementalKey(d)
 	return d
 }
@@ -164,7 +167,41 @@ func supplementalGroups(rows []builder.SupplementalDecision, history bool) []sup
 	})
 	return result
 }
-func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, valid bool, limit int) (supplementalReview, []supplementalGroup) {
+
+// Use only the authoritative current automatic result, never a retrieval reason
+// or a saved Deny. Literal spelling/account/target scope matches the automatic
+// inventory contract; unknown holds and preserved confirmation conflicts remain
+// outside this filter. The caller's evidence/snapshot fences govern both views.
+func filterSupplementalAutomatic(candidates []dispatcharr.SupplementalCandidate, automatic dispatcharr.AutomaticResult) []dispatcharr.SupplementalCandidate {
+	type identity struct {
+		channel, name string
+		account       int64
+	}
+	key := func(channel, name string, account int64) identity {
+		return identity{channel, supplementalLiteral(name), account}
+	}
+	excluded := map[identity]bool{}
+	for _, row := range automatic.InventoryRows {
+		if row.Rule == "inventory-opposing-feed-v1" && !row.Conflict {
+			excluded[key(row.ChannelID, row.StreamName, row.AccountID)] = true
+		}
+	}
+	for _, row := range automatic.Rows {
+		if row.Rule == "feed-identity-v1" && !row.PendingReview && !row.Conflict {
+			c := row.Candidate
+			excluded[key(c.ChannelID, c.StreamName, c.M3UAccountID)] = true
+		}
+	}
+	kept := make([]dispatcharr.SupplementalCandidate, 0, len(candidates))
+	for _, c := range candidates {
+		if !excluded[key(c.Target.ID, c.Stream.Name, c.Stream.AccountID)] {
+			kept = append(kept, c)
+		}
+	}
+	return kept
+}
+
+func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int) (supplementalReview, []supplementalGroup) {
 	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, then explicitly check export impact. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
 	stored := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
@@ -187,6 +224,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		}
 		d := g.Constituents[0]
 		c := current[d.ChannelID]
+		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
 		for _, old := range primary {
 			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
 				g.NeedsReview = true
@@ -204,6 +242,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 	}
 	candidates, complete := s.prepareSupplemental(draft, config, snapshot, inputs)
 	candidates = append(append([]dispatcharr.SupplementalCandidate(nil), candidates...), s.impactExtraCandidates(draft, snapshot, inputs)...)
+	candidates = filterSupplementalAutomatic(candidates, automatic)
 	response.Complete = complete
 	response.Status = "current"
 	if !complete {
@@ -211,6 +250,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		response.Message += " Retrieval reached its bound; more inventory remains unreviewed."
 	}
 	rows := []builder.SupplementalDecision{}
+	descriptors := map[string]string{}
 	seen := map[string]bool{}
 	for _, c := range candidates {
 		d := supplementalDecision(c, config.Fingerprint(), snapshot.dispatcharrFingerprint, snapshotIdentity(snapshot))
@@ -218,6 +258,7 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 			continue
 		}
 		seen[d.Key] = true
+		descriptors[d.Key] = c.Descriptor
 		if _, settled := stored[d.Key]; settled {
 			continue
 		}
@@ -235,6 +276,14 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		rows = append(rows, d)
 	}
 	groups := supplementalGroups(rows, false)
+	for i := range groups {
+		g := &groups[i]
+		c := current[g.ChannelID]
+		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
+		for _, d := range g.Constituents {
+			g.RetrievalDescriptors = appendUniqueReviewString(g.RetrievalDescriptors, descriptors[d.Key])
+		}
+	}
 	response.CandidateCount = len(groups)
 	response.CandidateStreamCount = len(rows)
 	response.Candidates = groups
@@ -249,12 +298,22 @@ func (s *dispatcharrServer) publishSupplementalLocked(inputs reviewInputsRevisio
 	previous := s.supplementalAdmission
 	next := supplementalAdmission{common: reviewAdmission{inputs: inputs, snapshot: snapshot, inventory: inventory}, groups: map[string][]builder.SupplementalDecision{}, tokens: map[string]string{}}
 	tokens := map[string]string{}
+	current := map[string]bool{}
+	for _, g := range groups {
+		current[g.Key] = true
+	}
 	if previous.common.inputs == inputs && previous.common.snapshot == snapshot && previous.common.inventory == inventory {
 		for k, g := range previous.groups {
-			next.groups[k] = g
-		}
-		for k, t := range previous.tokens {
-			next.tokens[k] = t
+			token := previous.tokens[k]
+			op := s.operations[token]
+			// Keep durable retry/receipt data, but never retain an uncommitted
+			// offer that the current automatic/decision overlay has removed.
+			if current[k] || op.State == "saved" {
+				next.groups[k], next.tokens[k] = g, token
+			} else if op.State == "offered" {
+				op.State = "superseded"
+				s.operations[token] = op
+			}
 		}
 	}
 	for _, g := range groups {
@@ -280,14 +339,37 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 	}
 	if r.Method == http.MethodDelete {
 		var keys []string
+		var previous map[string]builder.SupplementalDecision
 		if !s.saveWhileCurrent(connection, config, func() error {
 			var err error
+			previous = s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 			keys, err = s.lineup.builder.ClearSupplementalDecisions(config.Fingerprint(), key)
 			return err
 		}, w) {
 			return
 		}
 		s.retireDecisionOperations(keys)
+		// Undo can reactivate an automatic constraint on an identical name in
+		// another account. Retire related outstanding offers immediately, before
+		// the next review read rebuilds the decision overlay and admission.
+		s.reviewMu.Lock()
+		for group, rows := range s.supplementalAdmission.groups {
+			token := s.supplementalAdmission.tokens[group]
+			op := s.operations[token]
+			if op.State != "offered" {
+				continue
+			}
+			for _, row := range rows {
+				for _, key := range keys {
+					old := previous[key]
+					if old.ChannelID == row.ChannelID && supplementalLiteral(old.StreamName) == supplementalLiteral(row.StreamName) {
+						op.State = "superseded"
+						s.operations[token] = op
+					}
+				}
+			}
+		}
+		s.reviewMu.Unlock()
 		writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 		return
 	}
@@ -318,27 +400,36 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 	if !s.saveWhileCurrent(connection, config, func() error {
 		return s.commitAdmittedDecision(a.common, func() error {
 			return s.lineup.builder.SaveSupplementalDecisions(config.Fingerprint(), a.common.inputs.choices, rows, op.State == "saved", func(write func() error) error {
-				return s.whileAdmissionSnapshot(a.common, func() error {
-					if err := r.Context().Err(); err != nil {
-						return err
-					}
-					return write()
-				})
+				// Match review publication's lock order: builder, review, inventory.
+				// Publish the receipt only after a successful write, while the builder
+				// lock still prevents a GET from observing a durable choice with an
+				// offered receipt and retiring its retry admission.
+				s.reviewMu.Lock()
+				defer s.reviewMu.Unlock()
+				s.cache.mu.Lock()
+				defer s.cache.mu.Unlock()
+				current := s.operations[operation]
+				if snapshotIdentity(s.snapshot) != a.common.snapshot || s.cache.observationTokenLocked() != a.common.inventory || s.supplementalAdmission.tokens[key] != operation || current.Key != key || current.Scope != s.operationScope || (current.State != "offered" && current.State != "saved") {
+					return builder.ErrStaleReview
+				}
+				if err := r.Context().Err(); err != nil {
+					return err
+				}
+				if err := write(); err != nil {
+					return err
+				}
+				current.State, current.Decision = "saved", choice
+				current.Members = nil
+				for _, d := range rows {
+					current.Members = append(current.Members, d.Key)
+				}
+				s.operations[operation] = current
+				return nil
 			})
 		})
 	}, w) {
 		return
 	}
-	s.reviewMu.Lock()
-	op = s.operations[operation]
-	op.State = "saved"
-	op.Decision = choice
-	op.Members = nil
-	for _, d := range rows {
-		op.Members = append(op.Members, d.Key)
-	}
-	s.operations[operation] = op
-	s.reviewMu.Unlock()
 	writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 }
 

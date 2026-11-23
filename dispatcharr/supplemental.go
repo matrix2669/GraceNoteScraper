@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-const SupplementalRevision = "supplemental-retrieval-v1"
+const SupplementalRevision = "supplemental-retrieval-v2"
 
 type SupplementalLabel struct{ Value, Evidence string }
 type SupplementalTarget struct {
@@ -16,11 +16,12 @@ type SupplementalTarget struct {
 	Feed                                                        FeedIdentity
 }
 type SupplementalCandidate struct {
-	Target   SupplementalTarget
-	Stream   IdentityStream
-	Rank     int
-	Reason   string
-	Evidence string
+	Target     SupplementalTarget
+	Stream     IdentityStream
+	Rank       int
+	Reason     string
+	Evidence   string
+	Descriptor string
 }
 
 // Normalization is retrieval-only. Raw names/primary matcher inputs are untouched.
@@ -28,7 +29,33 @@ type SupplementalCandidate struct {
 var supplementalPrefix = regexp.MustCompile(`(?i)^(?:(?:US|USA|TV|RK|TUBI|PRIME)\s*[:|]\s*|[0-9]{2,5}(?:\.[0-9]+)?\s+)`)
 var supplementalQuality = regexp.MustCompile(`(?i)\s+(HD|SD|FHD|UHD|RAW|4K|8K|60FPS)\s*$`)
 var supplementalSubchannel = regexp.MustCompile(`(?i)^([KW][A-Z]{2,3})-?DT[0-9]+$`)
-var supplementalEvent = regexp.MustCompile(`(?i)(?:24\s*/\s*7|\bPPV\b|\b(?:VS|VERSUS)\b|\bEVENT\s*\d)`)
+var supplementalEvent = regexp.MustCompile(`(?i)(?:24\s*/\s*7|\bPPV\b|\b(?:VS|VERSUS)\b|\bEVENTS?\s*\d)`)
+var supplementalHeader = regexp.MustCompile(`[#=*]{2,}|\|{3,}`)
+var supplementalCountry = regexp.MustCompile(`(?i)^(US|USA|CA|CAN|UK|GB|AU|AUS|FR|NL|DE|ES|IT|PT|BR|MX)(?:\s*[:|]\s*|\s+)`)
+
+// Country context is supplemental-specific; do not broaden the existing automatic
+// inventory policy. A contradictory marked name or marked group is inadmissible.
+func supplementalCountryCompatible(s IdentityStream, country string) bool {
+	canonical := func(c string) string {
+		switch strings.ToUpper(c) {
+		case "USA":
+			return "US"
+		case "CAN":
+			return "CA"
+		case "UK":
+			return "GB"
+		case "AUS":
+			return "AU"
+		}
+		return strings.ToUpper(c)
+	}
+	for _, raw := range []string{s.Name, s.GroupName} {
+		if m := supplementalCountry.FindStringSubmatch(strings.TrimSpace(raw)); len(m) > 0 && canonical(m[1]) != canonical(country) {
+			return false
+		}
+	}
+	return true
+}
 
 func supplementalText(value string) string {
 	value = streamQualityText(value)
@@ -54,15 +81,15 @@ func supplementalText(value string) string {
 	value = strings.ReplaceAll(value, "news12", "news 12")
 	return value
 }
-func supplementalFamily(value string) string {
-	value = supplementalText(value)
-	for _, s := range []string{" east", " west", " pacific", " east coast", " west coast"} {
-		value = strings.TrimSuffix(value, s)
+
+// The explicit News12 review exception covers its named local services and Plus,
+// not arbitrary words appended to a short network label.
+func supplementalNews12Region(text string) bool {
+	switch text {
+	case "news 12", "news 12 plus", "news 12 new york", "news 12 new jersey", "news 12 long island", "news 12 connecticut", "news 12 brooklyn", "news 12 the bronx", "news 12 westchester", "news 12 hudson valley":
+		return true
 	}
-	return strings.TrimSpace(value)
-}
-func supplementalContains(full, term string) bool {
-	return strings.Contains(" "+full+" ", " "+term+" ")
+	return false
 }
 
 // RetrieveSupplemental is prepared once per generation. A complete service label
@@ -74,20 +101,23 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 		scored[c.ChannelID+"\x00"+c.StreamHash] = true
 	}
 	type indexed struct {
-		stream  IdentityStream
-		text    string
-		spanish bool
-		event   bool
+		stream         IdentityStream
+		text           string
+		spanish        bool
+		event          bool
+		feed, internal FeedIdentity
 	}
 	index := make([]indexed, 0, len(streams))
 	for _, s := range streams {
-		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name)})
+		feed := StreamFeed(s.Name, nil)
+		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed)})
 	}
 	out := []SupplementalCandidate{}
 	for _, t := range targets {
 		type termLabel struct {
-			term, evidence string
-			spanish        bool
+			term, value, evidence string
+			spanish               bool
+			feed                  FeedIdentity
 		}
 		labels := []termLabel{}
 		for _, label := range t.Labels {
@@ -97,15 +127,16 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 				hasLetter = hasLetter || unicode.IsLetter(r)
 			}
 			if len(term) >= 3 && hasLetter {
-				labels = append(labels, termLabel{term, label.Evidence, strings.Contains(strings.ToLower(label.Value), "cinemáx")})
+				labels = append(labels, termLabel{term, label.Value, label.Evidence, strings.Contains(strings.ToLower(label.Value), "cinemáx"), StreamFeedForTarget(label.Value, nil, t.Feed)})
 			}
 		}
 		for _, item := range index {
 			s, text := item.stream, item.text
-			if scored[t.ID+"\x00"+s.Fingerprint] || text == "" || !inventoryCountryCompatible(s.Name, t.Country) || item.event {
+			if scored[t.ID+"\x00"+s.Fingerprint] || text == "" || !supplementalCountryCompatible(s, t.Country) || item.event {
 				continue
 			}
-			rank, reason, evidence := 0, "", ""
+			streamFeed := targetFeed(item.feed, item.internal, t.Feed)
+			rank, reason, evidence, descriptor := 0, "", "", ""
 			for _, label := range labels {
 				term := label.term
 				if item.spanish != label.spanish {
@@ -113,8 +144,8 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 				}
 				// A bare News12 name deliberately retrieves all captured regions. Plus is
 				// shown distinctly for explicit review and never described as an alias.
-				if term == "news 12" && strings.HasPrefix(text, "news 12 ") || term == "news 12" && text == term {
-					rank, reason, evidence = 3, "News 12 family; choose the local service explicitly", label.evidence
+				if term == "news 12" && supplementalNews12Region(text) {
+					rank, reason, evidence, descriptor = 3, "News 12 family; choose the local service explicitly", label.evidence, label.value
 					if strings.Contains(text, "plus") {
 						reason = "News 12 Plus is a distinct service; review separately"
 					}
@@ -124,10 +155,14 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 				why := ""
 				if text == term {
 					current, why = 1, "complete attributed service label"
-				} else if supplementalContains(text, term) {
-					current, why = 2, "attributed service label with additional raw descriptors"
-				} else if len(term) >= 8 && strings.HasPrefix(text, strings.TrimSuffix(term, "e")) && len(text)+1 == len(term) {
+				} else if text == "showtime extrem" && term == "showtime extreme" {
 					current, why = 3, "truncated attributed service label; verify raw identity"
+				}
+				// Feed presentation can differ only when the full residual family is
+				// independently attributed to this target. Residual service tokens
+				// (numbers, subbrands, events, geography) are never discarded.
+				if current == 0 && streamFeed.Region != "" && sameFeedFamily(streamFeed.Family, t.Feed) && label.feed.Family == streamFeed.Family {
+					current, why = 2, "complete attributed service family with explicit feed"
 				}
 				// Rewind may be broadcast as WPIX Rewind. Rewind's attributable base term
 				// supplies the anchor; the affiliate token is retained and shown for review.
@@ -135,21 +170,22 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 					current, why = 3, "attributed network label without terminal TV; verify affiliate/subchannel"
 				}
 				if current > 0 && (rank == 0 || current < rank) {
-					rank, reason, evidence = current, why, label.evidence
+					rank, reason, evidence, descriptor = current, why, label.evidence, label.value
 				}
 			}
 			if rank == 0 {
 				continue
 			}
-			streamFeed := StreamFeed(s.Name, nil)
-			if t.Feed.Region != "" && t.Feed.Region != "unknown" {
+			if t.Feed.Region == "unknown" {
+				reason += "; target feed unresolved"
+			} else if t.Feed.Region != "" {
 				if streamFeed.Region != "" && streamFeed.Region != t.Feed.Region {
 					reason += "; explicit opposing feed"
 				} else if streamFeed.Region == "" {
 					reason += "; feed unresolved (numeric decoration is not identity)"
 				}
 			}
-			out = append(out, SupplementalCandidate{Target: t, Stream: s, Rank: rank, Reason: reason, Evidence: evidence})
+			out = append(out, SupplementalCandidate{Target: t, Stream: s, Rank: rank, Reason: reason, Evidence: evidence, Descriptor: descriptor})
 			if len(out) >= 250000 {
 				return out, false
 			}

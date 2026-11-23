@@ -260,7 +260,7 @@ func TestSupplementalImpactPhysicalConflictsAndExtraAdmission(t *testing.T) {
 func TestSupplementalTenHzBurstDuringImpact(t *testing.T) {
 	s, f := newDispatcharrTestServer(t, true)
 	for i := 0; i < 20; i++ {
-		f.streams = append(f.streams, dispatcharr.Stream{ID: int64(100 + i), M3UAccountID: 3, Name: fmt.Sprintf("Two Network Service %d", i)})
+		f.streams = append(f.streams, dispatcharr.Stream{ID: int64(100 + i), M3UAccountID: 3, Name: fmt.Sprintf("%d Two Network HD", 100+i)})
 	}
 	s.matcher = func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error) {
 		return dispatcharr.CandidateSet{}, "test", nil

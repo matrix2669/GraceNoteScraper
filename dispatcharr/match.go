@@ -267,6 +267,7 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		group := groups[key]
 		if group == nil {
 			group = &CandidateGroup{
+				ChannelDisplayName: candidate.ChannelDisplayName, ChannelCallSign: candidate.ChannelCallSign,
 				ReviewKind: candidate.ReviewKind, Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
 				Alias: strings.TrimSpace(candidate.StreamName), NormalizedAlias: normalized,
 				MinimumScore: candidate.Score, MaximumScore: candidate.Score, Tier: candidateTier(candidate),
@@ -282,6 +283,8 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		group.TVGIDEvidence = appendTVGIDEvidence(group.TVGIDEvidence, candidate)
 		group.M3UAccountIDs = appendUniqueInt64(group.M3UAccountIDs, candidate.M3UAccountID)
 		group.Reasons = appendUniqueFold(group.Reasons, candidate.Reason)
+		group.ReviewWarnings = appendUniqueFold(group.ReviewWarnings, candidate.ReviewWarning)
+		group.ExactAliases = appendUniqueFold(group.ExactAliases, candidate.ExactAlias)
 		group.CandidateKeys = append(group.CandidateKeys, candidate.Key)
 		if candidateNameLess(candidate.StreamName, group.Alias) {
 			group.Alias = strings.TrimSpace(candidate.StreamName)
