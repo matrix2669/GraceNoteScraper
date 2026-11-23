@@ -175,6 +175,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	if hasLiveSource {
 		matched := matchCatalog(request, live.source)
 		result.Facts = append(result.Facts, matched.Facts...)
+		result.IdentityFacts = append(result.IdentityFacts, matched.IdentityFacts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
 	for _, source := range s.catalog.Sources {
@@ -183,6 +184,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		}
 		matched := matchCatalog(request, source)
 		result.Facts = append(result.Facts, matched.Facts...)
+		result.IdentityFacts = append(result.IdentityFacts, matched.IdentityFacts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
 	return result, live.err
@@ -271,6 +273,18 @@ const (
 	entryMatchEPGCandidate
 )
 
+const providerNumberAlignmentPercent = 10
+
+type providerNumberAlignment struct {
+	overlappingPositions int
+	exactPositions       int
+	requiredPositions    int
+}
+
+func (alignment providerNumberAlignment) allowsAliasRecovery() bool {
+	return alignment.overlappingPositions > 0 && alignment.exactPositions >= alignment.requiredPositions
+}
+
 func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSource) lineupindex.ProviderEvidenceResult {
 	if len(source.Entries) == 0 {
 		status := source.Status
@@ -297,6 +311,8 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	result := lineupindex.ProviderEvidenceResult{}
 	matchedStations := make(map[string]bool)
 	ambiguousNumbers := ambiguousCatalogNumbers(source.Entries)
+	alignment := catalogNumberAlignment(source.Entries, byNumber, ambiguousNumbers)
+	allowNumberAliases := request.AllowChannelNumbers && alignment.allowsAliasRecovery()
 	type matchedEntry struct {
 		channel web.JSONChannel
 		entry   catalogEntry
@@ -307,7 +323,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	aliasOwners := make(map[string]map[string]bool)
 	epgAliasOwners := make(map[string]map[string]bool)
 	for _, entry := range source.Entries {
-		channels, method, kind := matchEntry(entry, byNumber, byIdentity, ambiguousNumbers)
+		channels, method, kind := matchEntry(entry, byNumber, byIdentity, ambiguousNumbers, allowNumberAliases)
 		if kind == entryMatchNone {
 			continue
 		}
@@ -353,6 +369,8 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			if request.AllowChannelNumbers {
 				factMethod += "; number-policy-provider-v2"
 			}
+		} else if match.kind == entryMatchAliasOnly || match.kind == entryMatchEPGCandidate {
+			factMethod += "; " + lineupindex.ProviderSourceAlignmentV1
 		}
 		aliases := append([]string{entry.Name}, entry.Aliases...)
 		aliases = append(aliases, entry.CallSigns...)
@@ -434,15 +452,23 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 		status = "complete"
 	}
 	message := source.Message
-	if message == "" {
-		message = fmt.Sprintf("%d provider-grid joins from the official provider source", len(matchedStations))
+	if request.AllowChannelNumbers && alignment.overlappingPositions > 0 && !alignment.allowsAliasRecovery() {
+		alignmentMessage := fmt.Sprintf("%d provider-grid joins from the official provider source; skipped provider-number-only alias recovery because %d of %d overlapping positions had exact same-number identity anchors (minimum %d)", len(matchedStations), alignment.exactPositions, alignment.overlappingPositions, alignment.requiredPositions)
+		if message == "" {
+			message = alignmentMessage
+		} else {
+			message += "; " + alignmentMessage
+		}
+	} else if message == "" {
+		if len(matchedStations) == 0 {
+			message = "No usable provider-local channel-number or unique identity joins were found"
+		} else {
+			message = fmt.Sprintf("%d provider-grid joins from the official provider source", len(matchedStations))
+		}
 	}
 	if len(matchedStations) == 0 {
 		if source.Status == "" {
 			status = "no-matches"
-		}
-		if source.Message == "" {
-			message = "No usable provider-local channel-number or unique identity joins were found"
 		}
 	}
 	result.Sources = []lineupindex.EvidenceSourceRecord{{
@@ -452,7 +478,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	return result
 }
 
-func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel, ambiguousNumbers map[string]bool) ([]web.JSONChannel, string, entryMatchKind) {
+func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIdentity map[string][]web.JSONChannel, ambiguousNumbers map[string]bool, allowNumberAliases bool) ([]web.JSONChannel, string, entryMatchKind) {
 	if entry.EventFeed {
 		if channel, ok := uniqueIdentityMatch(entry, byIdentity); ok {
 			return []web.JSONChannel{channel}, "unique exact event-feed identity", entryMatchIdentity
@@ -463,21 +489,7 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 		normalizedNumber := normalizeNumber(number)
 		matches := byNumber[normalizedNumber]
 		if len(matches) > 0 && !ambiguousNumbers[normalizedNumber] {
-			entryIdentities := make(map[string]bool)
-			for _, value := range append(append([]string{entry.Name}, entry.Aliases...), entry.CallSigns...) {
-				if key := identityKey(value); key != "" {
-					entryIdentities[key] = true
-				}
-			}
-			exact := make(map[string]web.JSONChannel)
-			for _, channel := range matches {
-				for _, value := range channelIdentityValues(channel) {
-					if entryIdentities[identityKey(value)] {
-						exact[channel.ChannelID] = channel
-						break
-					}
-				}
-			}
+			exact := exactSameNumberMatches(entry, matches)
 			if len(exact) > 0 {
 				result := make([]web.JSONChannel, 0, len(exact))
 				for _, channel := range exact {
@@ -486,10 +498,10 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 				sort.Slice(result, func(i, j int) bool { return result[i].ChannelID < result[j].ChannelID })
 				return result, "exact provider channel number plus exact identity across same-number variants", entryMatchIdentity
 			}
-			if len(matches) == 1 {
+			if allowNumberAliases && len(matches) == 1 {
 				return matches, "unique provider-local channel number; number-policy-provider-alias-v3", entryMatchAliasOnly
 			}
-			if len(matches) > 1 {
+			if allowNumberAliases && len(matches) > 1 {
 				return matches, "one official provider row shared by same-position station variants; number-policy-provider-alias-v3; EPG confirmation required", entryMatchEPGCandidate
 			}
 		}
@@ -498,6 +510,54 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 		return []web.JSONChannel{channel}, "unique exact provider callsign or name", entryMatchIdentity
 	}
 	return nil, "", entryMatchNone
+}
+
+func catalogNumberAlignment(entries []catalogEntry, byNumber map[string][]web.JSONChannel, ambiguousNumbers map[string]bool) providerNumberAlignment {
+	overlapping := make(map[string]bool)
+	exact := make(map[string]bool)
+	for _, entry := range entries {
+		if entry.EventFeed {
+			continue
+		}
+		for _, value := range entry.Numbers {
+			number := normalizeNumber(value)
+			matches := byNumber[number]
+			if number == "" || len(matches) == 0 || ambiguousNumbers[number] {
+				continue
+			}
+			overlapping[number] = true
+			if len(exactSameNumberMatches(entry, matches)) > 0 {
+				exact[number] = true
+			}
+		}
+	}
+	alignment := providerNumberAlignment{
+		overlappingPositions: len(overlapping),
+		exactPositions:       len(exact),
+	}
+	if alignment.overlappingPositions > 0 {
+		alignment.requiredPositions = (alignment.overlappingPositions*providerNumberAlignmentPercent + 99) / 100
+	}
+	return alignment
+}
+
+func exactSameNumberMatches(entry catalogEntry, matches []web.JSONChannel) map[string]web.JSONChannel {
+	entryIdentities := make(map[string]bool)
+	for _, value := range append(append([]string{entry.Name}, entry.Aliases...), entry.CallSigns...) {
+		if key := identityKey(value); key != "" {
+			entryIdentities[key] = true
+		}
+	}
+	exact := make(map[string]web.JSONChannel)
+	for _, channel := range matches {
+		for _, value := range channelIdentityValues(channel) {
+			if entryIdentities[identityKey(value)] {
+				exact[channel.ChannelID] = channel
+				break
+			}
+		}
+	}
+	return exact
 }
 
 func ambiguousCatalogNumbers(entries []catalogEntry) map[string]bool {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -89,6 +90,65 @@ func TestDISHOfficialServiceMatchesExactChannelNumber(t *testing.T) {
 	}
 	if len(result.Sources) != 1 || result.Sources[0].Matched != 2 {
 		t.Fatalf("source status = %+v", result.Sources)
+	}
+}
+
+func TestFetchProviderEvidencePreservesLiveSharedIdentityFacts(t *testing.T) {
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		if request.URL.String() != directvURL {
+			t.Fatalf("request URL = %s", request.URL)
+		}
+		body := `<script id="__NEXT_DATA__" type="application/json">{"channels":[{"name":"Freeform","chnlNum":"311"},{"name":"ESPN","chnlNum":"206"}]}</script>`
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	result, err := newService(client).FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		AllowChannelNumbers: true,
+		Provider:            web.Provider{Name: "DIRECTV"},
+		Grid: &web.GridResponse{Channels: []web.JSONChannel{
+			{ChannelID: "10093", ChannelNo: "311", CallSign: "FREEFRM"},
+			{ChannelID: "59615", ChannelNo: "311", CallSign: "FREFMHD"},
+			{ChannelID: "ESPN", ChannelNo: "206", CallSign: "ESPN"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSharedIdentityFacts(t, result.IdentityFacts)
+}
+
+func TestFetchProviderEvidencePreservesEmbeddedSharedIdentityFacts(t *testing.T) {
+	service := newService(nil)
+	service.catalog = catalog{Sources: []catalogSource{{
+		ID: "fixture", Providers: []string{"fixture cable"}, Entries: []catalogEntry{
+			{Numbers: []string{"311"}, Name: "Freeform"},
+			{Numbers: []string{"206"}, Name: "ESPN"},
+		},
+	}}}
+	result, err := service.FetchProviderEvidence(context.Background(), lineupindex.ProviderEvidenceRequest{
+		AllowChannelNumbers: true,
+		Provider:            web.Provider{Name: "Fixture Cable"},
+		Grid: &web.GridResponse{Channels: []web.JSONChannel{
+			{ChannelID: "10093", ChannelNo: "311", CallSign: "FREEFRM"},
+			{ChannelID: "59615", ChannelNo: "311", CallSign: "FREFMHD"},
+			{ChannelID: "ESPN", ChannelNo: "206", CallSign: "ESPN"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSharedIdentityFacts(t, result.IdentityFacts)
+}
+
+func assertSharedIdentityFacts(t *testing.T, facts []lineupindex.ProviderFact) {
+	t.Helper()
+	owners := make(map[string]bool)
+	for _, fact := range facts {
+		if fact.Kind == lineupindex.FactAlias && fact.Value == "Freeform" {
+			owners[fact.StationID] = true
+		}
+	}
+	if !owners["10093"] || !owners["59615"] {
+		t.Fatalf("shared Freeform identities were dropped: %+v", facts)
 	}
 }
 
@@ -525,12 +585,14 @@ func TestProviderCatalogKeepsSharedExactIdentityForEPGConfirmation(t *testing.T)
 	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: &web.GridResponse{Channels: []web.JSONChannel{
 		{ChannelID: "10093", ChannelNo: "311", CallSign: "FREEFRM"},
 		{ChannelID: "59615", ChannelNo: "311", CallSign: "FREFMHD"},
+		{ChannelID: "ESPN", ChannelNo: "206", CallSign: "ESPN"},
 	}}}, catalogSource{
-		ID: "directv", Label: "DIRECTV", Entries: []catalogEntry{{
-			Numbers: []string{"311"}, Name: "Freeform", Category: "Entertainment",
-		}},
+		ID: "directv", Label: "DIRECTV", Entries: []catalogEntry{
+			{Numbers: []string{"311"}, Name: "Freeform", Category: "Entertainment"},
+			{Numbers: []string{"206"}, Name: "ESPN"},
+		},
 	})
-	if len(result.Facts) != 0 {
+	if len(factsForStation(result.Facts, "10093")) != 0 || len(factsForStation(result.Facts, "59615")) != 0 {
 		t.Fatalf("same-position multi-GNID evidence must not persist directly: %+v", result.Facts)
 	}
 	owners := map[string]bool{}
@@ -542,8 +604,62 @@ func TestProviderCatalogKeepsSharedExactIdentityForEPGConfirmation(t *testing.T)
 	if !owners["10093"] || !owners["59615"] {
 		t.Fatalf("shared Freeform identity was not retained for EPG confirmation: %+v", result.IdentityFacts)
 	}
-	if len(result.Sources) != 1 || result.Sources[0].Matched != 2 || result.Sources[0].Aliases != 0 || result.Sources[0].Categories != 0 {
+	if len(result.Sources) != 1 || result.Sources[0].Matched != 3 || result.Sources[0].Aliases != 1 || result.Sources[0].Categories != 0 {
 		t.Fatalf("same-position candidate source result = %+v", result.Sources)
+	}
+}
+
+func TestProviderCatalogRejectsMisalignedNumberOnlyAliases(t *testing.T) {
+	grid := &web.GridResponse{Channels: []web.JSONChannel{
+		{ChannelID: "10093", ChannelNo: "155", CallSign: "FREEFRM"},
+		{ChannelID: "102906", ChannelNo: "343", CallSign: "STZEWSS"},
+		{ChannelID: "10201", ChannelNo: "405", CallSign: "FLIX"},
+	}}
+	result := matchCatalog(lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: grid}, catalogSource{
+		ID: "broadstar-official-lineup", Label: "BroadStar official lineup", Entries: []catalogEntry{
+			{Numbers: []string{"155"}, Name: "Hallmark Family"},
+			{Numbers: []string{"343"}, Name: "Flix"},
+			{Numbers: []string{"405"}, Name: "Caribbean Dancehall"},
+		},
+	})
+	for _, stationID := range []string{"10093", "102906"} {
+		if facts := factsForStation(result.Facts, stationID); len(facts) != 0 {
+			t.Fatalf("misaligned provider number produced facts for %s: %+v", stationID, facts)
+		}
+	}
+	flixFacts := factsForStation(result.Facts, "10201")
+	if len(flixFacts) != 1 || flixFacts[0].Value != "Flix" || !strings.Contains(flixFacts[0].Method, "unique exact provider callsign or name") || len(result.IdentityFacts) != 0 {
+		t.Fatalf("safe exact-identity fallback was not isolated from number aliases: %+v", result)
+	}
+	if len(result.Sources) != 1 || !strings.Contains(result.Sources[0].Message, "0 of 3 overlapping positions") {
+		t.Fatalf("misalignment was not reported: %+v", result.Sources)
+	}
+}
+
+func TestProviderCatalogRequiresTenPercentSameNumberAlignment(t *testing.T) {
+	grid := &web.GridResponse{}
+	entries := make([]catalogEntry, 0, 11)
+	for index := 1; index <= 11; index++ {
+		number := strconv.Itoa(index)
+		callSign := "GRID" + number
+		name := "PROVIDER" + number
+		if index == 1 {
+			name = callSign
+		}
+		grid.Channels = append(grid.Channels, web.JSONChannel{ChannelID: "S" + number, ChannelNo: number, CallSign: callSign})
+		entries = append(entries, catalogEntry{Numbers: []string{number}, Name: name})
+	}
+	request := lineupindex.ProviderEvidenceRequest{AllowChannelNumbers: true, Grid: grid}
+	result := matchCatalog(request, catalogSource{ID: "fixture", Entries: entries})
+	if len(factsForStation(result.Facts, "S2")) != 0 || !strings.Contains(result.Sources[0].Message, "minimum 2") {
+		t.Fatalf("one of eleven anchors incorrectly enabled number aliases: %+v", result)
+	}
+
+	entries[1].Name = "GRID2"
+	result = matchCatalog(request, catalogSource{ID: "fixture", Entries: entries})
+	target := factsForStation(result.Facts, "S3")
+	if len(target) != 1 || target[0].Value != "PROVIDER3" || !strings.Contains(target[0].Method, lineupindex.ProviderSourceAlignmentV1) {
+		t.Fatalf("aligned provider did not recover number alias: %+v", result)
 	}
 }
 
