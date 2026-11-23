@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -343,7 +344,12 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 
 	channels := make([]dispatcharr.MatchChannel, 0, len(draft.Channels))
+	includedTargets := make(map[string]bool)
 	for _, channel := range draft.Channels {
+		if !channel.Included {
+			continue
+		}
+		includedTargets[channel.ID] = true
 		channels = append(channels, dispatcharr.MatchChannel{
 			ID: channel.ID, Number: channel.Number, Name: channel.Name, Category: channel.Category,
 			Aliases: append([]string(nil), channel.Aliases...), EPGIDs: append([]string(nil), channel.EPGIDs...),
@@ -352,6 +358,10 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
 	matcherDecisions := make(map[string]dispatcharr.Decision, len(stored))
 	for key, decision := range stored {
+		// Retain history, but an excluded target cannot reserve a stream.
+		if !includedTargets[decision.ChannelID] {
+			continue
+		}
 		matcherDecisions[key] = dispatcharr.Decision{
 			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
 			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID, StreamName: decision.StreamName,
@@ -363,7 +373,8 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		history = history[:dispatcharrReviewLimit]
 	}
 	matches := dispatcharr.MatchStreamCandidates(dispatchConfig.Fingerprint(), channels, streams, matcherDecisions)
-	groups := attachDispatcharrAlternatives(dispatcharr.GroupCandidates(matches.Primary), dispatcharr.GroupCandidates(matches.All))
+	allGroups := dispatcharr.GroupCandidates(matches.All)
+	groups := attachDispatcharrAlternatives(allGroups, allGroups)
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
 	visible := groups
 	if len(visible) > visibleLimit {
@@ -371,7 +382,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(matches.Primary), ConfirmedCount: confirmed, DeniedCount: denied,
+			StreamCount: len(streams), CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: fetchedAt, Cached: cached, Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
 		candidates: matches.Primary, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
@@ -568,6 +579,10 @@ func (s *dispatcharrServer) saveWhileCurrent(dispatchConfig dispatcharr.Config, 
 		return innerErr
 	})
 	if err != nil {
+		if errors.Is(err, lineuparrbuilder.ErrMatchChannelExcluded) {
+			http.Error(w, "The lineup channel is excluded; reload match review", http.StatusConflict)
+			return false
+		}
 		http.Error(w, "Unable to save match review: "+err.Error(), http.StatusBadRequest)
 		return false
 	}
