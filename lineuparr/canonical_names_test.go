@@ -3,7 +3,6 @@ package lineuparr
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -26,14 +25,14 @@ func TestCanonicalCatalogNameAndRawAliases(t *testing.T) {
 	ApplyVerifiedStationCatalogs(inputs)
 	d := canonicalBuild(t, inputs)
 	c := d.Channels[0]
-	if c.Name != "WE tv" || c.OriginalName != "WEHD" || c.CallSign != "WEHD" || c.ID != "id" || !containsFold(c.Aliases, "WEHD") || !containsFold(c.Aliases, "WE TV") {
+	if c.Name != "WEHD" || c.OriginalName != "WEHD" || c.CallSign != "WEHD" || c.ID != "id" || !containsFold(c.Aliases, "WEHD") || !containsFold(c.Aliases, "WE TV") {
 		t.Fatalf("identity changed: %+v", c)
 	}
-	if c.NameSource != "prismcast-network-catalog" || !strings.Contains(c.NameMethod, "wetv:stationId") {
-		t.Fatalf("missing provenance: %+v", c)
+	if len(d.CanonicalNameProposals) != 1 || d.CanonicalNameProposals[0].ProposedName != "WE tv" || !strings.Contains(d.CanonicalNameProposals[0].Method, "wetv:stationId") {
+		t.Fatalf("proposal missing provenance: %+v", d.CanonicalNameProposals)
 	}
 	e := ExportFromDraft(d)
-	if len(e.Categories[c.Category]) != 1 || e.Categories[c.Category][0].Name != c.Name {
+	if len(e.Categories[c.Category]) != 1 || e.Categories[c.Category][0].Name != "WEHD" {
 		t.Fatal("export did not use resolved name")
 	}
 }
@@ -55,7 +54,7 @@ func TestCanonicalCollisionAndPreferredPrecedence(t *testing.T) {
 	for _, c := range d.Channels {
 		by[c.ID] = c
 	}
-	if by["one"].Name != "RAW" || by["one"].NameDiagnostic == "" {
+	if by["one"].Name != "RAW" || len(d.CanonicalNameProposals) != 1 || d.CanonicalNameProposals[0].Status != "held" {
 		t.Fatalf("collision: %+v", by)
 	}
 	in[0].PreferredName = &AttributedAlias{Value: "Preferred", Source: "rename", Method: "explicit"}
@@ -64,53 +63,6 @@ func TestCanonicalCollisionAndPreferredPrecedence(t *testing.T) {
 		if c.ID == "one" && c.Name != "Preferred" {
 			t.Fatal(c.Name)
 		}
-	}
-}
-
-// TestCanonicalCapturedDraftExport is an opt-in offline replay of an already
-// captured draft. It does not fetch or mutate live state; paths are operator-owned.
-func TestCanonicalCapturedDraftExport(t *testing.T) {
-	input, output := os.Getenv("CANONICAL_CAPTURE_DRAFT"), os.Getenv("CANONICAL_CAPTURE_OUTPUT")
-	if input == "" || output == "" {
-		t.Skip("no private captured draft requested")
-	}
-	data, err := os.ReadFile(input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var d Draft
-	if err = json.Unmarshal(data, &d); err != nil {
-		t.Fatal(err)
-	}
-	inputs := make([]InputChannel, len(d.Channels))
-	for i, c := range d.Channels {
-		inputs[i] = InputChannel{Key: c.ID, StationID: c.StationID, CallSign: c.CallSign}
-		if strings.HasPrefix(c.NameSource, "provider-guide-") {
-			inputs[i].PreferredName = &AttributedAlias{Value: c.Name, Source: c.NameSource, Method: c.NameMethod}
-		}
-	}
-	ApplyVerifiedStationCatalogs(inputs)
-	work := make([]*channelWork, len(inputs))
-	for i, in := range inputs {
-		work[i] = newChannelWork(in)
-		work[i].draft = d.Channels[i]
-	}
-	resolveCanonicalNames(d.Channels, work)
-	if out := os.Getenv("CANONICAL_CAPTURE_RESOLVED_DRAFT"); out != "" {
-		b, err := json.Marshal(&d)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(out, b, 0600); err != nil {
-			t.Fatal(err)
-		}
-	}
-	b, err := json.Marshal(ExportFromDraft(&d))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(output, b, 0600); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -147,7 +99,7 @@ func TestCanonicalConflictingRowsNeverFirstWins(t *testing.T) {
 	for _, options := range [][]AttributedAlias{{a, b}, {b, a}} {
 		d := canonicalBuild(t, []InputChannel{{Key: "one", StationID: "s", CallSign: "RAW", ExternalAliases: options, CanonicalNameCandidates: options}})
 		c := d.Channels[0]
-		if c.Name != "RAW" || !strings.Contains(c.NameDiagnostic, "Conflicting") {
+		if c.Name != "RAW" || len(d.CanonicalNameProposals) != 0 {
 			t.Fatalf("order-dependent conflict: %+v", c)
 		}
 	}
@@ -158,5 +110,73 @@ func TestDefaultEastNameRetainsDistinctBrandsAndFeeds(t *testing.T) {
 		if got := defaultEastName(in); got != want {
 			t.Fatalf("%q => %q; want %q", in, got, want)
 		}
+	}
+}
+
+func TestCanonicalSuppressionFinalFormEvenWithoutActiveAlias(t *testing.T) {
+	store, err := LoadStateStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = store.SetAliasSuppressed("test", "id", "WE tv", true); err != nil {
+		t.Fatal(err)
+	}
+	p := ServiceIdentityEvidence{BindingKind: "station-id-catalog-v1", RootStationID: "s", SourceID: "source", SourceRowID: "row", SourceRevision: "rev", Policy: "verified-portable-station-alias-v1"}
+	a := AttributedAlias{Value: "WE tv - East", Source: "source", Method: "row", Identity: &p}
+	d, err := NewService(store, ServiceOptions{}).Build(context.Background(), LineupContext{SourceFingerprint: "test", Country: "US"}, []InputChannel{{Key: "id", StationID: "s", CallSign: "WEHD", ExternalAliases: []AttributedAlias{a}, CanonicalNameCandidates: []AttributedAlias{a}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.CanonicalNameProposals) != 0 || d.Channels[0].Name != "WEHD" {
+		t.Fatalf("resurrected suppression: %+v", d.CanonicalNameProposals)
+	}
+}
+func TestCanonicalCrossCategoryGlobalAliasPoolCollision(t *testing.T) {
+	p := ServiceIdentityEvidence{BindingKind: "station-id-catalog-v1", RootStationID: "s", SourceID: "source", SourceRowID: "row", SourceRevision: "rev", Policy: "verified-portable-station-alias-v1"}
+	a := AttributedAlias{Value: "WE tv - East", Source: "source", Method: "row", Identity: &p}
+	in := []InputChannel{{Key: "one", StationID: "s", CallSign: "WEHD", ExternalAliases: []AttributedAlias{a}, CanonicalNameCandidates: []AttributedAlias{a}, CategoryHint: &AttributedCategory{Value: "Entertainment", Source: "fixture", Method: "test"}}, {Key: "two", StationID: "t", CallSign: "WE tv", ExternalAliases: []AttributedAlias{{Value: "Zqx Sports Only", Source: "test", Method: "fixture"}}, CategoryHint: &AttributedCategory{Value: "Sports", Source: "fixture", Method: "test"}}}
+	store, err := LoadStateStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := NewService(store, ServiceOptions{})
+	sports := "Sports"
+	if err := svc.UpdateChannel("test", "two", ChannelUpdate{Category: &sports}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := svc.Build(context.Background(), LineupContext{SourceFingerprint: "test", Country: "US"}, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Channels[0].Category == d.Channels[1].Category {
+		t.Fatalf("fixture categories did not differ")
+	}
+	if len(d.CanonicalNameProposals) != 1 || d.CanonicalNameProposals[0].Status != "held" {
+		t.Fatalf("pool collision unheld: %+v", d.CanonicalNameProposals)
+	}
+}
+
+func TestCanonicalValidationCopyChangesOnlyProspectiveExport(t *testing.T) {
+	in := []InputChannel{{Key: "id", StationID: "59296", CallSign: "WEHD", Number: "649"}}
+	ApplyVerifiedStationCatalogs(in)
+	base := canonicalBuild(t, in)
+	raw, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var prospective Draft
+	if err = json.Unmarshal(raw, &prospective); err != nil {
+		t.Fatal(err)
+	}
+	if err = ApplyCanonicalProposalsForValidation(&prospective, map[string]bool{base.CanonicalNameProposals[0].Hash: true}); err != nil {
+		t.Fatal(err)
+	}
+	old, new := ExportFromDraft(base), ExportFromDraft(&prospective)
+	c := base.Channels[0].Category
+	if old.Categories[c][0].Name != "WEHD" || new.Categories[c][0].Name != "WE tv" {
+		t.Fatalf("bad exports %s -> %s", old.Categories[c][0].Name, new.Categories[c][0].Name)
+	}
+	if strings.Join(old.Categories[c][0].Aliases, "|") != strings.Join(new.Categories[c][0].Aliases, "|") {
+		t.Fatal("proposal changed aliases")
 	}
 }

@@ -275,6 +275,7 @@ func (s *dispatcharrServer) buildSupplementalReviewFrom(draft *builder.Draft, co
 		candidates, complete = s.prepareSupplementalUncached(draft, config, snapshot)
 	}
 	candidates = append(append([]dispatcharr.SupplementalCandidate(nil), candidates...), s.impactExtraCandidates(draft, snapshot, inputs)...)
+	candidates = append(candidates, s.canonicalLeads(draft, snapshot, inputs)...)
 	candidates = filterSupplementalAutomatic(candidates, automatic)
 	response.Complete = complete
 	response.Status = "current"

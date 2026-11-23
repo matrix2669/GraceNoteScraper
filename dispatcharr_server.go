@@ -33,7 +33,10 @@ type dispatcharrAPI interface {
 }
 
 type dispatcharrServer struct {
-	lifecycleStageCheck                  func(string) error // isolated projection/fence fault injection; nil in production
+	canonical                            *canonicalValidation // guarded by reviewMu
+	canonicalCancel                      context.CancelFunc   // guarded by impactMu
+	canonicalDone                        chan struct{}        // guarded by impactMu
+	lifecycleStageCheck                  func(string) error   // isolated projection/fence fault injection; nil in production
 	lifecycleMu                          sync.Mutex
 	lifecycleSource, lifecycleConnection string
 	lifecycleResult                      lineuparrbuilder.LifecycleResult
@@ -111,6 +114,7 @@ type dispatcharrMatchSnapshot struct {
 	digest                 string
 	candidates             []dispatcharr.Candidate
 	identityStreams        []dispatcharr.IdentityStream
+	safeStreams            []dispatcharr.Stream
 	streamCount            int
 	inventoryDigest        string
 	fetchedAt              time.Time
@@ -522,7 +526,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	digest := dispatcharrInputDigest(channels)
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
+	expectedSnapshot := snapshotIdentity(snapshot)
 	s.reviewMu.RUnlock()
+	snapshot = s.canonicalReviewSnapshot(channels, snapshot, admissionInputs)
 	// Removing targets can reuse the previous scan. Remember the reduced input
 	// set so a later addition is not silently treated as part of that review.
 	if snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && !snapshot.fetchedAt.IsZero() && dispatcharrInputsSubset(channels, snapshot.channels) {
@@ -532,10 +538,10 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		s.reviewMu.Lock()
 		if s.snapshot.digest == previousDigest && s.snapshot.fetchedAt.Equal(snapshot.fetchedAt) {
 			s.snapshot = snapshot
+			expectedSnapshot = snapshotIdentity(snapshot)
 		}
 		s.reviewMu.Unlock()
 	}
-	expectedSnapshot := snapshotIdentity(snapshot)
 
 	if force {
 		streams, fetchErr := s.client.Streams(r.Context(), dispatchConfig)
@@ -633,7 +639,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			snapshot = dispatcharrMatchSnapshot{
 				reviewInputs: copyReviewInputs(currentInputs), reviewSources: currentDraft.SourceCapture,
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
-				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
+				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, safeStreams: copySafeStreams(streams), streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
 			snapshot.channels = currentChannels
@@ -1199,4 +1205,21 @@ func dispatcharrInputsSubset(current, scanned []dispatcharr.MatchChannel) bool {
 		}
 	}
 	return true
+}
+
+// Snapshot owns immutable safe matcher fields; pointers must not alias API data.
+func copySafeStreams(in []dispatcharr.Stream) []dispatcharr.Stream {
+	out := make([]dispatcharr.Stream, len(in))
+	copy(out, in)
+	for i := range out {
+		if in[i].ChannelGroupID != nil {
+			v := *in[i].ChannelGroupID
+			out[i].ChannelGroupID = &v
+		}
+		if in[i].StreamChannelNo != nil {
+			v := *in[i].StreamChannelNo
+			out[i].StreamChannelNo = &v
+		}
+	}
+	return out
 }

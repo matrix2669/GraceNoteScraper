@@ -170,6 +170,7 @@ type SourceMatch struct {
 }
 
 type AutomaticMatchLease struct {
+	CanonicalToken      string
 	EvidenceBound       bool
 	IndexRevision       uint64
 	TMDBRevision        uint64
@@ -181,36 +182,53 @@ type AutomaticMatchLease struct {
 	GuideToken          string
 }
 
+// CanonicalNameProposal is derived evidence only, not a user decision or export.
+type CanonicalNameProposal struct {
+	TargetID     string                  `json:"targetId"`
+	BeforeName   string                  `json:"beforeName"`
+	BeforeSource string                  `json:"beforeSource"`
+	BeforeMethod string                  `json:"beforeMethod"`
+	ProposedName string                  `json:"proposedName"`
+	Descriptor   string                  `json:"descriptor"`
+	Source       string                  `json:"source"`
+	Method       string                  `json:"method"`
+	Proof        ServiceIdentityEvidence `json:"proof"`
+	Hash         string                  `json:"hash"`
+	Status       string                  `json:"status"`
+	Reason       string                  `json:"reason,omitempty"`
+}
+
 type Draft struct {
-	SourceCapture             *SourceCapture        `json:"-"`
-	SupplementalMessage       string                `json:"supplementalMessage,omitempty"`
-	SupplementalDecisionCount int                   `json:"supplementalDecisionCount"`
-	ResetGeneration           uint64                `json:"resetGeneration"`
-	PublicationGeneration     uint64                `json:"publicationGeneration"`
-	AutomaticLease            *AutomaticMatchLease  `json:"-"`
-	AutomaticMatchingStatus   string                `json:"automaticMatchingStatus,omitempty"`
-	AutomaticMatchingMessage  string                `json:"automaticMatchingMessage,omitempty"`
-	AutomaticExclusionCount   int                   `json:"automaticExclusionCount"`
-	SourceFingerprint         string                `json:"sourceFingerprint"`
-	GeneratedAt               time.Time             `json:"generatedAt"`
-	Package                   string                `json:"package"`
-	ProviderName              string                `json:"providerName"`
-	PostalCode                string                `json:"postalCode"`
-	LineupID                  string                `json:"lineupId"`
-	CountryCode               string                `json:"countryCode"`
-	Channels                  []DraftChannel        `json:"channels"`
-	DuplicateSuggestions      []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups           []DuplicateGroup      `json:"duplicateGroups"`
-	Sources                   []SourceStatus        `json:"sources"`
-	Categories                []string              `json:"categories"`
-	Total                     int                   `json:"total"`
-	Included                  int                   `json:"included"`
-	Excluded                  int                   `json:"excluded"`
-	AliasCount                int                   `json:"aliasCount"`
-	Categorized               int                   `json:"categorized"`
-	Uncategorized             int                   `json:"uncategorized"`
-	CustomizationSignature    string                `json:"customizationSignature"`
-	ExportSignatures          ExportSignatures      `json:"exportSignatures"`
+	CanonicalNameProposals    []CanonicalNameProposal `json:"canonicalNameProposals,omitempty"`
+	SourceCapture             *SourceCapture          `json:"-"`
+	SupplementalMessage       string                  `json:"supplementalMessage,omitempty"`
+	SupplementalDecisionCount int                     `json:"supplementalDecisionCount"`
+	ResetGeneration           uint64                  `json:"resetGeneration"`
+	PublicationGeneration     uint64                  `json:"publicationGeneration"`
+	AutomaticLease            *AutomaticMatchLease    `json:"-"`
+	AutomaticMatchingStatus   string                  `json:"automaticMatchingStatus,omitempty"`
+	AutomaticMatchingMessage  string                  `json:"automaticMatchingMessage,omitempty"`
+	AutomaticExclusionCount   int                     `json:"automaticExclusionCount"`
+	SourceFingerprint         string                  `json:"sourceFingerprint"`
+	GeneratedAt               time.Time               `json:"generatedAt"`
+	Package                   string                  `json:"package"`
+	ProviderName              string                  `json:"providerName"`
+	PostalCode                string                  `json:"postalCode"`
+	LineupID                  string                  `json:"lineupId"`
+	CountryCode               string                  `json:"countryCode"`
+	Channels                  []DraftChannel          `json:"channels"`
+	DuplicateSuggestions      []DuplicateSuggestion   `json:"duplicateSuggestions"`
+	DuplicateGroups           []DuplicateGroup        `json:"duplicateGroups"`
+	Sources                   []SourceStatus          `json:"sources"`
+	Categories                []string                `json:"categories"`
+	Total                     int                     `json:"total"`
+	Included                  int                     `json:"included"`
+	Excluded                  int                     `json:"excluded"`
+	AliasCount                int                     `json:"aliasCount"`
+	Categorized               int                     `json:"categorized"`
+	Uncategorized             int                     `json:"uncategorized"`
+	CustomizationSignature    string                  `json:"customizationSignature"`
+	ExportSignatures          ExportSignatures        `json:"exportSignatures"`
 }
 
 type ExportSignatures struct {
