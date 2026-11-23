@@ -22,19 +22,27 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  assert.ok(await page.evaluate(()=>!!(document.getElementById('decision-history').compareDocumentPosition(document.getElementById('automatic-exclusions'))&Node.DOCUMENT_POSITION_FOLLOWING)),'automatic exclusions are below reviewed matches');
  for(const row of fixture.reviewItems){
   const card=page.locator(`[data-key="${row.key}"]`).first();const text=await card.innerText();
-  assert.ok(text.includes(row.alias));assert.ok(text.includes(row.channelDisplayName||row.channelName));
-  assert.ok(text.includes('Target feed:'));assert.ok(text.includes('Stream feed:'));
+  assert.ok(text.includes(row.alias));assert.ok(text.includes(row.channelNumber==='865' ? 'Paramount+ with SHOWTIME' : (row.channelDisplayName||row.channelName)));
+  assert.doesNotMatch(text,/Target feed:|Feed unknown|Identity evidence|Provider name conflicts|user-attested|USER-ATTESTED/);
+  const region=row.targetFeed?.region;if(region==='west')assert.match(await card.locator('.match-name').nth(1).innerText(),new RegExp(region,'i'));
+  if((row.streamFeeds||[]).every(f=>f.region==='unknown'))assert.doesNotMatch(text,/Stream feed:/);
   if(row.origin)assert.doesNotMatch(text,/\d+%/);else assert.ok(await card.locator('.deny-button').isVisible(),'>=95 Deny stays visible');
-  for(const conflict of row.identityConflicts||[])assert.ok(text.includes(conflict));
+  const expected={'865':'Paramount+ with SHOWTIME (PARSHOH)','904':'HBO Drama (HBODRHD)','905':'HBO Drama West (HBODHDP)','910':'HBO Movies (HBOMVHD)','911':'HBO Movies West (HBOMHDP)'};
+  if(expected[row.channelNumber])assert.equal(await card.locator('.match-name').nth(1).innerText(),`${row.channelNumber} · ${expected[row.channelNumber]}`);
+  assert.equal(await card.locator('details[open]').count(),0);
+  for(const label of ['Confirm','Deny'])assert.ok(await card.getByRole('button',{name:label,exact:true}).isVisible());
  }
  if(process.env.UNIFIED_SCREENSHOT_DIR){
   const dir=process.env.UNIFIED_SCREENSHOT_DIR;fs.mkdirSync(dir,{recursive:true});
-  const groups={hbo:['HBO Hits'],cinemax:['Cinemax Hits','Cinemax - West','Cinemáx'],showtime:['Showtime 2','Showtime Extreme','Paramount+ with SHOWTIME - West'],news12:['News 12','News 12 Plus']};
+  const groups={hbo:['HBO Hits','HBO Drama','HBO Movies'],cinemax:['Cinemax Hits','Cinemax - West','Cinemáx'],showtime:['Showtime 2','Showtime Extreme','Paramount+ with SHOWTIME - West','Paramount+ with SHOWTIME - East'],news12:['News 12','News 12 Plus']};
   for(const [name,labels]of Object.entries(groups)){
    await page.evaluate(labels=>{const rows=fixture.reviewItems.filter(r=>labels.includes(r.channelDisplayName));matchReview={...mergeSupplementalReview(fixture),candidates:rows,candidateCount:rows.length};renderMatchReview();},labels);
    await page.locator('#match-review').screenshot({path:path.join(dir,`${name}.png`)});
   }
+  await page.evaluate(()=>{matchReview=mergeSupplementalReview(fixture);renderMatchReview();});
+  await page.locator('#match-list').screenshot({path:path.join(dir,'all-cards.png')});
+  fs.writeFileSync(path.join(dir,'visible-cards.json'),JSON.stringify(await cards.allInnerTexts(),null,2));
   fs.writeFileSync(path.join(dir,'rendered-examples.json'),JSON.stringify(await page.evaluate(()=>fixture.reviewItems.map(r=>({key:r.key,origin:r.origin||'primary',name:r.channelDisplayName,callsign:r.channelCallSign,raw:r.alias,targetFeed:r.targetFeed,streamFeeds:r.streamFeeds,conflicts:r.identityConflicts||[]}))),null,2),{mode:0o600});
  }
- assert.deepEqual(errors,[]);console.log(`Unified rendered browser: ${fixture.reviewItems.length} actual DTO cards; one list, score-free retrieval, readable names, separate target/raw feeds, conflicts, >=95 Deny and bottom exclusions passed`);
+ assert.deepEqual(errors,[]);console.log(`Unified rendered browser: ${fixture.reviewItems.length} actual DTO cards; one list, score-free retrieval, readable names, prominent target feeds, raw stream names, concise attribution, >=95 Deny and bottom exclusions passed`);
 }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});

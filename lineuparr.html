@@ -1665,11 +1665,11 @@
       const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = `View ${(candidate.streamNames || []).length} raw name variant${(candidate.streamNames || []).length === 1 ? '' : 's'}`;
       const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
       for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
-      for (const member of candidate.constituents || []) { const item=document.createElement('div'); item.textContent=`Account ${member.m3uAccountId}, stream ${member.streamId}: ${member.streamName}. ${(member.evidenceRefs || []).join('; ')}`; evidenceList.append(item); }
+      for (const member of candidate.constituents || []) { const item=document.createElement('div'); item.textContent=`Account ${member.m3uAccountId}, stream ${member.streamId}: ${member.streamName}`; evidenceList.append(item); }
       evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
       const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
       const channel = document.createElement('div');
-      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelDisplayName || candidate.channelName}${candidate.channelCallSign && candidate.channelCallSign !== (candidate.channelDisplayName || candidate.channelName) ? ` (${candidate.channelCallSign})` : ''}`;
+      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${reviewTargetName(candidate)}${candidate.channelCallSign && candidate.channelCallSign !== (reviewTargetName(candidate)) ? ` (${candidate.channelCallSign})` : ''}`;
       const channelMeta = document.createElement('div'); channelMeta.className = 'match-meta';
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
@@ -1694,30 +1694,36 @@
       return card;
     }
 
+    function reviewTargetName(candidate) {
+      const name = candidate.channelDisplayName || candidate.channelName;
+      const region = candidate.targetFeed?.region;
+      // Only an explicit, delimited feed qualifier is removed from a verified primary.
+      if (region === 'east') return name.replace(/\s+(?:[-–—]\s*East|\(East\))\s*$/i, '').trim();
+      // Target identity never establishes the feed of a raw stream.
+      if (region === 'west' && !/\b(east|west|eastern|western|pacific)\b/i.test(name)) {
+        return `${name} West`;
+      }
+      return name;
+    }
+
     function appendMatchAttribution(container, candidate) {
-      const feedLabel=feed=>feed?.region === 'east' ? 'East' : feed?.region === 'west' ? 'West' : feed?.region === 'conflicting' ? 'Conflicting feed labels' : 'Feed unknown';
-      if (candidate.targetFeed) {
-        const target=document.createElement('div');target.className='match-meta target-feed';target.textContent=`Target feed: ${feedLabel(candidate.targetFeed)}${candidate.targetFeed.provenanceKind === 'user-attested' ? ' (user-attested)' : ''}`;container.append(target);
+      const evidence = [...new Set((candidate.origin ? candidate.retrievalDescriptors : candidate.exactAliases) || [])];
+      let reason;
+      if (evidence.length) {
+        reason = `${candidate.origin ? 'Name evidence' : 'Matched alias'}: ${evidence.join('; ')} → ${reviewTargetName(candidate)}.`;
+      } else if (!candidate.origin) {
+        const reasons = candidate.reasons || (candidate.reason ? [candidate.reason] : []);
+        if (reasons.some(value => /fuzzy/i.test(value))) reason = 'Matched by name similarity.';
+        else if (reasons.some(value => /substring/i.test(value))) reason = 'Matched by a partial name.';
+        else if (reasons.some(value => /callsign/i.test(value))) reason = 'Matched by callsign.';
+        else if (reasons.some(value => /exact/i.test(value))) reason = 'Matched by exact name.';
+        else if (reasons.some(value => /alias/i.test(value))) reason = 'Matched by alias similarity.';
       }
-      for (const feed of candidate.streamFeeds || []) {
-        const stream=document.createElement('div');stream.className='match-meta stream-feed';stream.textContent=`Stream feed: ${feedLabel(feed)}${candidate.streamFeeds.length>1 ? ` · ${feed.name}` : ''}`;container.append(stream);
-      }
-      const evidence=candidate.origin ? candidate.retrievalDescriptors : candidate.exactAliases;
-      if (evidence?.length) {const attribution=document.createElement('div');attribution.className='match-meta';attribution.textContent=`${candidate.origin ? 'Name evidence' : 'Matched using'}: ${evidence.join('; ')}`;container.append(attribution);}
-      const finding=typeof matchReview !== 'undefined' && matchReview?.supplementalImpact?.rows?.find(row=>row.channelId === candidate.channelId);
-      if (finding) {
-        const messages=[];
-        if (finding.missed?.length) messages.push(`${finding.missed.length} selected name(s) did not match`);
-        if (finding.protectedConflicts?.length) messages.push(`${finding.protectedConflicts.length} existing match(es) affected`);
-        if (finding.sameNameConflicts?.length) messages.push('Equal raw names have conflicting choices across accounts');
-        if (messages.length) {const p=document.createElement('p');p.className='warning';p.textContent=`${matchReview.supplementalImpact.findingsStale ? 'Prior validation' : 'Validation'}: ${messages.join('; ')}`;container.append(p);}
-      }
-      for (const conflict of candidate.identityConflicts || []) {const p=document.createElement('p');p.className='warning';p.textContent=conflict;container.append(p);}
-      if (candidate.reviewWarnings?.length) {
-        const details=document.createElement('details'); details.className='match-evidence';
-        const summary=document.createElement('summary');summary.textContent='Identity evidence';details.append(summary);
-        for (const warning of candidate.reviewWarnings) {const p=document.createElement('p');p.textContent=warning;details.append(p);}
-        container.append(details);
+      if (reason) { const text = document.createElement('div'); text.className = 'match-meta match-reason'; text.textContent = reason; container.append(text); }
+      // Stream identity is shown only when known independently of the target.
+      const regions = [...new Set((candidate.streamFeeds || []).map(feed => feed.region))];
+      if (regions.length === 1 && (regions[0] === 'east' || regions[0] === 'west')) {
+        const text = document.createElement('div'); text.className = 'match-meta stream-feed'; text.textContent = `Stream feed: ${regions[0] === 'east' ? 'East' : 'West'}`; container.append(text);
       }
     }
 
@@ -1725,7 +1731,7 @@
       const row = document.createElement('div'); row.className = 'decision-row'; row.dataset.key = decision.key;
       const copy = document.createElement('div');
       const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
-      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelDisplayName || decision.channelName}${decision.channelCallSign && decision.channelCallSign !== (decision.channelDisplayName || decision.channelName) ? ` (${decision.channelCallSign})` : ''} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "" : `${decision.score}%`}`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${reviewTargetName(decision)}${decision.channelCallSign && decision.channelCallSign !== (reviewTargetName(decision)) ? ` (${decision.channelCallSign})` : ''} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.origin ? "" : `${decision.score}%`}`;
       copy.append(title, meta); appendMatchAttribution(copy,decision);
       if (decision.origin) {
         const details=document.createElement('details'); details.className='match-evidence';
@@ -1929,12 +1935,12 @@
       const card = document.createElement('article'); card.className = 'match-alternative-card'; card.dataset.key = candidate.key;
       const main = document.createElement('div'); main.className = 'match-alternative-main';
       const copy = document.createElement('div');
-      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelDisplayName || candidate.channelName}${candidate.channelCallSign && candidate.channelCallSign !== (candidate.channelDisplayName || candidate.channelName) ? ` (${candidate.channelCallSign})` : ''}`;
+      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${reviewTargetName(candidate)}${candidate.channelCallSign && candidate.channelCallSign !== (reviewTargetName(candidate)) ? ` (${candidate.channelCallSign})` : ''}`;
       const meta = document.createElement('div'); meta.className = 'match-meta';
       const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
       const score = document.createElement('span'); score.className = 'match-score';
       score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
-      meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
+      if (!candidate.origin) meta.append(tier, score);
       copy.append(name, meta); appendMatchAttribution(copy, candidate); main.append(copy); card.append(main);
       const buttons = document.createElement('div'); buttons.className = 'match-buttons';
       const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
@@ -1960,7 +1966,7 @@
         if (decisionEpoch !== dispatchReviewEpoch) return;
         matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
         matchReview.deniedCount += decision === 'denied' ? 1 : 0;
-        matchReview.decisions = [{key:candidate.key, decision, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:primary.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        matchReview.decisions = [{key:candidate.key, decision, targetFeed:candidate.targetFeed, channelId:candidate.channelId, channelNumber:candidate.channelNumber, channelName:candidate.channelName, channelDisplayName:candidate.channelDisplayName, channelCallSign:candidate.channelCallSign, streamName:primary.alias, streamNames:candidate.streamNames, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
         primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
         matchReview.candidates = (matchReview.candidates || []).filter(item => item.key !== candidate.key);
         matchReview.candidateCount = Math.max(0, matchReview.candidateCount - 1);
