@@ -133,6 +133,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		channel.draft.Category = hint.Value
 		channel.draft.CategorySource = hint.Source
 		channel.draft.CategoryMethod = hint.Method
+		channel.draft.CategoryPriority = hint.Priority
 		channel.matchedSourceSet[hint.Source] = true
 		categoryHintMatches[hint.Source]++
 		categoryHintLabels[hint.Source] = hint.Label
@@ -199,6 +200,10 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
 		finalizeChannel(channel)
+		if channel.draft.Category != uncategorized && channel.draft.CategoryPriority == 0 {
+			channel.draft.CategoryPriority = 2
+		}
+		channel.draft.NeedsCategoryReview = channel.draft.Category != uncategorized && channel.draft.CategoryPriority >= 3
 		if override, ok := overrides[channel.draft.ID]; ok {
 			if override.Included != nil {
 				channel.draft.Included = *override.Included
@@ -207,6 +212,9 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 				channel.draft.Category = category
 				channel.draft.CategorySource = "user"
 				channel.draft.CategoryMethod = "user edit"
+				channel.draft.CategoryPriority = 1
+				channel.draft.NeedsCategoryReview = false
+				channel.draft.CategoryReview = override.CategoryReview
 			}
 			applyAliasSuppressions(&channel.draft, override.SuppressedAliases)
 		}

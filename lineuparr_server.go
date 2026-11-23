@@ -30,6 +30,8 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
+	tmdbConfigured   bool
+	tmdbEnriching    func() bool
 	beforeMarketScan func() error
 	exportDir        string
 	store            *appconfig.Store
@@ -327,6 +329,18 @@ func (s *lineuparrServer) handleChannel(w http.ResponseWriter, r *http.Request) 
 	if !known {
 		http.Error(w, "channel does not belong to the active lineup", http.StatusNotFound)
 		return
+	}
+	if body.Category != nil {
+		draft, _, _, ready := s.buildDraft(w, r)
+		if !ready {
+			return
+		}
+		for _, channel := range draft.Channels {
+			if channel.ID == body.ChannelID {
+				body.Review = lineuparrbuilder.ReviewCategory(channel, *body.Category)
+				break
+			}
+		}
 	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
 		return s.builder.UpdateChannel(config.Fingerprint(), body.ChannelID, body.ChannelUpdate)
@@ -673,8 +687,12 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 				label = strings.Join(category.SourceLabels, ", ")
 			}
 			providerCategory := &lineuparrbuilder.AttributedCategory{
-				Value: category.Value, Source: sourceID, Label: label,
+				Priority: category.Priority,
+				Value:    category.Value, Source: sourceID, Label: label,
 				Method: strings.Join(category.Methods, "; "),
+			}
+			if existing := inputs[index].CategoryHint; existing != nil && existing.Priority > 0 && existing.Priority < providerCategory.Priority {
+				continue
 			}
 			if inputs[index].CategoryConflict {
 				providerConflicts[sourceID]++
@@ -940,12 +958,17 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 	if len(channels) == 0 {
 		channels = g.Channels
 	}
-	categoryHints := scheduleCategoryHints(g)
+	categoryHints := s.weekdayCategoryHints(g, config)
+	tmdbCategories := s.builder.TMDBCategoryScan(config.Fingerprint()).Categories
 	inputs := make([]lineuparrbuilder.InputChannel, 0, len(channels))
 	seenKeys := make(map[string]int)
 	for _, channel := range channels {
 		input := lineupInput(channel)
 		input.CategoryHint = categoryHints[channel.ID]
+		if hint, ok := tmdbCategories[channel.ID]; ok && input.CategoryHint == nil {
+			copy := hint
+			input.CategoryHint = &copy
+		}
 		baseKey := strings.TrimSpace(input.Key)
 		if count := seenKeys[baseKey]; count > 0 {
 			input.Key = fmt.Sprintf("%s-%d", baseKey, count+1)

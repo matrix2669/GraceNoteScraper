@@ -87,6 +87,7 @@ type searchResponse struct {
 }
 
 type searchResult struct {
+	GenreIDs         []int   `json:"genre_ids"`
 	ID               int     `json:"id"`
 	Title            string  `json:"title"`
 	OriginalTitle    string  `json:"original_title"`
@@ -329,11 +330,14 @@ func tokenSet(value string) map[string]bool {
 
 func cacheEntryFromSearch(result searchResult, isMovie bool) CacheEntry {
 	entry := CacheEntry{
-		Rating:       result.VoteAverage,
-		VoteCount:    result.VoteCount,
-		Overview:     result.Overview,
-		TMDBID:       result.ID,
-		OrigLanguage: result.OriginalLanguage,
+		GenreIDs:       append([]int(nil), result.GenreIDs...),
+		GenresCaptured: true,
+		MediaType:      "tv",
+		Rating:         result.VoteAverage,
+		VoteCount:      result.VoteCount,
+		Overview:       result.Overview,
+		TMDBID:         result.ID,
+		OrigLanguage:   result.OriginalLanguage,
 	}
 	if result.PosterPath != nil {
 		entry.ImageURL = imageBase + *result.PosterPath
@@ -343,6 +347,7 @@ func cacheEntryFromSearch(result searchResult, isMovie bool) CacheEntry {
 	}
 	date := result.FirstAirDate
 	if isMovie {
+		entry.MediaType = "movie"
 		date = result.ReleaseDate
 	}
 	entry.ReleaseDate = date

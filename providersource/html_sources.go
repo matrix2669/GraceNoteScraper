@@ -228,7 +228,11 @@ func parseXfinity(data []byte) ([]catalogEntry, error) {
 			name := firstString(typed, "channelName", "name", "displayName")
 			number := firstString(typed, "channelNumber", "channelNo")
 			if name != "" && number != "" {
-				entry := catalogEntry{Numbers: splitChannelNumbers(number), Name: cleanText(name), Category: firstString(typed, "genreName", "category", "genre")}
+				// genreName is inconsistent with channel content in the public
+				// response. Retain only reviewed, low-quality ID interpretations.
+				genreID := firstString(typed, "genreId")
+				category := map[string]string{"8": "Movies", "9": "News & Weather", "10": "Sports", "11": "International", "12": "Entertainment"}[genreID]
+				entry := catalogEntry{Numbers: splitChannelNumbers(number), Name: cleanText(name), Category: category, CategoryMethod: "category-quality-v1; priority-4; inferred Xfinity genreId " + genreID}
 				// These fields describe this record's feed. Do not mix in the
 				// linked hd*/sd* feed, or interpret Xfinity stationId as Gracenote.
 				for _, key := range []string{"channelShortName", "stationName"} {

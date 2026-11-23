@@ -39,10 +39,11 @@ type AttributedAlias struct {
 }
 
 type AttributedCategory struct {
-	Value  string
-	Source string
-	Label  string
-	Method string
+	Priority int
+	Value    string
+	Source   string
+	Label    string
+	Method   string
 }
 
 type AliasEvidence struct {
@@ -58,6 +59,9 @@ type IdentifierEvidence struct {
 }
 
 type DraftChannel struct {
+	CategoryPriority        int                  `json:"categoryPriority"`
+	NeedsCategoryReview     bool                 `json:"needsCategoryReview"`
+	CategoryReview          *CategoryReview      `json:"categoryReview,omitempty"`
 	ID                      string               `json:"id"`
 	StationID               string               `json:"stationId,omitempty"`
 	PlacementID             string               `json:"placementId,omitempty"`
@@ -146,14 +150,16 @@ type Draft struct {
 }
 
 type ChannelUpdate struct {
-	Included *bool   `json:"included,omitempty"`
-	Category *string `json:"category,omitempty"`
+	Review   *CategoryReview `json:"-"`
+	Included *bool           `json:"included,omitempty"`
+	Category *string         `json:"category,omitempty"`
 }
 
 type ChannelOverride struct {
-	Included          *bool    `json:"included,omitempty"`
-	Category          string   `json:"category,omitempty"`
-	SuppressedAliases []string `json:"suppressedAliases,omitempty"`
+	CategoryReview    *CategoryReview `json:"categoryReview,omitempty"`
+	Included          *bool           `json:"included,omitempty"`
+	Category          string          `json:"category,omitempty"`
+	SuppressedAliases []string        `json:"suppressedAliases,omitempty"`
 }
 
 type MatchDecision struct {
@@ -177,6 +183,7 @@ type MatchDecision struct {
 }
 
 type State struct {
+	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
 	Version           int                        `json:"version"`
 	SourceFingerprint string                     `json:"sourceFingerprint"`
 	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
