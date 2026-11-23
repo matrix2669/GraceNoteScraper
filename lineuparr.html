@@ -1464,7 +1464,14 @@
       const status=document.getElementById('supplemental-impact-status'); if (!status) return;
       const active=['queued','preparing','running'].includes(result.state);
       const failed = ['failed','stale'].includes(result.state);
-      status.textContent = active ? 'Background validation is pending. Review is not yet complete.' : failed ? 'Saved-choice validation is unavailable. Reload review to retry.' : '';
+      const review=matchReview;
+      const impact=review?.supplementalImpact;
+      const supplemental=review?.supplemental;
+      const noProposals=!!review && review.candidateCount===0 && !(review.candidates||[]).length;
+      const supplementalSettled=(!supplemental || review.supplementalMerged || supplemental.candidateCount===0) && supplemental?.complete!==false;
+      const writesSettled=pendingDecisions.size===0 && !hasUncertainMatchActions();
+      const finalCheckOnly=active && noProposals && supplementalSettled && !impact?.unresolved && writesSettled && !!workflowRemote.dispatchConfig?.configured && !dispatchBusy && !dispatchConnectionError && review?.reviewStatus==='current';
+      status.textContent = finalCheckOnly ? 'Finishing review checks…' : failed ? 'Saved-choice validation is unavailable. Reload review to retry.' : '';
       const reload = document.getElementById('match-reload');
       if (reload) reload.hidden = !failed && !(typeof loadMatchReview === 'function' && loadMatchReview.failed);
       const container=document.getElementById('supplemental-impact-results');container.replaceChildren();
