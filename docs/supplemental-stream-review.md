@@ -45,8 +45,13 @@ Confirm stores a full raw-name positive alias. Deny stores a channel-specific
 literal exclusion even when there is no primary score. Both choices keep a
 distinct internal origin and support merged chronological history and Undo. Equal literal names
 are grouped with every captured physical member, including same-account duplicate
-IDs. Primary decisions remain authoritative. New or changed physical members are
-not silently approved. Suppressed aliases stay suppressed.
+IDs. Primary decisions remain authoritative. A saved Confirm or Deny continues
+to cover the same literal name when physical stream IDs change, within the same
+source, connection and target identity. Literal equality ignores case and repeated
+whitespace only; changed providers, punctuation, quality or feed names require
+separate review. Additional same-name physical members remain disclosed as an
+all-account ambiguity; historical IDs, scores and decisions are not rewritten.
+Suppressed aliases stay suppressed.
 Saved history expands to every raw spelling, account and physical stream ID,
 including pending local choices. Positive alias suppression can be restored and
 never removes a reviewed negative exclusion for that name.

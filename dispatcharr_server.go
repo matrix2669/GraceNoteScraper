@@ -621,7 +621,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		history[i].ChannelDisplayName, history[i].ChannelCallSign = reviewDisplayName(c), c.CallSign
 	}
 	if validSnapshot {
-		annotateUnsupportedConfirmations(history, snapshot.candidates)
+		annotateUnsupportedConfirmations(history, snapshot.candidates, snapshot.identityStreams)
 	}
 	if len(history) > dispatcharrReviewMaxLimit {
 		history = history[:dispatcharrReviewMaxLimit]
