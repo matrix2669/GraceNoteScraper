@@ -2,7 +2,9 @@ package providersource
 
 import (
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -200,12 +202,14 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	if hasLiveSource {
 		matched := matchCatalog(request, live.source)
 		result.Facts = append(result.Facts, matched.Facts...)
+		result.CategoryRelations = append(result.CategoryRelations, matched.CategoryRelations...)
 		result.IdentityFacts = append(result.IdentityFacts, matched.IdentityFacts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
 	spectrum := s.fetchSpectrumForRun(ctx, request.EvidenceRunID)
 	spectrumMatched := spectrumEvidenceResult(request, spectrum)
 	result.Facts = append(result.Facts, spectrumMatched.Facts...)
+	result.CategoryRelations = append(result.CategoryRelations, spectrumMatched.CategoryRelations...)
 	if spectrumMatched.SnapshotComplete {
 		result.SnapshotComplete, result.SnapshotSourceID, result.SnapshotRevision = true, spectrumMatched.SnapshotSourceID, spectrumMatched.SnapshotRevision
 		result.SnapshotStationIDs, result.SnapshotFacts = spectrumMatched.SnapshotStationIDs, spectrumMatched.SnapshotFacts
@@ -220,6 +224,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 		}
 		matched := matchCatalog(request, source)
 		result.Facts = append(result.Facts, matched.Facts...)
+		result.CategoryRelations = append(result.CategoryRelations, matched.CategoryRelations...)
 		result.IdentityFacts = append(result.IdentityFacts, matched.IdentityFacts...)
 		result.Sources = append(result.Sources, matched.Sources...)
 	}
@@ -351,6 +356,9 @@ func (alignment providerNumberAlignment) allowsAliasRecovery() bool {
 }
 
 func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSource) lineupindex.ProviderEvidenceResult {
+	if strings.TrimSpace(source.SourceRevision) == "" {
+		source.SourceRevision = sourceRevision(source)
+	}
 	byStationID := make(map[string][]web.JSONChannel)
 	if len(source.Entries) == 0 {
 		status := source.Status
@@ -462,7 +470,9 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 						result.IdentityFacts = append(result.IdentityFacts, lineupindex.ProviderFact{
 							StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 							SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
-							Method: factMethod + "; shared exact official provider identity; EPG confirmation required",
+							Method:         factMethod + "; shared exact official provider identity; EPG confirmation required",
+							SourceRevision: source.SourceRevision, SourceRowID: sourceRowIdentity(source, entry),
+							RootSourceLineupKey: request.LineupKey, RootSourceStationID: channel.ChannelID,
 						})
 					}
 				}
@@ -479,6 +489,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			result.Facts = append(result.Facts, lineupindex.ProviderFact{
 				StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod, StationBound: source.StationBound, SourceRevision: source.SourceRevision,
+				SourceRowID: sourceRowIdentity(source, entry), RootSourceLineupKey: request.LineupKey, RootSourceStationID: channel.ChannelID,
 			})
 		}
 		categoryIdentities := append([]string{entry.Name}, entry.Aliases...)
@@ -486,7 +497,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 		categoryIdentities = append(categoryIdentities, channelIdentityValues(channel)...)
 		// A unique provider-local number is sufficient to recover descriptive
 		// aliases, but category transfer still requires corroborating identity.
-		if category, ok := channelcategory.Resolve(entry.Category, categoryIdentities...); ok && match.kind == entryMatchIdentity {
+		if category, ok := channelcategory.Resolve(entry.Category, categoryIdentities...); ok {
 			categoryMethod := category.Method
 			if category.Method == channelcategory.MethodFuzzy {
 				categoryMethod = fmt.Sprintf("%s %.0f%% to %q", category.Method, category.Confidence*100, category.MatchedAlias)
@@ -494,21 +505,39 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			if entry.CategoryMethod != "" {
 				categoryMethod = entry.CategoryMethod + "; " + categoryMethod
 			}
-			factKey := channel.ChannelID + "\x00" + lineupindex.FactCategory + "\x00" + identityKey(category.Category)
-			if seenFacts[factKey] {
-				continue
-			}
-			seenFacts[factKey] = true
 			rawCategory := strings.TrimSpace(entry.RawCategory)
 			if rawCategory == "" {
 				rawCategory = strings.TrimSpace(entry.Category)
 			}
-			result.Facts = append(result.Facts, lineupindex.ProviderFact{
-				StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
-				RawValue: rawCategory, MatchMethod: category.Method, MatchConfidence: category.Confidence,
-				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
-				Method: factMethod + "; provider category " + strconv.Quote(rawCategory) + " mapped by " + categoryMethod, StationBound: source.StationBound, SourceRevision: source.SourceRevision,
-			})
+			categoryKey := channel.ChannelID + "\x00" + lineupindex.FactCategory + "\x00" + identityKey(category.Category)
+			categoryMethodText := factMethod + "; provider category " + strconv.Quote(rawCategory) + " mapped by " + categoryMethod
+			if match.kind == entryMatchIdentity && !seenFacts[categoryKey] {
+				seenFacts[categoryKey] = true
+				result.Facts = append(result.Facts, lineupindex.ProviderFact{
+					StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
+					RawValue: rawCategory, MatchMethod: category.Method, MatchConfidence: category.Confidence,
+					SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
+					Method: categoryMethodText, StationBound: source.StationBound, SourceRevision: source.SourceRevision,
+					SourceRowID: sourceRowIdentity(source, entry), RootSourceLineupKey: request.LineupKey, RootSourceStationID: channel.ChannelID,
+				})
+			}
+			// A relation survives an aligned number-only join for review, but does
+			// not itself become an accepted category or a new identity proof.
+			for _, alias := range aliases {
+				alias = strings.TrimSpace(alias)
+				aliasKey := identityKey(alias)
+				if alias == "" || aliasKey == "" {
+					continue
+				}
+				result.CategoryRelations = append(result.CategoryRelations, lineupindex.ProviderCategoryRelation{
+					StationID: channel.ChannelID, AliasValue: alias, AliasNormalized: aliasKey,
+					Category: category.Category, RawCategory: rawCategory,
+					SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
+					SourceRevision: source.SourceRevision, SourceRowID: sourceRowIdentity(source, entry),
+					LineupKeys: []string{request.LineupKey}, SourceLineupKey: request.LineupKey, Method: categoryMethodText,
+					StationBound: source.StationBound,
+				})
+			}
 		}
 	}
 	aliases := 0
@@ -725,4 +754,35 @@ func identityKey(value string) string {
 		key = strings.TrimSuffix(key, "DT")
 	}
 	return key
+}
+
+// sourceRowIdentity is stable across scans of the same provider source row;
+// source revisions intentionally remain separate metadata so a revised row
+// replaces the prior relation during source-scope reconciliation.
+func sourceRowIdentity(source catalogSource, entry catalogEntry) string {
+	values := []string{source.ID, identityKey(entry.Name), identityKey(entry.Category)}
+	stationIDs := append([]string(nil), entry.StationIDs...)
+	sort.Strings(stationIDs)
+	for _, stationID := range stationIDs {
+		values = append(values, strings.TrimSpace(stationID))
+	}
+	for _, group := range [][]string{entry.Numbers, entry.Aliases, entry.CallSigns} {
+		cleaned := make([]string, 0, len(group))
+		for _, value := range group {
+			cleaned = append(cleaned, identityKey(value))
+		}
+		values = append(values, strings.Join(cleaned, ","))
+	}
+	digest := sha256.Sum256([]byte(strings.Join(values, "\x00")))
+	return "row-" + hex.EncodeToString(digest[:12])
+}
+
+func sourceRevision(source catalogSource) string {
+	rows := make([]string, 0, len(source.Entries))
+	for _, entry := range source.Entries {
+		rows = append(rows, sourceRowIdentity(source, entry))
+	}
+	sort.Strings(rows)
+	digest := sha256.Sum256([]byte(source.ID + "\x00" + strings.Join(rows, "\x00")))
+	return "catalog-" + hex.EncodeToString(digest[:12])
 }
