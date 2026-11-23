@@ -926,12 +926,16 @@
     async function startAliasScan(action) {
       if (addressSaving) { setMarketMessage('Wait for the address to finish saving before scanning.'); return; }
       if (scanStarting) return;
+      scanStarting = true;
+      els.postalScan.disabled = true;
       scanRequestError = '';
       if (!providerAddressConfig) await initProviderAddress();
       if (!providerAddressConfig || (providerAddressConfig.required && !selectedProviderAddress)) {
         scanRequestError = 'Select and save a service address above before scanning. If provider requirements could not load, reload the page to retry.';
         setMarketMessage(scanRequestError, 'error');
         document.getElementById('alias-panel').open = true;
+        scanStarting = false;
+        els.postalScan.disabled = false;
         return;
       }
       scanStarting = true;

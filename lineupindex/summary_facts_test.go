@@ -1,6 +1,20 @@
 package lineupindex
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
+
+func TestQueuedSourceGuardRunsBeforeStartingJob(t *testing.T) {
+	s := &Service{}
+	want := errors.New("provider changed")
+	if _, err := s.Start(RunRequest{Action: "postal", ValidateSource: func() error { return want }}); err != want {
+		t.Fatal("stale queued source was not rejected", err)
+	}
+	if s.job.Running {
+		t.Fatal("invalidated job started")
+	}
+}
 
 func TestSummaryIncludesUniqueProviderAndEPGAliases(t *testing.T) {
 	s := &Service{index: Index{Stations: map[string]*Station{"11207": {Names: []StationName{{Value: "USA", Normalized: "USA", Kind: NameCallSign}}, Facts: []StationFact{
