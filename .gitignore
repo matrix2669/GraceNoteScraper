@@ -5,6 +5,7 @@ __pycache__/
 config.json
 *.address.json
 .provider-address-*.tmp
+*.links.json
 *.xmltv
 !testdata/xmlguide_golden.xmltv
 tmdb_cache.json
