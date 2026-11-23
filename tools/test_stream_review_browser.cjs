@@ -6,7 +6,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   const page=await browser.newPage();await page.route('**/*',r=>r.abort());
   const html=fs.readFileSync('lineuparr.html','utf8');
   await page.setContent(html.replace(/<script>[\s\S]*?<\/script>/g,''));
-  const code=html.slice(html.indexOf('    function renderMatchReview('),html.indexOf('    async function clearDecision('));
+  const code=require('./review_fixture_helpers.cjs')(html)+html.slice(html.indexOf('    function renderMatchReview('),html.indexOf('    async function clearDecision('));
   await page.evaluate(code=>{
    window.els={};for(const [key,id] of Object.entries({matchReview:'match-review',matchStreams:'match-streams',matchCandidates:'match-candidates',matchConfirmed:'match-confirmed',matchConfirmedJump:'match-confirmed-jump',matchDenied:'match-denied',matchList:'match-list',dispatchLoading:'dispatch-loading',matchStatus:'match-status',decisionList:'decision-list',decisionHistory:'decision-history',alternativeDialog:'match-alternative-dialog',alternativeList:'match-alternative-list',alternativeTitle:'match-alternative-title',alternativeHelp:'match-alternative-help'}))els[key]=document.getElementById(id);
    window.draft={sourceFingerprint:'fixture',channels:[]};window.pendingDecisions=new Set();window.builderResetPending=false;window.decisionSaveQueue=Promise.resolve();window.matchReconcileTimer=null;window.pendingAlternativeReviews=[];window.setDispatchControls=()=>{};window.dispatchBusy=false;window.decisionRevision=0;window.dispatchReviewEpoch=0;window.workflowRemote={};window.matchReviewLimit=100;

@@ -33,18 +33,23 @@ type dispatcharrAPI interface {
 }
 
 type dispatcharrServer struct {
-	lineup     *lineuparrServer
-	config     *dispatcharr.ConfigStore
-	client     dispatcharrAPI
-	configMu   sync.Mutex
-	cache      dispatcharrStreamCache
-	reviewMu   sync.RWMutex
-	review     dispatcharrCandidateCache
-	refreshMu  sync.Mutex
-	progressMu sync.Mutex
-	progress   dispatcharrMatchProgress
-	snapshot   dispatcharrMatchSnapshot
-	matcher    func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
+	lineup         *lineuparrServer
+	config         *dispatcharr.ConfigStore
+	client         dispatcharrAPI
+	configMu       sync.Mutex
+	cache          dispatcharrStreamCache
+	reviewMu       sync.RWMutex
+	automaticMu    sync.Mutex
+	automaticCache cachedAutomaticView
+	admission      reviewAdmission
+	operationScope string
+	operations     map[string]reviewOperation
+	review         dispatcharrCandidateCache
+	refreshMu      sync.Mutex
+	progressMu     sync.Mutex
+	progress       dispatcharrMatchProgress
+	snapshot       dispatcharrMatchSnapshot
+	matcher        func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
 }
 
 type dispatcharrMatchProgress struct {
@@ -99,6 +104,7 @@ type dispatcharrStreamCache struct {
 	fingerprint string
 	fetchedAt   time.Time
 	streams     []dispatcharr.Stream
+	digest      string
 }
 
 type dispatcharrConfigResponse struct {
@@ -130,6 +136,8 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	OperationScope       string                       `json:"operationScope"`
+	DecisionTokens       map[string]string            `json:"decisionTokens"`
 	Coverage             dispatcharrCoverage          `json:"coverage"`
 	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
@@ -258,8 +266,12 @@ func (s *dispatcharrServer) handleReview(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		s.handleDecisionReceipt(w, r)
+		return
+	}
 	if r.Method != http.MethodPost && r.Method != http.MethodDelete {
-		w.Header().Set("Allow", "POST, DELETE")
+		w.Header().Set("Allow", "GET, POST, DELETE")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -267,9 +279,10 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var body struct {
-		Key      string   `json:"key"`
-		Decision string   `json:"decision,omitempty"`
-		TVGIDs   []string `json:"tvgIds"`
+		Key       string   `json:"key"`
+		Operation string   `json:"operation"`
+		Decision  string   `json:"decision,omitempty"`
+		TVGIDs    []string `json:"tvgIds"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -280,14 +293,23 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// A refresh/connection operation cannot replace admission between validation
+	// and the durable write. Keep this lock independent of derived read work.
+	if !s.refreshMu.TryLock() {
+		http.Error(w, "Stream refresh or connection change in progress; retry this choice", 409)
+		return
+	}
+	defer s.refreshMu.Unlock()
+
 	if r.Method == http.MethodDelete {
 		dispatchConfig, configured := s.config.Get()
 		if !configured {
 			http.Error(w, "Connect Dispatcharr before reviewing matches", http.StatusConflict)
 			return
 		}
-		lineupConfig, _, ok := s.lineup.activeInputs(w)
-		if !ok {
+		lineupConfig, configured, _ := s.lineup.store.Get()
+		if !configured {
+			http.Error(w, "Choose a provider first", 409)
 			return
 		}
 		stored := s.lineup.builder.MatchDecisions(lineupConfig.Fingerprint())
@@ -308,6 +330,7 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		}, w) {
 			return
 		}
+		s.retireDecisionOperations(keys)
 		writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 		return
 	}
@@ -322,22 +345,28 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "Connect Dispatcharr before reviewing matches", http.StatusConflict)
 		return
 	}
-	lineupConfig, _, ok := s.lineup.activeInputs(w)
-	if !ok {
+	lineupConfig, configured, _ := s.lineup.store.Get()
+	if !configured {
+		http.Error(w, "Choose a provider first", 409)
 		return
 	}
-	if _, built := s.buildReview(w, r, false); !built {
+	if body.Operation == "" {
+		http.Error(w, "This review client is out of date; reload the page before choosing again", 409)
 		return
 	}
-	candidates, found := s.cachedCandidateGroup(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key)
-	if !found {
-		if candidate, candidateFound := s.cachedCandidate(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), body.Key); candidateFound {
-			candidates, found = []dispatcharr.Candidate{candidate}, true
+	candidates, admission, found := s.admittedCandidates(body.Key)
+	if !found || admission.operation != body.Operation {
+		http.Error(w, "match candidate is no longer current; reload match review", 409)
+		return
+	}
+	if !s.lineup.reusableEvidence() {
+		if _, built := s.buildReview(w, r, false); !built {
+			return
 		}
+		candidates, admission, found = s.admittedCandidates(body.Key)
 	}
-
-	if !found {
-		http.Error(w, "match candidate is no longer current", http.StatusConflict)
+	if !found || admission.operation != body.Operation {
+		http.Error(w, "match candidate is no longer current; reload match review", 409)
 		return
 	}
 	selectedTVGIDs := make(map[string]bool)
@@ -366,11 +395,28 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			TVGID: tvgID, Score: candidate.Score, NameScore: candidate.NameScore, Reason: candidate.Reason,
 		})
 	}
+	committedInputs := ""
 	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
-		return s.lineup.builder.SetMatchDecisions(lineupConfig.Fingerprint(), decisions)
+		return s.commitAdmittedDecision(admission, func() error {
+			var err error
+			committedInputs, err = s.lineup.builder.SaveAdmittedMatchDecisions(lineupConfig.Fingerprint(), admission.inputs.choices, decisions, admission.retryOnly, func(write func() error) error {
+				return s.whileAdmissionSnapshot(admission, func() error {
+					if err := r.Context().Err(); err != nil {
+						return err
+					}
+					return write()
+				})
+			})
+			return err
+		})
 	}, w) {
 		return
 	}
+	members := make([]string, len(decisions))
+	for i, d := range decisions {
+		members[i] = d.Key
+	}
+	s.recordDecisionReceipt(body.Key, body.Decision, committedInputs, admission, candidates, members)
 
 	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
@@ -398,6 +444,8 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "Connect Dispatcharr to review M3U matches", http.StatusConflict)
 		return dispatcharrReviewBuild{}, false
 	}
+	reviewState := s.lineup.builder.ReviewStateToken()
+	admissionInputs := s.lineup.reviewInputsRevision()
 	currentGuide := s.lineup.state.Get()
 	draft, lineupConfig, _, ok := s.lineup.buildDraft(w, r)
 	if !ok {
@@ -487,6 +535,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		s.snapshot = snapshot
 		s.reviewMu.Unlock()
 	}
+	capturedSnapshot := snapshotIdentity(snapshot)
+	capturedInventory := s.inventoryObservationToken()
+	resetGeneration := s.lineup.builder.ResetGeneration()
 	currentDispatch, connected := s.config.Get()
 	if !connected || currentDispatch.Fingerprint() != dispatchConfig.Fingerprint() {
 		http.Error(w, "The Dispatcharr connection changed; reload match review", http.StatusConflict)
@@ -574,7 +625,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
-	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
+
 	visible := groups
 	if len(visible) > visibleLimit {
 		visible = visible[:visibleLimit]
@@ -595,14 +646,37 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if refreshing && !force {
 		status = "refreshing"
 	}
-	return dispatcharrReviewBuild{
-		response: dispatcharrReviewResponse{
-			Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
-			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
-			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
-		},
-		candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
-	}, true
+	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
+	response := dispatcharrReviewResponse{
+		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
+		StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
+		FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
+	}
+	// Validate all captured generations together, after expensive computation.
+	// Response data and admission become current at this publication point.
+	if !s.saveWhileCurrent(dispatchConfig, lineupConfig, func() error {
+		return s.commitAdmittedDecision(reviewAdmission{inputs: admissionInputs}, func() error {
+			return s.lineup.builder.WhileReviewState(reviewState, func() error {
+				s.reviewMu.Lock()
+				defer s.reviewMu.Unlock()
+				s.cache.mu.Lock()
+				defer s.cache.mu.Unlock()
+				if snapshotIdentity(s.snapshot) != capturedSnapshot || s.cache.observationTokenLocked() != capturedInventory {
+					return lineuparrbuilder.ErrStaleReview
+				}
+				s.cacheCandidatesLocked(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
+				scope := reviewOperationScope(configurationToken(lineupConfig), dispatchConfig.Fingerprint(), capturedSnapshot, capturedInventory, resetGeneration, currentGuide)
+				response.OperationScope = scope
+				if admitCurrent {
+					response.DecisionTokens = s.publishAdmissionLocked(admissionInputs, capturedSnapshot, capturedInventory, scope, matches.All)
+				}
+				return nil
+			})
+		})
+	}, w) {
+		return dispatcharrReviewBuild{}, false
+	}
+	return dispatcharrReviewBuild{response: response, candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig}, true
 }
 
 func dispatcharrVisibleLimit(r *http.Request) (int, error) {
@@ -718,6 +792,11 @@ func appendUniqueReviewInt64(values []int64, value int64) []int64 {
 }
 
 func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
+	s.reviewMu.Lock()
+	defer s.reviewMu.Unlock()
+	s.cacheCandidatesLocked(dispatchFingerprint, lineupFingerprint, candidates)
+}
+func (s *dispatcharrServer) cacheCandidatesLocked(dispatchFingerprint, lineupFingerprint string, candidates []dispatcharr.Candidate) {
 	byKey := make(map[string]dispatcharr.Candidate, len(candidates))
 	for _, candidate := range candidates {
 		byKey[candidate.Key] = candidate
@@ -726,9 +805,7 @@ func (s *dispatcharrServer) cacheCandidates(dispatchFingerprint, lineupFingerpri
 	for _, group := range dispatcharr.GroupCandidates(candidates) {
 		groups[group.Key] = append([]string(nil), group.CandidateKeys...)
 	}
-	s.reviewMu.Lock()
 	s.review = dispatcharrCandidateCache{dispatcharrFingerprint: dispatchFingerprint, lineupFingerprint: lineupFingerprint, candidates: byKey, groups: groups}
-	s.reviewMu.Unlock()
 }
 
 func (s *dispatcharrServer) cachedCandidate(dispatchFingerprint, lineupFingerprint, key string) (dispatcharr.Candidate, bool) {
@@ -785,7 +862,10 @@ func (s *dispatcharrServer) removeCachedGroup(dispatchFingerprint, lineupFingerp
 func (s *dispatcharrServer) clearCandidateCache() {
 	s.reviewMu.Lock()
 	s.review = dispatcharrCandidateCache{}
+	s.admission = reviewAdmission{}
 	s.snapshot = dispatcharrMatchSnapshot{}
+	s.operations = nil
+	s.operationScope = ""
 	s.reviewMu.Unlock()
 }
 
@@ -793,7 +873,7 @@ func (s *dispatcharrServer) saveWhileCurrent(dispatchConfig dispatcharr.Config, 
 	lineupCurrent := false
 	dispatchCurrent, err := s.config.WhileCurrent(dispatchConfig.Fingerprint(), func() error {
 		var innerErr error
-		lineupCurrent, innerErr = s.lineup.store.WhileCurrent(lineupConfig.Fingerprint(), update)
+		lineupCurrent, innerErr = s.lineup.store.WhileConfiguration(lineupConfig, update)
 		return innerErr
 	})
 	if err != nil {
@@ -832,6 +912,7 @@ func (c *dispatcharrStreamCache) get(ctx context.Context, client dispatcharrAPI,
 	c.fingerprint = fingerprint
 	c.fetchedAt = time.Now().UTC()
 	c.streams = append([]dispatcharr.Stream(nil), streams...)
+	c.digest = streamInventoryDigest(streams)
 	return streams, c.fetchedAt, false, "", nil
 }
 
@@ -844,6 +925,7 @@ func (c *dispatcharrStreamCache) observe(fingerprint string, streams []dispatcha
 	c.fingerprint = fingerprint
 	c.fetchedAt = time.Now().UTC()
 	c.streams = append([]dispatcharr.Stream(nil), streams...)
+	c.digest = streamInventoryDigest(streams)
 }
 
 func (c *dispatcharrStreamCache) clear() {
@@ -851,6 +933,7 @@ func (c *dispatcharrStreamCache) clear() {
 	c.fingerprint = ""
 	c.fetchedAt = time.Time{}
 	c.streams = nil
+	c.digest = ""
 	c.mu.Unlock()
 }
 

@@ -1,7 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
 const html=fs.readFileSync('lineuparr.html','utf8');
 const slice=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
-const code=slice('    function saveMatchDecision(', '    async function clearDecision(')+
+const code=require('./review_fixture_helpers.cjs')(html)+slice('    function saveMatchDecision(', '    async function clearDecision(')+
  slice('    async function refillResolvedPage(', '    function matchCard(')+
  slice('    let matchInputSignature = null;', '    function renderSummary(')+
  slice('    async function loadMatchReview(', '    function renderAutomaticExclusions(')+

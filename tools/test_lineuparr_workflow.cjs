@@ -37,7 +37,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    window.showMessage=()=>{};
    (0,eval)(code+'\nwindow.arrangeLineuparrWorkflow=arrangeLineuparrWorkflow;window.loadWorkflowStatus=loadWorkflowStatus;window.renderGuidedWorkflow=renderGuidedWorkflow;window.refreshExportSummary=refreshExportSummary;');
    arrangeLineuparrWorkflow();
-  },{code:html.slice(start,end)});
+  },{code:require('./review_fixture_helpers.cjs')(html)+html.slice(start,end)});
   await page.evaluate(()=>loadWorkflowStatus());
   const order=await page.locator('main > *').evaluateAll(nodes=>nodes.slice(-8).map(n=>n.id||'channels'));
   assert.deepEqual(order,['source-panel','alias-panel','major-market-panel','tmdb-category-panel','category-review-panel','channels','dispatch-panel','export-panel']);

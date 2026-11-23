@@ -56,11 +56,11 @@ func (s *dispatcharrServer) reviewCoverage(channels []dispatcharr.MatchChannel, 
 func (s *dispatcharrServer) inventoryDrift(snapshot dispatcharrMatchSnapshot) bool {
 	s.cache.mu.Lock()
 	defer s.cache.mu.Unlock()
-	return s.cache.fingerprint == snapshot.dispatcharrFingerprint && s.cache.fetchedAt.After(snapshot.fetchedAt) && snapshot.inventoryDigest != "" && streamInventoryDigest(s.cache.streams) != snapshot.inventoryDigest
+	return s.cache.fingerprint == snapshot.dispatcharrFingerprint && s.cache.fetchedAt.After(snapshot.fetchedAt) && snapshot.inventoryDigest != "" && s.cache.inventoryDigestLocked() != snapshot.inventoryDigest
 }
 
 func (c *dispatcharrStreamCache) observationTokenLocked() string {
-	return fmt.Sprintf("%s\x00%s\x00%s", c.fingerprint, c.fetchedAt.UTC().Format(time.RFC3339Nano), streamInventoryDigest(c.streams))
+	return fmt.Sprintf("%s\x00%s\x00%s", c.fingerprint, c.fetchedAt.UTC().Format(time.RFC3339Nano), c.inventoryDigestLocked())
 }
 
 func (s *dispatcharrServer) inventoryObservationToken() string {
@@ -93,4 +93,11 @@ func annotateUnsupportedConfirmations(history []dispatcharrReviewDecision, candi
 			h.ReviewWarning = "Saved confirmation preserved, but one or more raw names no longer have a scored candidate in this snapshot. Inspect the names and Undo if inappropriate; the stream may also have disappeared."
 		}
 	}
+}
+
+func (c *dispatcharrStreamCache) inventoryDigestLocked() string {
+	if c.digest == "" {
+		c.digest = streamInventoryDigest(c.streams)
+	}
+	return c.digest
 }

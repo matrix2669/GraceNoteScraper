@@ -60,7 +60,7 @@ func TestSnapshotOnlyExplicitRefreshInvokesMatcher(t *testing.T) {
 		req := httptest.NewRequest(method, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"confirmed","tvgIds":[]}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		s.handleDecision(w, req)
+		s.handleDecision(w, withTestReviewOperation(s, req))
 		if w.Code != 200 {
 			t.Fatalf("%s: %d %s", method, w.Code, w.Body.String())
 		}
@@ -100,7 +100,7 @@ func TestSnapshotFailedRefreshRetainsPreviousAndStaleInputsRequireRefresh(t *tes
 	req := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"confirmed","tvgIds":[]}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, req)
+	s.handleDecision(w, withTestReviewOperation(s, req))
 	if w.Code != 409 {
 		t.Fatalf("stale save %d", w.Code)
 	}
@@ -169,7 +169,7 @@ func TestSnapshotRealPythonDecisionExportContract(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+c.Key+`","decision":"`+decision+`","tvgIds":[]}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		s.handleDecision(w, req)
+		s.handleDecision(w, withTestReviewOperation(s, req))
 		if w.Code != 200 {
 			t.Fatalf("%d %s", w.Code, w.Body.String())
 		}
@@ -236,7 +236,7 @@ func TestSnapshotRefreshRejectsPreviousGenerationDecision(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+before.Candidates[0].Key+`","decision":"confirmed","tvgIds":[]}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, req)
+	s.handleDecision(w, withTestReviewOperation(s, req))
 	if w.Code != 409 {
 		t.Fatalf("stale generation %d", w.Code)
 	}

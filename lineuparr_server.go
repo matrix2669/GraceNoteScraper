@@ -31,8 +31,15 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	resetMu           sync.RWMutex
-	afterBuilderReset func()
+	resetMu              sync.RWMutex
+	preparationMu        sync.Mutex
+	preparation          preparedReviewInputs
+	draftMu              sync.Mutex
+	draftCache           cachedReviewDraft
+	derivedRevision      func() string
+	tmdbEvidenceRevision func() uint64
+	tmdbWhileEvidence    func(uint64, func() error) (bool, error)
+	afterBuilderReset    func()
 
 	automaticProjection func(*lineuparrbuilder.Draft, appconfig.Config)
 	commitDraft         func(*lineuparrbuilder.Draft, func() error) (bool, error)
@@ -621,21 +628,13 @@ func (s *lineuparrServer) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*lineuparrbuilder.Draft, appconfig.Config, []lineuparrbuilder.InputChannel, bool) {
+func (s *lineuparrServer) buildDraftUncached(w http.ResponseWriter, r *http.Request) (*lineuparrbuilder.Draft, appconfig.Config, []lineuparrbuilder.InputChannel, bool) {
 	originalGuide := s.state.Get()
 	originalState := s.builder.ReviewStateToken()
-	config, inputs, ok := s.activeInputs(w)
+	config, inputs, additionalSources, ok := s.preparedInputs(w)
 	if !ok {
 		return nil, appconfig.Config{}, nil, false
 	}
-	additionalSources := lineuparrbuilder.ApplyProviderGuideAliasesForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode, inputs)
-	additionalSources = append(additionalSources, s.builder.ApplyEmbeddedCatalogs(inputs)...)
-	additionalSources = append(additionalSources, s.applyMarketAliases(
-		config.Gracenote.Country,
-		config.Gracenote.PostalCode,
-		providersource.OfficialSourceID(config.Gracenote.ProviderName),
-		inputs, lineupindex.EvidenceContext{Country: config.Gracenote.Country, PostalCode: config.Gracenote.PostalCode, LineupID: config.Gracenote.LineupID, Device: config.Gracenote.Device, Headend: config.Gracenote.HeadendID, Language: config.Gracenote.Language, Fingerprint: config.Fingerprint()},
-	)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),
 		Country:           config.Gracenote.Country,

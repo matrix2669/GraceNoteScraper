@@ -179,13 +179,14 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	key := review.Candidates[0].Key
 	channelID := review.Candidates[0].ChannelID
 	server.cache.clear()
+	_ = automaticReview(t, server) // A changed observation requires a fresh admission, without fetching streams.
 	fake.streamErr = errors.New("decision should use the cached candidate")
 
 	payload := `{"key":"` + key + `","decision":"confirmed","tvgIds":[]}`
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("confirm response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -205,7 +206,7 @@ func TestDispatcharrReviewConfirmAndClearUpdatesAliases(t *testing.T) {
 	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("clear response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -281,7 +282,7 @@ func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK || fake.streamCalls != 0 {
 		t.Fatalf("cached alternate response = %d calls %d body %s", recorder.Code, fake.streamCalls, recorder.Body.String())
 	}
@@ -303,7 +304,7 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"denied"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("deny response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -340,7 +341,7 @@ func TestDispatcharrDenyPersistsNegativeDecision(t *testing.T) {
 	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("clear denial response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -381,7 +382,7 @@ func TestDispatcharrReviewGroupsEquivalentStreamsWithoutPersistingTVGIDs(t *test
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("group confirm response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -417,7 +418,7 @@ func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`","decision":"confirmed"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("confirm response = %d body %s", recorder.Code, recorder.Body.String())
 	}
@@ -445,7 +446,7 @@ func TestDispatcharrReviewSurvivesAuthenticationMethodChange(t *testing.T) {
 	request = httptest.NewRequest(http.MethodDelete, "/api/lineuparr/dispatcharr/decision", strings.NewReader(`{"key":"`+key+`"}`))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()
-	server.handleDecision(recorder, request)
+	server.handleDecision(recorder, withTestReviewOperation(server, request))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("undo after auth change = %d body %s", recorder.Code, recorder.Body.String())
 	}

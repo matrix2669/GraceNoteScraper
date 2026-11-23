@@ -6,12 +6,12 @@ assert.ok(start>=0 && end>start);
 let publications=0, summaries=0, downloads=0, message='';
 const current={included:'i',aliases:'a',categories:'c',rows:{}};
 const context=vm.createContext({
-  publishing:false,draft:{sourceFingerprint:'source',exportSignatures:{}},saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),
+  builderResetPending:false,publishing:false,draft:{sourceFingerprint:'source',exportSignatures:{}},saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),
   els:{exportOpen:{disabled:false}},localExportChanges:new Set(['aliases']),
   api:async(path)=>{assert.equal(path,'/api/lineuparr/publish');publications++;return {path:'/lineuparr/exports/US_Test-11743_lineup.json',filename:'US_Test-11743_lineup.json',signatures:current}},
   async refreshExportSummary(){summaries++},showMessage(value){message=value},renderSummary(){},fetch(){downloads++},
 });
-vm.runInContext(script.slice(start,end),context);
+vm.runInContext(require('./review_fixture_helpers.cjs')(script)+script.slice(start,end),context);
 (async()=>{
  context.pendingDecisions.add('unsaved');await context.generateLineup();assert.equal(publications,0);context.pendingDecisions.clear();
  await context.generateLineup();
