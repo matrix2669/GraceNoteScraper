@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/util"
 )
 
 const (
