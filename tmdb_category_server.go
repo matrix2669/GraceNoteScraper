@@ -8,7 +8,10 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"html"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -23,6 +26,16 @@ func tmdbGenreFilters(p guide.Program) []string {
 		return nil
 	}
 	var result []string
+	for _, name := range p.TMDBGenreNames {
+		switch strings.ToLower(strings.TrimSpace(name)) {
+		case "kids", "family":
+			result = append(result, "family")
+		case "news":
+			result = append(result, "news")
+		case "comedy", "drama", "crime", "mystery", "action & adventure", "sci-fi & fantasy", "reality", "documentary":
+			result = append(result, "entertainment")
+		}
+	}
 	for _, id := range p.TMDBGenreIDs {
 		switch id {
 		case 10762, 10751:
@@ -45,9 +58,55 @@ func tmdbGuideRevision(g *guide.TVGuide) (string, int) {
 		}
 		n++
 		// Include schedule boundaries so a new guide invalidates the scan too.
-		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.TMDBMediaType, p.TMDBGenreIDs})
+		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.TMDBMediaType, p.TMDBGenreIDs, p.TMDBGenreNames})
 	}
 	return hex.EncodeToString(h.Sum(nil)), n
+}
+
+// Adapt older published guides without mutating them or triggering a scrape.
+// The cache key alone is insufficient: require the same explicit TMDB ID and
+// movie/series identity previously attached by enrichment.
+func (s *lineuparrServer) categoryEvidenceGuide(g *guide.TVGuide) *guide.TVGuide {
+	if g == nil || s.tmdbCachedEvidence == nil {
+		return g
+	}
+	copy := *g
+	copy.Programs = append([]guide.Program(nil), g.Programs...)
+	for i, p := range copy.Programs {
+		if p.TMDBGenresCaptured {
+			continue
+		}
+		var identity string
+		conflict := false
+		for _, number := range p.EpisodeNumbers {
+			if number.System != "themoviedb.org" {
+				continue
+			}
+			if identity != "" && identity != number.EpisodeNumber {
+				conflict = true
+			}
+			identity = number.EpisodeNumber
+		}
+		if conflict || identity == "" {
+			continue
+		}
+		movie := !strings.HasPrefix(identity, "series/")
+		id, err := strconv.Atoi(strings.TrimPrefix(identity, "series/"))
+		if err != nil || id <= 0 {
+			continue
+		}
+		ids, names, ok := s.tmdbCachedEvidence(strings.ToLower(html.UnescapeString(p.Title)), movie, id)
+		if !ok {
+			continue
+		}
+		copy.Programs[i].TMDBGenreIDs, copy.Programs[i].TMDBGenreNames = ids, names
+		copy.Programs[i].TMDBMediaType = "tv"
+		if movie {
+			copy.Programs[i].TMDBMediaType = "movie"
+		}
+		copy.Programs[i].TMDBGenresCaptured = true
+	}
+	return &copy
 }
 
 func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +127,7 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 	status := "not-configured"
 	message := "Add TMDB_TOKEN to the container environment and restart the container to enable optional programme metadata and category evidence. Guide and Lineuparr features work without it."
 	previous := s.builder.TMDBCategoryScan(c.Fingerprint())
-	g := s.state.GetForSource(c.Fingerprint())
+	g := s.categoryEvidenceGuide(s.state.GetForSource(c.Fingerprint()))
 	revision := ""
 	count := 0
 	if g != nil {
@@ -81,7 +140,7 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			message = "TMDB enrichment is running. Category scanning will be available after publication."
 		case count == 0:
 			status = "waiting-for-genres"
-			message = "No retained TMDB genre data is available yet. Older enrichment caches do not contain genres; a subsequent enrichment refresh must capture them."
+			message = "No usable TMDB genre evidence is linked to this guide yet. Existing cached genre names are reused when their TMDB identity matches; otherwise normal enrichment must capture the missing evidence. Do not clear your guide or saved lineup choices."
 		case revision != previous.Revision:
 			status = "ready"
 			message = "New TMDB programme evidence is available. Scan the cached data to propose categories; this does not request TMDB lookups."

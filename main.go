@@ -1493,8 +1493,9 @@ func main() {
 			}
 			return nil
 		},
-		addressTester: providersource.NewService(),
-		exportDir:     util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
+		tmdbCachedEvidence: tmdbClient.CachedCategoryEvidence,
+		addressTester:      providersource.NewService(),
+		exportDir:          util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)

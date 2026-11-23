@@ -30,19 +30,20 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	tmdbConfigured   bool
-	tmdbEnriching    func() bool
-	beforeMarketScan func() error
-	exportDir        string
-	store            *appconfig.Store
-	state            *GuideState
-	builder          *lineuparrbuilder.Service
-	marketIndex      *lineupindex.Service
-	addressSearcher  providerAddressSearcher
-	aliasQueue       *aliasJobQueue
-	addressTester    providerAddressTester
-	addressMu        sync.Mutex
-	nextAddressTest  time.Time
+	tmdbConfigured     bool
+	tmdbEnriching      func() bool
+	beforeMarketScan   func() error
+	exportDir          string
+	store              *appconfig.Store
+	state              *GuideState
+	builder            *lineuparrbuilder.Service
+	marketIndex        *lineupindex.Service
+	addressSearcher    providerAddressSearcher
+	aliasQueue         *aliasJobQueue
+	addressTester      providerAddressTester
+	addressMu          sync.Mutex
+	nextAddressTest    time.Time
+	tmdbCachedEvidence func(string, bool, int) ([]int, []string, bool)
 }
 
 type providerAddressSearcher interface {

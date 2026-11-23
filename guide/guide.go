@@ -134,9 +134,10 @@ type Program struct {
 	ReleaseYear string
 	Generic     bool
 	// Keep optional TMDB evidence separate from Gracenote categories.
-	TMDBGenreIDs       []int  `json:"TMDBGenreIDs,omitempty"`
-	TMDBMediaType      string `json:"TMDBMediaType,omitempty"`
-	TMDBGenresCaptured bool   `json:"TMDBGenresCaptured,omitempty"`
+	TMDBGenreIDs       []int    `json:"TMDBGenreIDs,omitempty"`
+	TMDBGenreNames     []string `json:"TMDBGenreNames,omitempty"`
+	TMDBMediaType      string   `json:"TMDBMediaType,omitempty"`
+	TMDBGenresCaptured bool     `json:"TMDBGenresCaptured,omitempty"`
 	Start              string
 	Stop               string
 	Channel            string
