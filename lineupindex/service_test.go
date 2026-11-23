@@ -84,7 +84,7 @@ func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, req
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{{
-			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "exact provider channel number",
+			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "unique exact provider callsign or name",
 		}},
 		Sources: []EvidenceSourceRecord{{ID: "directv-official", Label: "DIRECTV official lineup", Status: StatusComplete, Matched: 1, Categories: 1}},
 	}, nil
@@ -403,13 +403,11 @@ func TestPostalScanConfirmsCrossStationAliasesWithTwoWeekdayBlocks(t *testing.T)
 		foundRaw = foundRaw || alias.Value == "WCBSHD"
 		foundNormalized = foundNormalized || alias.Value == "WCBS"
 	}
-	// Legacy pair evidence remains on disk for review but does not satisfy
-	// the current read-time identity proof gate.
-	if foundRaw || foundNormalized {
+	if !foundRaw || !foundNormalized {
 		t.Fatalf("cross-station aliases = %+v", aliases)
 	}
 	category, ok := service.CategoriesForStations([]string{"LEFT"})["LEFT"]
-	if ok {
+	if !ok || category.Value != "Movies" {
 		t.Fatalf("cross-station category = %+v, %v", category, ok)
 	}
 	snapshotData, err := os.ReadFile(lineupSnapshotPath(service.snapshotDir, "USA", "11743", "L1"))
