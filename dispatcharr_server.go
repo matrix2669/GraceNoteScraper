@@ -124,6 +124,7 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	ReviewStatus         string                       `json:"reviewStatus"`
 	StreamCount          int                          `json:"streamCount"`
 	CandidateCount       int                          `json:"candidateCount"`
 	CandidateStreamCount int                          `json:"candidateStreamCount"`
@@ -502,9 +503,26 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	if len(visible) > visibleLimit {
 		visible = visible[:visibleLimit]
 	}
+	status := "refresh-required"
+	if validSnapshot {
+		status = "current"
+		if warning != "" {
+			status = "stale"
+		}
+	}
+	// A concurrent read may inspect the last snapshot while a refresh runs, but
+	// cannot represent that previous result as completed current work. The force
+	// request itself has already completed its fetch/match before reaching here.
+	s.progressMu.Lock()
+	refreshing := s.progress.Stage != "" && s.progress.Stage != "idle"
+	s.progressMu.Unlock()
+	if refreshing && !force {
+		status = "refreshing"
+	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
+			ReviewStatus: status,
+			StreamCount:  snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
 		candidates: matches.Primary, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
