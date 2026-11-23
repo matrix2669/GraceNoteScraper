@@ -586,10 +586,11 @@
       }
 
       function renderGuideStatus(status) {
-        var labels = { queued: 'Queued', starting: 'Starting', gracenote: 'Guide download', logos: 'Channel logos', tmdb: 'TMDB enrichment', saving: 'Saving guide', ready: 'Complete', error: 'Needs attention', idle: 'Waiting' };
+        var labels = { queued: 'Queued', starting: 'Starting', gracenote: 'Guide download', logos: 'Channel logos', tmdb: 'TMDB enrichment', tmdb_background: 'Background TMDB enrichment', saving: 'Saving guide', ready: 'Complete', error: 'Needs attention', idle: 'Waiting' };
         statusMessage.textContent = status.message || 'Guide status unavailable';
         statusStage.textContent = labels[status.stage] || status.stage || '';
         var details = [];
+        if (status.guideReady && status.running) details.push('Guide available now');
         if (status.channels) details.push(status.channels.toLocaleString() + ' channels');
         if (status.programs) details.push(status.programs.toLocaleString() + ' programs');
         statusDetail.textContent = details.join(' · ');

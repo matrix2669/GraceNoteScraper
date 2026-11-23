@@ -18,6 +18,9 @@ type TVGuide struct {
 	Channels       []Channel
 	Programs       []Program
 	LineupChannels []Channel
+	// Persisted only to resume interrupted initial enrichment without new grids.
+	TMDBPending      bool      `json:",omitempty"`
+	TMDBPendingSince time.Time `json:",omitempty"`
 }
 
 // Source identifies the Gracenote lineup a guide was built from.
