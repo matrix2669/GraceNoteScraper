@@ -33,7 +33,7 @@ const watchdog = setTimeout(() => { console.error('Export review status fixture 
       Object.assign(window, {
         draft:{sourceFingerprint:'fixture',channels:[],exportSignatures:{included:'new',rows:{}}},
         matchReview:{reviewStatus:'current',candidateCount:0,candidates:[],supplemental:{complete:true,candidateCount:0},supplementalImpact:{state:'running',unresolved:true,rows:[]}},
-        workflowRemote:{dispatchReady:true,dispatchConfig:{configured:true},dispatch:{reviewStatus:'current',candidateCount:0,supplemental:{complete:true,candidateCount:0},supplementalImpact:{state:'running',unresolved:true}}},
+        workflowRemote:{dispatchReady:true,dispatchConfig:{configured:true},dispatch:{reviewStatus:'current',candidateCount:0,candidates:[],supplemental:{complete:true,candidateCount:0},supplementalImpact:{state:'running',unresolved:true}}},
         workflowProgress:{tmdbDisposition:'complete'}, pendingDecisions:new Set(), pendingChannelSaves:0, builderResetPending:false,
         dispatchBusy:false, dispatchConnectionError:false, decisionRevision:0, dispatchReviewEpoch:0, saving:false, publishing:false,
         localExportChanges:new Set(), messages:[], savedExportDownload:null, publishCount:0, exportExists:true, draftResponse:null, renderAll:()=>{}, refreshResetRecovery:async()=>{},
@@ -50,25 +50,27 @@ const watchdog = setTimeout(() => { console.error('Export review status fixture 
       (0,eval)(code+'\nwindow.renderSupplementalImpact=renderSupplementalImpact;window.receiveImpact=result=>{const accepted=acceptSupplementalImpact(result);matchReview.supplementalImpact=accepted;renderSupplementalImpact(accepted);};window.renderReviewBoundaryStatus=renderReviewBoundaryStatus;window.workflowStates=workflowStates;window.reloadDraft=reloadDraft;window.renderSummary=renderSummary;window.refreshExportSummary=refreshExportSummary;window.generateLineup=generateLineup;window.clearValidationPoll=()=>clearTimeout(validationPollTimer);');
     }, code);
 
-    const pendingCopy='Finishing review checks… Additional matches may appear.';
+    const pendingCopy='Checking saved choices…';
     await page.evaluate(()=>receiveImpact({state:'complete',rows:[{extra:['pre-publication extra']}] }));
     assert.equal(await page.locator('#supplemental-publication-notice').isVisible(),false,'extras without an observed publication do not claim it is unchanged');
-    await page.evaluate(() => receiveImpact({state:'running',unresolved:true,rows:[{channelNumber:'7',channelName:'Fixture',protectedConflicts:[{name:'retained finding'}]}]}));
+    await page.evaluate(() => receiveImpact({state:'running',unresolved:true,rows:[{channelNumber:'7',channelName:'Fixture',extra:['already queued extra'],protectedConflicts:[{name:'retained finding'}]}]}));
     assert.equal(await page.locator('#supplemental-impact-status').textContent(),pendingCopy,'empty queue explains active validation despite retained finding');
+    assert.doesNotMatch(await page.locator('#supplemental-impact-results').textContent(),/Additional match to review|already queued extra|proposals or use Undo/,'stale or duplicated extras are not a second action surface');
+    assert.match(await page.locator('#supplemental-impact-results').textContent(),/Saved confirmation conflict.*retained finding/,'unrelated protected conflicts remain visible');
     assert.match(await page.locator('#supplemental-impact-results').textContent(),/Saved confirmation conflict/);
     assert.equal(await page.locator('#export-review-status').textContent(),'Review checks are still running. Generating now publishes the current saved choices.');
     assert.equal(await page.locator('#export-open').isEnabled(),true,'pending validation alone does not disable generation');
     assert.equal(await page.evaluate(()=>workflowStates().find(step=>step.step===6).complete),false,'Step 6 stays incomplete during validation');
     for (const state of [undefined,null]) {
-      const complete=await page.evaluate(state=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,supplemental:{complete:true,candidateCount:0},supplementalImpact:state};matchReview.supplementalImpact=state;renderReviewBoundaryStatus();return workflowStates().find(step=>step.step===6).complete;},state);
+      const complete=await page.evaluate(state=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,candidates:[],supplemental:{complete:true,candidateCount:0},supplementalImpact:state};matchReview.supplementalImpact=state;renderReviewBoundaryStatus();return workflowStates().find(step=>step.step===6).complete;},state);
       assert.equal(complete,false,'missing/null validation observation cannot certify Step 6');
       assert.match(await page.locator('#export-review-status').textContent(),/Reload review to retry/,'missing/null observation exposes recovery status');
     }
     for (const state of ['queued','preparing','running','failed','stale','unknown']) {
-      const complete=await page.evaluate(state=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,supplemental:{complete:true,candidateCount:0},supplementalImpact:{state,unresolved:false}};return workflowStates().find(step=>step.step===6).complete;},state);
+      const complete=await page.evaluate(state=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,candidates:[],supplemental:{complete:true,candidateCount:0},supplementalImpact:{state,unresolved:false}};return workflowStates().find(step=>step.step===6).complete;},state);
       assert.equal(complete,false,`Step 6 stays incomplete for ${state} validation`);
     }
-    assert.equal(await page.evaluate(()=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,supplemental:{complete:true,candidateCount:0},supplementalImpact:{state:'complete',unresolved:false}};return workflowStates().find(step=>step.step===6).complete;}),true,'a current complete review with no blockers can complete Step 6');
+    assert.equal(await page.evaluate(()=>{workflowRemote.dispatch={reviewStatus:'current',candidateCount:0,candidates:[],supplemental:{complete:true,candidateCount:0},supplementalImpact:{state:'complete',unresolved:false}};return workflowStates().find(step=>step.step===6).complete;}),true,'a current complete review with no blockers can complete Step 6');
     assert.equal(await page.evaluate(()=>{workflowRemote.dispatch.supplementalImpact.unresolved=true;return workflowStates().find(step=>step.step===6).complete;}),false,'retained unresolved findings block Step 6');
     assert.equal(await page.evaluate(()=>{workflowRemote.dispatch.supplementalImpact.unresolved=false;workflowRemote.dispatch.candidateCount=1;return workflowStates().find(step=>step.step===6).complete;}),false,'remaining proposals block Step 6');
     await page.evaluate(()=>{workflowRemote.dispatch.candidateCount=0;pendingDecisions.add('step6-pending');});
@@ -110,6 +112,8 @@ const watchdog = setTimeout(() => { console.error('Export review status fixture 
     assert.equal(await page.locator('#supplemental-publication-notice').textContent(),notice,'summary rerender retains publication notice');
     assert.match(await page.locator('#published-export-summary').textContent(),/Included channels have changed/,'content-change warning remains');
 
+    await page.evaluate(()=>receiveImpact({state:'complete',unresolved:true,rows:[{extra:['hidden extra']}]}));
+    assert.equal(await page.locator('#supplemental-impact-results').textContent(),'','hidden extras alone do not recreate generic unresolved prose');
     for (const state of ['idle','complete']) {
       await page.evaluate(state=>receiveImpact({state,rows:[]}),state);
       assert.equal(await page.locator('#supplemental-impact-status').textContent(),'','settled checks clear empty-list pending copy');
@@ -118,13 +122,13 @@ const watchdog = setTimeout(() => { console.error('Export review status fixture 
     assert.match(await page.locator('#supplemental-impact-status').textContent(),/unavailable/,'null observation is normalized to unknown');
     await page.evaluate(()=>receiveImpact({state:'running',rows:[]}));
     await page.evaluate(()=>{pendingDecisions.add('queued');receiveImpact(matchReview.supplementalImpact);renderSummary();});
-    assert.equal(await page.locator('#supplemental-impact-status').textContent(),pendingCopy,'empty-list validation status remains while a write settles');
+    assert.equal(await page.locator('#supplemental-impact-status').textContent(),'','pending writes keep validation progress separate');
     assert.equal(await page.locator('#export-review-status').textContent(),'Choices are saving; review checks are still running. Generation will be available when choices settle and publishes current saved choices.');
     assert.equal(await page.locator('#export-open').isDisabled(),true,'existing unsettled-save guard remains');
     await page.evaluate(()=>generateLineup());
     assert.equal(await page.evaluate(()=>publishCount),3,'unsettled save still refuses a new publish');
     await page.evaluate(()=>{pendingDecisions.clear();matchActionState('uncertain','uncertain',{source:draft.sourceFingerprint});receiveImpact(matchReview.supplementalImpact);});
-    assert.equal(await page.locator('#supplemental-impact-status').textContent(),pendingCopy,'empty-list validation status remains distinct from receipt recovery');
+    assert.equal(await page.locator('#supplemental-impact-status').textContent(),'','uncertain writes keep receipt recovery primary');
     assert.equal(await page.locator('#export-review-status').textContent(),'A saved choice is still being verified; review checks are still running. Generation will be available when the choice is settled and publishes current saved choices.');
     await page.evaluate(()=>generateLineup());
     assert.equal(await page.evaluate(()=>publishCount),3,'uncertain receipt still refuses a new publish');

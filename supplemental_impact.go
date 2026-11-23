@@ -461,11 +461,20 @@ func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.Ide
 				}
 			}
 		}
+		primaryCoveredPhysical := map[string]bool{}
+		primaryCoveredNames := map[string]bool{}
+		for _, d := range primary {
+			if d.ChannelID == c.ID {
+				primaryCoveredPhysical[d.StreamFingerprint] = true
+				primaryCoveredNames[supplementalLiteral(d.StreamName)] = true
+			}
+		}
 		for _, stream := range inventory {
 			physical := supplementalImpactPhysical{stream.Name, stream.AccountID, stream.ID}
 			if proposed[stream.Name] {
 				row.Matched = append(row.Matched, physical)
-				if !selected[stream.Fingerprint] && !baseline[stream.Name] {
+				coveredByPrimary := primaryCoveredPhysical[stream.Fingerprint] || primaryCoveredNames[supplementalLiteral(stream.Name)]
+				if !selected[stream.Fingerprint] && !coveredByPrimary && !baseline[stream.Name] {
 					row.Extra = append(row.Extra, physical)
 				}
 			}

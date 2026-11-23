@@ -1,4 +1,7 @@
 const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict');
+let suiteCompleted=false,suiteFailed=false;
+const completionWatchdog=setTimeout(()=>{console.error('REVIEW_RACES_INCOMPLETE: watchdog expired');process.exit(1)},10000);completionWatchdog.unref();
+process.on('beforeExit',()=>{if(!suiteCompleted&&!suiteFailed){console.error('REVIEW_RACES_INCOMPLETE: exited before final assertions');process.exitCode=1}});
 const html=fs.readFileSync('lineuparr.html','utf8');
 const slice=(a,b)=>html.slice(html.indexOf(a),html.indexOf(b,html.indexOf(a)));
 const code=require('./review_fixture_helpers.cjs')(html)+slice('    function saveMatchDecision(', '    async function clearDecision(')+
@@ -56,25 +59,22 @@ function fixture(keys) {
  const d=fixture(['A','B','C']);const pb=d.decideMatch('B','denied'),pa=d.decideMatch('A','confirmed');await tick();
  d.saves[0].reject(Error('B failed'));await tick();d.saves[1].reject(Error('A failed'));await Promise.all([pa,pb]);
  assert.deepEqual(Array.from(d.matchReview.candidates,c=>c.key),['A','B','C']);assert.equal(d.matchReview.decisions.length,0);
- // R2: use actual refill and loadMatchReview (including epoch changes), and
- // deliver the dialog close event asynchronously, as a browser does.
- const e=fixture(['P1','P2','P3']);e.matchReview.candidateCount=7;
- for(const p of e.matchReview.candidates){p.minimumScore=82;p.maximumScore=82;p.alternatives=[e.candidate('alt-'+p.key)];e.draft.channels.push({id:'alt-'+p.key,included:true,name:'alternative',number:'1'})}
+ // R2: successful sub-95 choices leave alternate pairs in the ordinary queue.
+ const e=fixture(['P1','P2','P3','alt-P1','alt-P2','alt-P3','next']);
+ for(const p of e.matchReview.candidates.slice(0,3)){p.minimumScore=82;p.maximumScore=82;p.alternatives=[e.candidate('alt-'+p.key)]}
  const saves=['P1','P2','P3'].map(key=>e.decideMatch(key,'confirmed'));await tick();
  for(let i=0;i<3;i++){e.saves[i].resolve({saved:true});await tick()}await Promise.all(saves);
- assert.equal(e.opened.length,1);assert.equal(e.pendingAlternativeReviews.length,2);
- for(let i=0;i<3;i++){
-  const primary=e.opened[i],candidate=primary.alternatives[0];assert(primary);
-  const pending=e.decideAlternative(primary,candidate,'denied',e.card());await tick();e.saves[3+i].resolve({saved:true});await tick();
-  if(i<2) assert.equal(e.reads.length,0,'refill must not invalidate waiting popup epochs');
-  while(e.closeEvents.length){e.closeEvents.shift()();await tick()}
-  if(i===2){assert.equal(e.reads.length,1);e.reads[0].resolve({reviewStatus:'current',candidates:[e.candidate('next')],candidateCount:1,confirmedCount:3,deniedCount:3,decisions:[]})}
-  await pending;
- }
- assert.deepEqual(e.opened.map(p=>p.key),['P1','P2','P3']);assert.equal(e.pendingAlternativeReviews.length,0);assert.equal(e.reads.length,1);
+ assert.equal(e.opened.length,0,'successful primary choices never open the alternatives dialog');
+ assert.equal(e.pendingAlternativeReviews.length,0);
+ for(const key of ['alt-P1','alt-P2','alt-P3']) assert.ok(e.matchReview.candidates.some(c=>c.key===key),key+' remains an ordinary review card');
+ const alternateSaves=['alt-P1','alt-P2','alt-P3'].map((key,i)=>e.decideMatch(key,i===1?'denied':'confirmed'));await tick();
+ for(let i=0;i<3;i++){e.saves[3+i].resolve({saved:true});await tick()}await Promise.all(alternateSaves);
+ assert.equal(e.opened.length,0);assert.equal(e.pendingAlternativeReviews.length,0);assert.equal(e.reads.length,0,'remaining ordinary card prevents an unnecessary refill read');
+ assert.deepEqual(Array.from(e.matchReview.candidates,c=>c.key),['next']);
  // A failed background read started before a decision cannot mark the newer
  // optimistic review stale or show an unrelated error.
  const f=fixture(['A']);const old=f.loadMatchReview(false,false);const choice=f.decideMatch('A','confirmed');await tick();f.reads[0].reject(Error('obsolete read'));await old;
  assert.equal(f.matchReview.reviewStatus,'current');assert.equal(f.messages.length,0);f.saves[0].resolve({saved:true});await choice;
- console.log('Review races: unsent-choice rollback after real input invalidation, controls unlock, stable failed ordering, three queued popups with real refill epochs, and stale-read rejection pass');
-})().catch(error=>{console.error(error);process.exitCode=1});
+ suiteCompleted=true;clearTimeout(completionWatchdog);
+ console.log('REVIEW_RACES_COMPLETE: unsent-choice rollback, replacement ownership, alternate-target exclusion, stable failed ordering, ordinary alternate cards, and stale-read rejection passed');
+})().catch(error=>{suiteFailed=true;clearTimeout(completionWatchdog);console.error(error);process.exitCode=1});
