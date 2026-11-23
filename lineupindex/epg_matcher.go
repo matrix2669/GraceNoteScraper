@@ -272,6 +272,12 @@ func buildEPGCandidates(scans []*postalLineupScan, primaryBlockID string) (map[s
 			}
 		}
 		for _, fact := range scan.Facts {
+			// National station-ID facts describe this Gracenote station only.
+			// They cannot be used as identity evidence for joining it to another
+			// GNID; only independent callsign/name evidence may seed EPG peers.
+			if fact.StationBound {
+				continue
+			}
 			unsafeNumber := false
 			for _, part := range strings.Split(fact.Method, ";") {
 				if strings.TrimSpace(part) == "exact provider channel number" {
@@ -929,6 +935,14 @@ func (s *Service) runPostalEPG(ctx context.Context, postalKey, country, postalCo
 	}}
 	stations, pairs := buildEPGCandidates(scans, blocks[0].ID)
 	if len(pairs) == 0 {
+		if err := ctx.Err(); err != nil {
+			// A canceled pass is not a successful negative reconciliation. Keep
+			// the prior EPG facts and let the caller mark the scan interrupted.
+			return result, err
+		}
+		// A completed primary scan with no independent candidates is a
+		// successful negative reconciliation. This retires prior EPG facts,
+		// including facts whose only bridge was a now station-bound identity.
 		aliases, categories, matched, err := s.replaceEPGFacts(sourceID, nil)
 		result.Aliases, result.Categories, result.MatchedStations = aliases, categories, matched
 		result.Source.Message = "No cross-station candidates had independent identity evidence; no schedule-only aliases were created."
@@ -1095,6 +1109,15 @@ func (s *Service) extendEPGJob(requests int) {
 func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int, int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	prior := make(map[string]bool)
+	for stationID, station := range s.index.Stations {
+		for _, fact := range station.Facts {
+			if fact.SourceID != sourceID {
+				continue
+			}
+			prior[stationID+"\x00"+fact.Kind+"\x00"+fact.Normalized] = true
+		}
+	}
 	for _, station := range s.index.Stations {
 		retained := station.Facts[:0]
 		for _, fact := range station.Facts {
@@ -1107,6 +1130,7 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 	aliases := 0
 	categories := 0
 	matchedStations := make(map[string]bool)
+	retained := make(map[string]bool)
 	for _, derived := range facts {
 		fact := derived.ProviderFact
 		stationID := strings.TrimSpace(fact.StationID)
@@ -1126,26 +1150,23 @@ func (s *Service) replaceEPGFacts(sourceID string, facts []epgDerivedFact) (int,
 		if ignoredName(normalized) {
 			continue
 		}
-		duplicate := false
-		for _, existing := range station.Facts {
-			if existing.SourceID == sourceID && existing.Kind == fact.Kind && existing.Normalized == normalized {
-				duplicate = true
-				break
-			}
-		}
-		if duplicate {
+		factKey := stationID + "\x00" + fact.Kind + "\x00" + normalized
+		if retained[factKey] {
 			continue
 		}
+		retained[factKey] = true
 		station.Facts = append(station.Facts, StationFact{
 			Kind: fact.Kind, Value: value, Normalized: normalized, RawValue: strings.TrimSpace(fact.RawValue),
 			SourceID: sourceID, SourceLabel: "Gracenote weekday EPG confirmation", Method: strings.TrimSpace(fact.Method),
 			LineupKeys: append([]string(nil), derived.LineupKeys...),
 		})
 		matchedStations[stationID] = true
-		if fact.Kind == FactAlias {
-			aliases++
-		} else {
-			categories++
+		if !prior[factKey] {
+			if fact.Kind == FactAlias {
+				aliases++
+			} else {
+				categories++
+			}
 		}
 	}
 	for _, station := range s.index.Stations {
