@@ -543,7 +543,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			StreamCount:  snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
-		candidates: matches.Primary, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
+		candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,
 	}, true
 }
 
@@ -738,6 +738,10 @@ func (s *dispatcharrServer) saveWhileCurrent(dispatchConfig dispatcharr.Config, 
 		return innerErr
 	})
 	if err != nil {
+		if errors.Is(err, lineuparrbuilder.ErrStaleReview) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return false
+		}
 		if errors.Is(err, lineuparrbuilder.ErrMatchChannelExcluded) {
 			http.Error(w, "The lineup channel is excluded; reload match review", http.StatusConflict)
 			return false
