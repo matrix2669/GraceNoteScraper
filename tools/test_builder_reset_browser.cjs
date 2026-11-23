@@ -12,7 +12,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    window.matchReview={};window.matchReviewLimit=200;window.matchInputSignature='old';window.posts=[];window.failure=false;
    window.message='';window.showMessage=text=>message=text;
    for(const n of ['invalidateDispatchReview','closeMatchAlternatives','setDispatchControls','scheduleWorkflowRefresh'])window[n]=()=>{};
-   window.dispatchReviewEpoch=0;window.dispatchConfig={configured:false};window.renders=0;window.renderAll=()=>renders++;window.loadMatchReview=async()=>{};
+   window.dispatchReviewEpoch=0;window.decisionRevision=0;window.dispatchConfig={configured:false};window.renders=0;window.renderAll=()=>renders++;window.loadMatchReview=async()=>{};
    window.fetch=async(path,options={})=>{
     if(options.method==='POST'){
      posts.push({body:JSON.parse(options.body),generation:options.headers.get('X-Builder-Generation')});
