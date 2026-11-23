@@ -62,7 +62,7 @@ func TestOneMarketAddressSkipsAndCounterfactual(t *testing.T) {
 		t.Fatalf("report %+v", record)
 	}
 	evidence.mu.Lock()
-	if len(evidence.calls) != 1 || evidence.calls[0].AllowChannelNumbers || evidence.calls[0].ServiceAddress.FormattedAddress != "" {
+	if len(evidence.calls) != 1 || !evidence.calls[0].AllowChannelNumbers || evidence.calls[0].Grid.Channels[0].ChannelID != "S1" || evidence.calls[0].ServiceAddress.FormattedAddress != "" {
 		t.Fatal(evidence.calls)
 	}
 	evidence.mu.Unlock()
