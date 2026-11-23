@@ -41,14 +41,14 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
  assert.deepEqual(await page.evaluate(()=>['East Carolina TV','EastEnders','BBC East'].map(channelDisplayName=>reviewTargetName({channelDisplayName,targetFeed:{region:'east'}}))),['East Carolina TV','EastEnders','BBC East']);
  assert.equal(await page.evaluate(()=>reviewTargetName({channelDisplayName:'Paramount+ with SHOWTIME - East',targetFeed:{region:'unknown'}})),'Paramount+ with SHOWTIME - East');
  const first=page.locator('article[data-key="signature"]');
- assert.match(await first.innerText(),/Matched alias: HBO Signature East → HBO Drama\./);
+ assert.match(await first.innerText(),/Matched aliases: “HBO Signature East”\./);
  assert.equal(await first.locator('.match-name').nth(1).innerText(),'904 · HBO Drama (HBODRHD)');
  assert.match(await first.innerText(),/100%/);assert.match(await first.innerText(),/4 streams/);
  assert.doesNotMatch(await first.innerText(),/Stream feed:/);
  for(const [key,label]of [['drama-west','905 · HBO Drama West (HBODHDP)'],['movies-east','910 · HBO Movies (HBOMVHD)'],['movies-west','911 · HBO Movies West (HBOMHDP)']])assert.equal(await page.locator(`article[data-key="${key}"] .match-name`).nth(1).innerText(),label);
  assert.match(await page.locator('article[data-key="fuzzy"]').innerText(),/Matched by name similarity/);
  assert.match(await page.locator('article[data-key="no-alias"]').innerText(),/Matched by exact name/);
- assert.match(await page.locator('article[data-key="known-west"]').innerText(),/Name evidence:.*HBO Drama West/);
+ assert.match(await page.locator('article[data-key="known-west"]').innerText(),/Name evidence: “HBO Drama”\./);
  assert.match(await page.locator('article[data-key="known-west"]').innerText(),/Stream feed: West/);
  assert.match(await page.locator('article[data-key="error"]').innerText(),/Save not acknowledged/);
  await first.locator('summary').click();assert.match(await first.innerText(),/PRIME\| HBO SIGNATURE ᴿᴬᵂ/);await first.locator('summary').click();
