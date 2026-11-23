@@ -34,7 +34,7 @@ func (s *Service) eligibleProviderCategoryFactsLocked(stationIDs []string, prefe
 			continue
 		}
 		for _, relation := range s.index.CategoryRelations {
-			if relation.quarantineReason != "" {
+			if relation.quarantineReason != "" || rejectedRelation(relation) != nil {
 				continue
 			}
 			sourceStationID := strings.TrimSpace(relation.StationID)
@@ -65,7 +65,7 @@ func (s *Service) eligibleProviderCategoryFactsLocked(stationIDs []string, prefe
 				SourceID: relation.SourceID, SourceLabel: relation.SourceLabel, SourceURL: relation.SourceURL,
 				Method:         strings.TrimSpace(relation.Method) + "; provider-category-relation; eligible via accepted alias binding",
 				SourceRevision: relation.SourceRevision, SourceRowID: relation.SourceRowID,
-				RootSourceID: relation.SourceID, RootSourceLabel: relation.SourceLabel, RootSourceURL: relation.SourceURL,
+				RootSourceLineupKey: assignmentForRelation(relation).RootLineupKey, RootSourceStationID: assignmentForRelation(relation).RootStationID, RootSourceID: assignmentForRelation(relation).SourceID, RootSourceLabel: relation.SourceLabel, RootSourceURL: relation.SourceURL,
 				StationBound: relation.StationBound,
 			})
 		}

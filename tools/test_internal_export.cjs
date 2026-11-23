@@ -6,12 +6,13 @@ assert.ok(start>=0 && end>start);
 let publications=0, summaries=0, downloads=0, message='';
 const current={included:'i',aliases:'a',categories:'c',rows:{}};
 const context=vm.createContext({
-  builderResetPending:false,publishing:false,draft:{sourceFingerprint:'source',exportSignatures:{}},saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),
-  els:{exportOpen:{disabled:false}},localExportChanges:new Set(['aliases']),
+  document:{getElementById:()=>null},
+  builderResetPending:false,publishing:false,draft:{sourceFingerprint:'source',exportSignatures:{}},matchReview:{supplementalImpact:{state:'idle'}},saving:false,pendingChannelSaves:0,pendingDecisions:new Set(),
+  els:{exportOpen:{disabled:false}},observedPublication:null,supplementalPublicationNotice:'',supplementalPublicationScope:null,clearSupplementalPublicationNotice(){this.supplementalPublicationNotice='';this.supplementalPublicationScope=null},localExportChanges:new Set(['aliases']),
   api:async(path)=>{assert.equal(path,'/api/lineuparr/publish');publications++;return {path:'/lineuparr/exports/US_Test-11743_lineup.json',filename:'US_Test-11743_lineup.json',signatures:current}},
-  async refreshExportSummary(){summaries++},showMessage(value){message=value},renderSummary(){},fetch(){downloads++},
+  renderPublishedSnapshot(){summaries++},async refreshPublishedLinks(){},showMessage(value){message=value},renderSummary(){},fetch(){downloads++},
 });
-vm.runInContext(require('./review_fixture_helpers.cjs')(script)+script.slice(start,end),context);
+vm.runInContext(script.slice(script.indexOf('    let supplementalImpactRequest ='),script.indexOf('    function renderAutomaticExclusions('))+require('./review_fixture_helpers.cjs')(script)+script.slice(start,end),context);
 (async()=>{
  context.pendingDecisions.add('unsaved');await context.generateLineup();assert.equal(publications,0);context.pendingDecisions.clear();
  await context.generateLineup();

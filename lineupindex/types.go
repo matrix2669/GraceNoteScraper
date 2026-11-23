@@ -260,8 +260,11 @@ type ProviderFact struct {
 // deliberately separate from StationFact: a category joined by provider
 // number is reviewable evidence, not an accepted category or identity proof.
 type ProviderCategoryRelation struct {
-	EvidencePolicy   string `json:"evidencePolicy,omitempty"`
-	quarantineReason string
+	RootSourceID        string `json:"rootSourceId,omitempty"`
+	RootSourceLineupKey string `json:"rootSourceLineupKey,omitempty"`
+	RootSourceStationID string `json:"rootSourceStationId,omitempty"`
+	EvidencePolicy      string `json:"evidencePolicy,omitempty"`
+	quarantineReason    string
 
 	StationID       string   `json:"stationId"`
 	AliasValue      string   `json:"aliasValue"`

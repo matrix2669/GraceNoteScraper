@@ -84,17 +84,17 @@ func TestHighScoreReviewRemainsVisibleAndDecisionExportSemantics(t *testing.T) {
 				}
 			}
 			initial := read("?refresh=true&limit=1")
-			if initial.CandidateCount != 2 || len(initial.Candidates) != 1 || initial.Candidates[0].ReviewKind != "qualified" || initial.Candidates[0].StreamCount != 2 {
+			if initial.CandidateCount != 2+initial.Supplemental.CandidateCount || len(initial.Candidates) != 1 || initial.Candidates[0].ReviewKind != "qualified" || initial.Candidates[0].StreamCount != 2 {
 				t.Fatalf("high-score group hidden, deprioritized or lost raw constituents: %+v", initial)
 			}
 			high := initial.Candidates[0]
 			act(http.MethodPost, high.Key, decision)
 			remaining := read("")
-			if remaining.CandidateCount != 1 || remaining.Candidates[0].MinimumScore != 94 {
+			if remaining.CandidateCount != 1+remaining.Supplemental.CandidateCount || remaining.Candidates[0].MinimumScore != 94 {
 				t.Fatalf("mixed-score review lost: %+v", remaining)
 			}
 			act(http.MethodPost, remaining.Candidates[0].Key, "confirmed")
-			if got := read(""); got.CandidateCount != 0 {
+			if got := read(""); got.CandidateCount != got.Supplemental.CandidateCount || len(got.Candidates) != 0 {
 				t.Fatalf("resolved review: %+v", got)
 			}
 			draft, _, _, ok := server.lineup.buildDraft(httptest.NewRecorder(), httptest.NewRequest("GET", "/api/lineuparr/draft", nil))
@@ -113,7 +113,7 @@ func TestHighScoreReviewRemainsVisibleAndDecisionExportSemantics(t *testing.T) {
 				t.Fatalf("confirmation became exclusion: %v", channel.ExcludedAliases)
 			}
 			act(http.MethodDelete, high.Key, "")
-			if got := read(""); got.CandidateCount != 1 || got.Candidates[0].StreamCount != 2 || got.Candidates[0].MinimumScore != 95 {
+			if got := read(""); got.CandidateCount != 1+got.Supplemental.CandidateCount || got.Candidates[0].StreamCount != 2 || got.Candidates[0].MinimumScore != 95 {
 				t.Fatalf("Undo failed to restore reviewed high-score group: %+v", got)
 			}
 			if fake.streamCalls != 1 {

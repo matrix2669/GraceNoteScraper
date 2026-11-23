@@ -10,18 +10,21 @@ import (
 )
 
 const ProviderIdentityPolicy = "provider-identity-v1"
-const EvidenceQuarantinePolicy = "provider-evidence-quarantine-v1"
+const EvidenceQuarantinePolicy = "provider-evidence-quarantine-v2"
 
 type QuarantinedEvidence struct {
-	StationID   string `json:"stationId"`
-	SourceID    string `json:"sourceId"`
-	SourceRowID string `json:"sourceRowId,omitempty"`
-	Kind        string `json:"kind"`
-	Reason      string `json:"reason"`
+	AdjudicationID string              `json:"adjudicationId,omitempty"`
+	Assignment     *EvidenceAssignment `json:"assignment,omitempty"`
+	StationID      string              `json:"stationId"`
+	SourceID       string              `json:"sourceId"`
+	SourceRowID    string              `json:"sourceRowId,omitempty"`
+	Kind           string              `json:"kind"`
+	Reason         string              `json:"reason"`
 }
 type EvidenceAudit struct {
-	Policy string                `json:"policy"`
-	Facts  []QuarantinedEvidence `json:"facts"`
+	Adjudications []EvidenceAdjudication `json:"adjudications"`
+	Policy        string                 `json:"policy"`
+	Facts         []QuarantinedEvidence  `json:"facts"`
 }
 
 // AuditIndexFile is a dry run: it neither migrates the schema nor opens clients,
@@ -94,7 +97,7 @@ func originScopeUnsafe(idx *Index, source string, keys []string, method string) 
 	return ""
 }
 func auditEvidence(idx *Index, apply bool) EvidenceAudit {
-	report := EvidenceAudit{Policy: EvidenceQuarantinePolicy, Facts: []QuarantinedEvidence{}}
+	report := EvidenceAudit{Adjudications: adjudicationAudit(idx), Policy: EvidenceQuarantinePolicy, Facts: []QuarantinedEvidence{}}
 	type root struct {
 		station, value, row, scope, source string
 		names                              map[string]bool
@@ -128,6 +131,10 @@ func auditEvidence(idx *Index, apply bool) EvidenceAudit {
 				if !verified {
 					why = "legacy Xfinity derived alias has no independently verified source row"
 				}
+			}
+			if adjudication := rejectedFact(sid, *f); adjudication != nil {
+				reasons[f] = adjudication.Reason
+				continue // Never enter the older, deliberately broader byRow propagation.
 			}
 			if why != "" {
 				reasons[f] = why
@@ -192,7 +199,13 @@ func auditEvidence(idx *Index, apply bool) EvidenceAudit {
 				f.quarantineReason = why
 			}
 			if why != "" {
-				report.Facts = append(report.Facts, QuarantinedEvidence{sid, f.SourceID, f.SourceRowID, f.Kind, why})
+				item := QuarantinedEvidence{StationID: sid, SourceID: f.SourceID, SourceRowID: f.SourceRowID, Kind: f.Kind, Reason: why}
+				if a := rejectedFact(sid, *f); a != nil {
+					binding := a.Assignment
+					item.AdjudicationID = a.ID
+					item.Assignment = &binding
+				}
+				report.Facts = append(report.Facts, item)
 			}
 		}
 	}
@@ -201,11 +214,21 @@ func auditEvidence(idx *Index, apply bool) EvidenceAudit {
 		keys := append([]string(nil), r.LineupKeys...)
 		keys = append(keys, r.SourceLineupKey)
 		why := originScopeUnsafe(idx, r.SourceID, keys, r.Method)
+		adjudication := rejectedRelation(*r)
+		if adjudication != nil {
+			why = adjudication.Reason
+		}
 		if apply {
 			r.quarantineReason = why
 		}
 		if why != "" {
-			report.Facts = append(report.Facts, QuarantinedEvidence{r.StationID, r.SourceID, r.SourceRowID, "categoryRelation", why})
+			item := QuarantinedEvidence{StationID: r.StationID, SourceID: r.SourceID, SourceRowID: r.SourceRowID, Kind: "categoryRelation", Reason: why}
+			if adjudication != nil {
+				binding := adjudication.Assignment
+				item.AdjudicationID = adjudication.ID
+				item.Assignment = &binding
+			}
+			report.Facts = append(report.Facts, item)
 		}
 	}
 	sort.Slice(report.Facts, func(i, j int) bool {

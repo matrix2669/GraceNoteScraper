@@ -29,22 +29,21 @@ if(!process.env.REVIEW_REGRESSION_URL){
   const unknown=await page.evaluate(()=>window.unknown.key);
   const unknownCard=page.locator(`article[data-key="${unknown}"]`);
   assert.match(await unknownCard.innerText(),/902 · HBO Hits \(HBOHTHD\)/);
-  assert.match(await unknownCard.innerText(),/Exact normalized alias: HBO/);
-  await unknownCard.locator('summary').filter({hasText:'Manual feed review required'}).click();
-  assert.match(await unknownCard.innerText(),/USER-ATTESTED exact station\/feed: user-attested\/2026-10-22#59368:east/);
-  assert.match(await page.locator('#match-status').innerText(),/Primary: 2 pending.*supplemental: 0 pending.*Total: 2/);
+  assert.match(await unknownCard.innerText(),/Matched alias: “US: HBO 2 HD” → “HBO/);
+  assert.doesNotMatch(await unknownCard.innerText(),/USER-ATTESTED|user-attested|Identity evidence|Feed unknown/);
+  assert.match(await page.locator('#match-status').innerText(),/2 alias reviews/);
   await page.evaluate(async()=>{window.rejectNext=true;await decideMatch(unknown.key,'confirmed')});
   assert.equal(await page.evaluate(()=>matchActionState(unknown.key).state),'failed');
   assert.equal(await page.evaluate(()=>matchReview.confirmedCount),0);
   assert.equal(await page.evaluate(()=>matchReview.candidateCount),2);
-  assert.match(await page.locator('#match-status').innerText(),/Primary: 2 pending/);
+  assert.match(await page.locator('#match-status').innerText(),/2 alias reviews/);
   assert.match(await page.locator(`article[data-key="${unknown}"]`).innerText(),/Save not acknowledged/);
   await page.evaluate(async()=>{await decideMatch(unknown.key,'confirmed');await loadMatchReview(false,true)});
   assert.equal(await page.evaluate(()=>matchReview.confirmedCount),1);
   assert.equal(await page.evaluate(()=>matchReview.decisions[0].streamCount),2);
   assert.equal(await page.evaluate(()=>matchReview.decisions[0].reason),'Lineuparr alias');
   await page.evaluate(async()=>{window.loseAck=true;await decideMatch(explicit.key,'denied')});
-  assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'uncertain');
+  assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'saved','one automatic receipt reconciles the lost durable ACK');
   await page.evaluate(async()=>{await recoverMatchActions()});
   assert.equal(await page.evaluate(()=>matchActionState(explicit.key).state),'saved');
   assert.equal(await page.evaluate(()=>matchReview.deniedCount),1);
@@ -53,6 +52,6 @@ if(!process.env.REVIEW_REGRESSION_URL){
   assert.equal(await page.evaluate(()=>matchReview.deniedCount),0);
   assert.equal(await page.evaluate(()=>matchReview.candidateCount),1);
   assert.deepEqual(errors,[]);
-  console.log('Real browser→HTTP regression passed: readable current target, exact lookup label, full215byte provenance, validated400 rollback, retry/group counts, lost-ack receipt, Undo and delayed-token fence.');
+  console.log('Real browser→HTTP regression passed: readable current target, concise exact alias, no provenance clutter, validated400 rollback, retry/group counts, lost-ack receipt, Undo and delayed-token fence.');
  }finally{await browser.close()}})().catch(e=>{console.error(e);process.exitCode=1});
 }
