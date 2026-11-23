@@ -39,6 +39,7 @@ type Match struct {
 	MatchedAlias string
 	Method       string
 	Confidence   float64
+	Priority     int
 }
 
 type definition struct {
@@ -256,10 +257,14 @@ func resolveOne(value string, identities ...string) (Match, bool) {
 	return ranked[0], true
 }
 
-// ResolveIdentity maps only channel identities that carry direct, auditable
-// category meaning. It deliberately avoids classifying ordinary network names.
+// ResolveIdentity maps only exact channel identities that carry direct,
+// auditable category meaning. Maintained network names and callsigns are
+// accepted; arbitrary or fuzzy channel-name classification is not.
 func ResolveIdentity(callSign, affiliate string, identities ...string) (Match, bool) {
 	values := append([]string{callSign, affiliate}, identities...)
+	if match, ok := resolveMaintainedIdentity(values...); ok {
+		return match, true
+	}
 	for _, identity := range values {
 		key := strings.ToUpper(compact(identity))
 		key = strings.TrimSuffix(key, "HD")

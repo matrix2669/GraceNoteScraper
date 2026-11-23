@@ -5,14 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
-	"github.com/daniel-widrick/GraceNoteScraper/guide"
-	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"html"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
+	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 )
 
 func tmdbGenreFilters(p guide.Program) []string {
@@ -53,12 +54,12 @@ func tmdbGuideRevision(g *guide.TVGuide) (string, int) {
 	h := sha256.New()
 	n := 0
 	for _, p := range g.Programs {
-		if !p.TMDBGenresCaptured {
+		if !p.TMDBGenresCaptured && strings.TrimSpace(p.OrigLanguage) == "" {
 			continue
 		}
 		n++
 		// Include schedule boundaries so a new guide invalidates the scan too.
-		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.TMDBMediaType, p.TMDBGenreIDs, p.TMDBGenreNames})
+		_ = json.NewEncoder(h).Encode([]any{p.Channel, p.Start, p.Stop, p.Title, p.TMDBMediaType, p.TMDBGenreIDs, p.TMDBGenreNames, p.OrigLanguage})
 	}
 	return hex.EncodeToString(h.Sum(nil)), n
 }
@@ -130,8 +131,14 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 	g := s.categoryEvidenceGuide(s.state.GetForSource(c.Fingerprint()))
 	revision := ""
 	count := 0
+	genreCount := 0
 	if g != nil {
 		revision, count = tmdbGuideRevision(g)
+		for _, programme := range g.Programs {
+			if programme.TMDBGenresCaptured {
+				genreCount++
+			}
+		}
 	}
 	if s.tmdbConfigured {
 		switch {
@@ -139,8 +146,8 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			status = "enriching"
 			message = "TMDB enrichment is running. Category scanning will be available after publication."
 		case count == 0:
-			status = "waiting-for-genres"
-			message = "No usable TMDB genre evidence is linked to this guide yet. Existing cached genre names are reused when their TMDB identity matches; otherwise normal enrichment must capture the missing evidence. Do not clear your guide or saved lineup choices."
+			status = "waiting-for-evidence"
+			message = "No usable TMDB genre or original-language evidence is linked to this guide yet. Existing cached genre names are reused when their TMDB identity matches; otherwise normal enrichment must capture the missing evidence. Do not clear your guide or saved lineup choices."
 		case revision != previous.Revision:
 			status = "ready"
 			message = "New TMDB programme evidence is available. Scan the cached data to propose categories; this does not request TMDB lookups."
@@ -171,6 +178,7 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			return
 		}
 		rows := map[string][]channelcategory.ScheduleEvent{}
+		languageRows := map[string][]channelcategory.LanguageEvent{}
 		var first time.Time
 		for _, p := range g.Programs {
 			a, err := time.Parse("20060102150405 -0700", p.Start)
@@ -185,6 +193,7 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 				first = a
 			}
 			rows[p.Channel] = append(rows[p.Channel], channelcategory.ScheduleEvent{Start: a, Stop: b, Title: p.Title, Filters: tmdbGenreFilters(p)})
+			languageRows[p.Channel] = append(languageRows[p.Channel], channelcategory.LanguageEvent{Start: a, Stop: b, Title: p.Title, OriginalLanguage: p.OrigLanguage})
 		}
 		if first.IsZero() {
 			http.Error(w, "No valid programme intervals available", 409)
@@ -192,6 +201,14 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 		}
 		scan := lineuparrbuilder.TMDBCategoryScan{Revision: revision, ScannedAt: time.Now().UTC(), Categories: map[string]lineuparrbuilder.AttributedCategory{}}
 		for id, events := range rows {
+			language := channelcategory.AssessLanguage(languageRows[id], first, loc)
+			if language.Category != "" {
+				scan.Categories[id] = lineuparrbuilder.AttributedCategory{
+					Value: language.Category, Source: "tmdb-language-schedule", Label: "TMDB original-language profile", Priority: language.Priority,
+					Method: fmt.Sprintf("priority-%d; optional TMDB search-result original_language; 14-day weekdays in %s, %.1f%% language coverage across %d days and %d distinct titles; %.1f%% non-English airtime; category-quality-v2; requires review", language.Priority, language.Timezone, language.Coverage*100, language.Days, language.DistinctTitles, language.NonEnglishShare*100),
+				}
+				continue
+			}
 			a := channelcategory.AssessSchedule(events, first, loc)
 			if a.Category == "" {
 				continue
@@ -208,8 +225,8 @@ func (s *lineuparrServer) handleTMDBCategories(w http.ResponseWriter, r *http.Re
 			return
 		}
 		status = "current"
-		message = fmt.Sprintf("Scanned cached TMDB genres: %d provisional channel categories. Manual choices remain unchanged.", len(scan.Categories))
+		message = fmt.Sprintf("Scanned cached TMDB genre and original-language evidence: %d provisional channel categories. Manual choices remain unchanged.", len(scan.Categories))
 		previous = scan
 	}
-	writeLineuparrJSON(w, 200, map[string]any{"state": status, "message": message, "programmesWithGenres": count, "lastScan": previous.ScannedAt, "categoryCount": len(previous.Categories)})
+	writeLineuparrJSON(w, 200, map[string]any{"state": status, "message": message, "programmesWithEvidence": count, "programmesWithGenres": genreCount, "lastScan": previous.ScannedAt, "categoryCount": len(previous.Categories)})
 }
