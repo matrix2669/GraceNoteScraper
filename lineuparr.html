@@ -114,6 +114,10 @@
     .source-state-button:disabled { cursor: default; opacity: 1; text-decoration: none; }
     .source-evidence-dialog { width: min(1060px, calc(100% - 28px)); max-height: min(82vh, 820px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
     .source-evidence-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .provider-address.is-saved #provider-address-help,
+    .provider-address.is-saved #provider-address-editor,
+    .provider-address.is-saved .address-help { display: none; }
+    #provider-address-saved { overflow-wrap: anywhere; }
     .source-evidence-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px; border-bottom: 1px solid var(--line); }
     .source-evidence-header h2 { margin: 0; font-size: 19px; }
     .source-evidence-header p { margin: 5px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
@@ -471,8 +475,9 @@
           <div>
             <h3 id="provider-address-title">Official provider location</h3>
             <p id="provider-address-help"></p>
+            <p id="provider-address-saved" hidden></p>
           </div>
-          <div>
+          <div id="provider-address-editor">
             <form class="provider-address-input" id="provider-address-form">
               <label for="provider-address-query">Street address to look up (lineup ZIP is added)</label>
               <input id="provider-address-query" autocomplete="street-address" maxlength="300" placeholder="Street address">
@@ -480,7 +485,6 @@
               <label for="provider-address-pasted">Paste the full Google Maps address</label>
               <input id="provider-address-pasted" maxlength="500" placeholder="Street, City, ST ZIP" required aria-describedby="provider-address-status">
               <button type="submit" id="provider-address-search">Save &amp; test</button>
-              <button type="button" id="provider-address-forget" hidden>Forget address</button>
             </form>
             <div class="provider-address-results" id="provider-address-results"></div>
             <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
@@ -498,6 +502,7 @@
             <img src="/lineuparr/address-help.png" loading="lazy" alt="Google Maps example: copy the full street, city, state and ZIP from the address row beside the map-pin icon, circled in red below the place action buttons.">
             <p>Example only; use your own service address. Google Maps layouts may vary. A Google Maps address is not a USPS verification; only a successful provider lookup is marked provider-verified.</p>
           </details>
+          <button type="button" id="provider-address-forget" hidden>Forget address</button>
         </section>
         <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared through exact station IDs or confirmed weekday EPG comparisons.</p>
         <p class="alias-refresh-time" id="alias-last-refresh">Last provider refresh: never</p>
@@ -722,7 +727,7 @@
       providerAddress: document.getElementById('provider-address'), providerAddressTitle: document.getElementById('provider-address-title'),
       providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
       providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
-      providerAddressForget: document.getElementById('provider-address-forget'),
+      providerAddressForget: document.getElementById('provider-address-forget'), providerAddressSaved: document.getElementById('provider-address-saved'),
       providerAddressPasted: document.getElementById('provider-address-pasted'), providerAddressMaps: document.getElementById('provider-address-maps'),
       providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
       sourceEvidenceDialog: document.getElementById('source-evidence-dialog'), sourceEvidenceTitle: document.getElementById('source-evidence-title'),
@@ -816,7 +821,7 @@
         const config = await api('/api/lineuparr/provider-address/config');
         providerAddressConfig = config;
         selectedProviderAddress = config.address ? addressFields(config.address) : null;
-        els.providerAddressForget.hidden = !selectedProviderAddress;
+        renderSavedAddress();
         if (!config.required && !selectedProviderAddress) return;
         els.providerAddress.hidden = false;
         els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
@@ -857,7 +862,7 @@
           body: JSON.stringify({fingerprint: providerAddressConfig.fingerprint, ...(result ? {addressText: result} : {})})
         });
         selectedProviderAddress = result ? addressFields(response) : null;
-        els.providerAddressForget.hidden = !result;
+        renderSavedAddress();
         if (result) {
           els.providerAddressPasted.value = selectedProviderAddress.formattedAddress;
           renderAddressChecks(response.checks || [], response.testedAt);
@@ -865,8 +870,16 @@
           els.providerAddressQuery.value = ''; els.providerAddressPasted.value = ''; els.providerAddressResults.replaceChildren();
           setProviderAddressStatus('Address removed. Save an address before scanning.');
         }
-      } catch (error) { setProviderAddressStatus(error.message || 'Unable to save address.', 'bad'); }
+      } catch (error) { setProviderAddressStatus(error.message || 'Unable to save address.', 'bad'); showMessage(error.message || 'Unable to save address.', true); }
       finally { addressSaving = false; els.providerAddressSearch.disabled = false; els.providerAddressForget.disabled = false; els.providerAddressPasted.disabled = false; }
+    }
+
+    function renderSavedAddress() {
+      const saved = !!selectedProviderAddress;
+      els.providerAddress.classList.toggle('is-saved', saved);
+      els.providerAddressForget.hidden = !saved;
+      els.providerAddressSaved.hidden = !saved;
+      els.providerAddressSaved.textContent = selectedProviderAddress?.formattedAddress || '';
     }
 
     function renderAddressChecks(checks, testedAt) {
@@ -1936,6 +1949,10 @@
     els.providerAddressForget.addEventListener('click', () => saveProviderAddress(null));
     els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
     els.sourceEvidenceClose.addEventListener('click', () => els.sourceEvidenceDialog.close());
+    els.sourceEvidenceDialog.addEventListener('click', event => {
+      const box = els.sourceEvidenceDialog.getBoundingClientRect();
+      if (event.target === els.sourceEvidenceDialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) els.sourceEvidenceDialog.close();
+    });
     els.postalScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('postal'));
     els.stopScan.addEventListener('click', async () => {
       try {

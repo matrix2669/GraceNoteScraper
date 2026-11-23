@@ -15,9 +15,12 @@ function declaration(name) {
 const controls = {postalScan:{},providerAddressForget:{},providerAddressQuery:{value:'1 Example Street'},providerAddressSearch:{},providerAddressPasted:{},providerAddressResults:{replaceChildren(){}}};
 const context = vm.createContext({els:controls, Object,String,JSON, addressSaving:false,scanStarting:false,scanRequestError:'',selectedProviderAddress:null,providerAddressConfig:{required:true,fingerprint:'source'},document:{getElementById(){return {open:false}}},setMarketMessage(text){context.message=text},setProviderAddressStatus(text){context.addressMessage=text},loadAliasIndex:async()=>{},initProviderAddress:async()=>{}});
 context.renderAddressChecks=()=>{};
+controls.providerAddress = {classList:{toggle(name,value){context.collapsed=value}}};
+controls.providerAddressSaved = {};
+context.showMessage=()=>{};
 context.encodeURIComponent=encodeURIComponent;
 context.window={open:(url)=>{context.opened=url}};
-for (const name of ['addressFields','saveProviderAddress','startAliasScan','openProviderAddressMaps']) vm.runInContext(declaration(name),context);
+for (const name of ['addressFields','renderSavedAddress','saveProviderAddress','startAliasScan','openProviderAddressMaps']) vm.runInContext(declaration(name),context);
 (async()=>{
  let payload;
  context.api=async(path,options)=>{payload=JSON.parse(options.body);return {formattedAddress:'1 Test Street, City, NY 11743',checks:[]}};
@@ -26,6 +29,8 @@ for (const name of ['addressFields','saveProviderAddress','startAliasScan','open
  assert.equal(payload.addressText,'1 Test Street, City, NY 11743');
  assert.equal(payload.fingerprint,'source');
  assert.ok(context.selectedProviderAddress);
+ assert.equal(context.collapsed,true);
+ assert.equal(controls.providerAddressSaved.textContent,'1 Test Street, City, NY 11743');
  context.providerAddressConfig.postalCode='11743';
  context.openProviderAddressMaps();
  assert.equal(new URL(context.opened).searchParams.get('query'),'1 Example Street, 11743');
@@ -33,6 +38,14 @@ for (const name of ['addressFields','saveProviderAddress','startAliasScan','open
  assert.equal(payload.action,'postal');
  assert.equal(payload.sourceFingerprint,'source');
  assert.equal(payload.providerAddress,undefined);
+ await context.saveProviderAddress(null);
+ assert.equal(context.collapsed,false);
+ assert.equal(controls.providerAddressForget.hidden,true);
+ context.selectedProviderAddress={formattedAddress:'Saved'};
+ context.renderSavedAddress();
+ context.api=async()=>{throw new Error('Forget failed')};
+ await context.saveProviderAddress(null);
+ assert.equal(context.collapsed,true);
  context.api=async()=>{throw new Error('New actionable failure')};
  await context.startAliasScan('postal');
  assert.equal(context.scanRequestError,'New actionable failure');
