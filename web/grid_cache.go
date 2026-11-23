@@ -42,23 +42,15 @@ func saveGridCache(gridTime int64, source GuideSource, grid *GridResponse) error
 	if grid == nil {
 		return fmt.Errorf("cannot cache nil grid")
 	}
-
 	path := gridCachePath(source, gridTime)
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create grid cache directory: %w", err)
 	}
-
-	data, err := json.Marshal(cachedGrid{
-		SavedAt: time.Now().UTC(),
-		Source:  source,
-		Time:    gridTime,
-		Grid:    *grid,
-	})
+	data, err := json.Marshal(cachedGrid{SavedAt: time.Now().UTC(), Source: source, Time: gridTime, Grid: *grid})
 	if err != nil {
 		return fmt.Errorf("marshal grid cache: %w", err)
 	}
-
 	tmp, err := os.CreateTemp(dir, "grid-*.tmp")
 	if err != nil {
 		return fmt.Errorf("create grid cache temp file: %w", err)
@@ -68,7 +60,6 @@ func saveGridCache(gridTime int64, source GuideSource, grid *GridResponse) error
 		tmp.Close()
 		os.Remove(tmpName)
 	}
-
 	if _, err := tmp.Write(data); err != nil {
 		cleanup()
 		return fmt.Errorf("write grid cache temp file: %w", err)
@@ -98,7 +89,6 @@ func loadGridCache(gridTime int64, source GuideSource) (*GridResponse, time.Dura
 	if err != nil {
 		return nil, 0, fmt.Errorf("read grid cache: %w", err)
 	}
-
 	var cached cachedGrid
 	if err := json.Unmarshal(data, &cached); err != nil {
 		return nil, 0, fmt.Errorf("decode grid cache: %w", err)
@@ -121,7 +111,6 @@ func pruneGridCache(source GuideSource, cutoff time.Time) error {
 	if err != nil {
 		return fmt.Errorf("read grid cache directory: %w", err)
 	}
-
 	cutoffUnix := cutoff.Unix()
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
