@@ -25,3 +25,22 @@ New confirmed schedule pairs preserve only raw callsign identity, target/peer id
 Previously published records are preserved but serve only with the current evidence policy and source fingerprint. Old-policy or old-source GET/HEAD returns 409 and the summary requires explicit regeneration. Eligible snapshots remain stable across draft edits and restart without a guide. No automatic export or live scan occurs. This supersedes previous unrestricted serving across provider changes.
 
 The private retained-lineup replay supports 6/15 original pairs under this stricter policy; the other 9 are withheld rather than supported by unproven history. All 15 have synthetic positive coverage with adequate exact-ID evidence. All original records and reviewed choices remain unchanged. ACC's old MLB alias is inactive in draft/export/matching. Recovery of withheld pairings requires adequate fresh or independently verified reusable evidence, not a blacklist or weaker threshold.
+
+### Short raw identities
+
+A short raw callsign and its terminal HD/SD/DT counterpart can establish a
+quality-neutral service relationship when each station independently has an
+eligible official alias corroborating that exact base. Unknown policy, missing
+row provenance and suppressed evidence do not qualify. Exact-station repeated
+positions share that station's proof without requiring identical per-position
+alias choices. Before any union, count all competing attributed short labels,
+including labels with terminal quality markers on unrelated raw callsigns; three
+competing station identities cannot choose a partial winner. Regional,
+time-shift, numbered-subchannel and ambiguity checks still apply.
+
+Historical number-only provider rows remain source assertions. A shared row ID
+across device variants is a candidate for validation, not automatically a reusable
+station-pair proof. Neither seasonal schedule absence nor unknown quality rules
+out identity, but the actual row applicability and station joins must be justified
+independently before promoting that relationship. This repair performs no scans,
+retained-record migration or implicit alias/category promotion.

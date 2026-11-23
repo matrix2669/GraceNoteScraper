@@ -152,3 +152,52 @@ func TestExactStationCatalogProofGroupsWithoutLineupNumberAssertion(t *testing.T
 		t.Fatal("incomplete catalog proof admitted")
 	}
 }
+
+// Exercise raw callsigns, not a synthetic common alias on both stations.
+func TestShortRawIdentityRequiresIndependentAttribution(t *testing.T) {
+	for _, names := range [][2]string{{"FX", "FXHD"}, {"ID", "IDHD"}, {"E", "EHD"}} {
+		t.Run(names[0], func(t *testing.T) {
+			makeChannels := func() []DraftChannel {
+				return []DraftChannel{
+					{ID: "a", StationID: "A", CallSign: names[0], ServiceEvidence: []ServiceIdentityEvidence{identityProof(names[0], "A")}},
+					{ID: "b", StationID: "B", CallSign: names[1], ServiceEvidence: []ServiceIdentityEvidence{identityProof(names[0]+" HD", "B")}},
+					{ID: "repeat", StationID: "A", CallSign: names[0], Included: false},
+				}
+			}
+			cs := makeChannels()
+			if groups := duplicateReviewGroups(cs, verifiedServiceSuggestions(cs)); len(groups) != 1 || len(groups[0].ChannelIDs) != 3 {
+				t.Fatalf("short raw identity/repeat lost: %+v", groups)
+			}
+			for _, mutate := range []func([]DraftChannel){
+				func(cs []DraftChannel) { cs[1].ServiceEvidence = nil },
+				func(cs []DraftChannel) { cs[1].ServiceEvidence[0].Policy = "unknown" },
+				func(cs []DraftChannel) { cs[1].ServiceEvidence[0].RootStationID = "OTHER" },
+				func(cs []DraftChannel) { cs[1].SuppressedAliasEvidence = []AliasEvidence{{Value: names[0] + " HD"}} },
+				func(cs []DraftChannel) { cs[1].CallSign = names[1] + "+1" },
+				func(cs []DraftChannel) { cs[0].OriginalName = "Service East"; cs[1].OriginalName = "Service West" },
+			} {
+				cs = makeChannels()
+				mutate(cs)
+				for _, g := range duplicateReviewGroups(cs, verifiedServiceSuggestions(cs)) {
+					if len(g.ChannelIDs) > 2 {
+						t.Fatalf("unsafe short identity admitted: %+v", g)
+					}
+				}
+			}
+			cs = makeChannels()
+			cs = append(cs, DraftChannel{ID: "other", StationID: "C", CallSign: "UNRELATED", ServiceEvidence: []ServiceIdentityEvidence{identityProof(names[0]+" SD", "C")}, AliasEvidence: []AliasEvidence{{Value: names[0] + " SD", Sources: []string{"fixture-official-lineup"}}}})
+			for _, g := range duplicateReviewGroups(cs, verifiedServiceSuggestions(cs)) {
+				if len(g.ChannelIDs) > 2 {
+					t.Fatalf("competing attributed alias selected partial winner: %+v", g)
+				}
+			}
+			cs = makeChannels()
+			cs = append(cs, DraftChannel{ID: "third", StationID: "C", CallSign: names[0] + "SD", ServiceEvidence: []ServiceIdentityEvidence{identityProof(names[0], "C")}})
+			for _, g := range duplicateReviewGroups(cs, verifiedServiceSuggestions(cs)) {
+				if len(g.ChannelIDs) > 2 {
+					t.Fatalf("three stations became one short brand: %+v", g)
+				}
+			}
+		})
+	}
+}
