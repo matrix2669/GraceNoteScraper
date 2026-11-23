@@ -7,17 +7,17 @@ function declaration(name) {
  const end=rest.indexOf('\n    function ',5);
  return rest.slice(0,end);
 }
-const context=vm.createContext({draft:{channels:[{id:'sd',included:true},{id:'a',included:true},{id:'b',included:true}],duplicateGroups:[{channelIds:['sd','a','b']}]},Map});
+const context=vm.createContext({draft:{channels:[{id:'sd',included:true},{id:'a',included:true},{id:'b',included:true}],duplicateGroups:[{channelIds:['a','b','sd'],keepId:'a'}]},Map});
 vm.runInContext(declaration('activeDuplicateGroups'),context);
+vm.runInContext(declaration('duplicateDefaultKeepID'),context);
 assert.equal(context.activeDuplicateGroups()[0].channels.length,3);
-context.draft.channels[0].included=false;
-assert.equal(context.activeDuplicateGroups()[0].channels.length,2);
+assert.equal(context.duplicateDefaultKeepID(context.activeDuplicateGroups()[0]),'a');
 context.draft.channels[1].included=false;
+assert.equal(context.activeDuplicateGroups()[0].channels.length,2);
+assert.equal(context.duplicateDefaultKeepID(context.activeDuplicateGroups()[0]),'b');
+context.draft.channels[2].included=false;
 assert.equal(context.activeDuplicateGroups().length,0);
-context.draft.duplicateSuggestions=[{removeId:'sd'},{removeId:'b',exact:true}];
-const defaults=script.split('\n').find(line=>line.includes('const sdRemovals ='));
-vm.runInContext(defaults+'; removals=[...sdRemovals];',context);
-assert.deepEqual([...context.removals],['sd']);
+assert.ok(script.includes('input.checked = channel.id === defaultKeepID'));
 context.els={duplicateReviewList:{querySelectorAll(selector){return selector==='fieldset'?[{querySelector(){return context.keep}}]:[{}]}},duplicateReviewConfirm:{}};
 vm.runInContext(declaration('updateDuplicateReviewCount'),context);
 context.keep=null;context.updateDuplicateReviewCount();assert.equal(context.els.duplicateReviewConfirm.disabled,true);
