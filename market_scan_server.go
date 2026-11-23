@@ -22,7 +22,9 @@ func (s *lineuparrServer) handleMarkets(w http.ResponseWriter, r *http.Request) 
 	if !requireJSONContentType(w, r) {
 		return
 	}
-	var body struct{}
+	var body struct {
+		Rank *int `json:"rank"`
+	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
 	}
@@ -43,7 +45,13 @@ func (s *lineuparrServer) handleMarkets(w http.ResponseWriter, r *http.Request) 
 	}
 	c := config.Gracenote
 	comparison := &lineupindex.LineupRecord{Country: c.Country, PostalCode: c.PostalCode, Language: c.Language, ProviderName: c.ProviderName, LineupID: c.LineupID, HeadendID: c.HeadendID, Device: c.Device, Location: c.Location}
-	job, err := s.marketIndex.StartNextMarket(comparison)
+	var job lineupindex.JobView
+	var err error
+	if body.Rank != nil {
+		job, err = s.marketIndex.StartMarket(*body.Rank, comparison)
+	} else {
+		job, err = s.marketIndex.StartNextMarket(comparison)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), 409)
 		return
