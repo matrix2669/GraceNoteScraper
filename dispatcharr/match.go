@@ -243,6 +243,18 @@ func NormalizeStreamAlias(stream Stream) string {
 	return best
 }
 
+// ReviewIdentity is an opaque grouping key, never a positive matching alias.
+// Short names rejected by alias admission still require lossless review/Undo.
+func ReviewIdentity(raw, normalized string) string {
+	if normalized == "" {
+		normalized = NormalizeAliasName(raw)
+	}
+	if normalized != "" {
+		return normalized
+	}
+	return "raw:" + strings.ToLower(strings.Join(strings.Fields(raw), " "))
+}
+
 func GroupCandidates(candidates []Candidate) []CandidateGroup {
 	groups := make(map[string]*CandidateGroup)
 	for _, candidate := range candidates {
@@ -250,14 +262,12 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		if normalized == "" {
 			normalized = NormalizeAliasName(candidate.StreamName)
 		}
-		if normalized == "" {
-			continue
-		}
-		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration, candidate.ChannelID, normalized)
+		normalized = ReviewIdentity(candidate.StreamName, normalized)
+		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration+"\x00"+candidate.ReviewKind, candidate.ChannelID, normalized)
 		group := groups[key]
 		if group == nil {
 			group = &CandidateGroup{
-				Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
+				ReviewKind: candidate.ReviewKind, Key: key, ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
 				Alias: strings.TrimSpace(candidate.StreamName), NormalizedAlias: normalized,
 				MinimumScore: candidate.Score, MaximumScore: candidate.Score, Tier: candidateTier(candidate),
 			}

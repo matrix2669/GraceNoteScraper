@@ -2,6 +2,7 @@ package lineuparr
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -132,15 +133,19 @@ func TestPBSCatalogUsesExactGracenoteStationID(t *testing.T) {
 	}
 }
 
-func TestEmbeddedCatalogsRequireExplicitOptIn(t *testing.T) {
-	inputs := []InputChannel{{StationID: "26182", CallSign: "WNETDT"}}
-	service := NewService(nil, ServiceOptions{})
-	if statuses := service.ApplyEmbeddedCatalogs(inputs); len(statuses) != 0 || inputs[0].CategoryHint != nil {
-		t.Fatalf("default embedded catalogs = %+v, input = %+v", statuses, inputs[0])
-	}
-	service = NewService(nil, ServiceOptions{UseEmbeddedCatalogs: true})
-	if statuses := service.ApplyEmbeddedCatalogs(inputs); len(statuses) != 2 || inputs[0].CategoryHint == nil {
-		t.Fatalf("enabled embedded catalogs = %+v, input = %+v", statuses, inputs[0])
+func TestVerifiedEmbeddedCatalogsDoNotRequireLegacyOptIn(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		inputs := []InputChannel{{StationID: "50038", CallSign: "SNYHD"}, {StationID: "different", Number: "639", CallSign: "SNYHD"}}
+		service := NewService(nil, ServiceOptions{UseEmbeddedCatalogs: enabled})
+		statuses := service.ApplyEmbeddedCatalogs(inputs)
+		if len(statuses) != 1 || statuses[0].Matched != 1 || len(inputs[0].ExternalAliases) == 0 || len(inputs[1].ExternalAliases) != 0 {
+			t.Fatalf("verified aliases: %+v %+v", statuses, inputs)
+		}
+		for _, alias := range inputs[0].ExternalAliases {
+			if alias.Identity == nil || strings.Contains(alias.Value, "639") {
+				t.Fatalf("unproven provider selector: %+v", alias)
+			}
+		}
 	}
 }
 

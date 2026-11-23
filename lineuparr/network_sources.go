@@ -47,15 +47,15 @@ func ApplyPBSCatalog(inputs []InputChannel) []SourceStatus {
 	return applyExactStationCatalog(pbsCatalogData, "pbs-gracenote-station-map", "PBS station map", inputs)
 }
 
-// ApplyEmbeddedCatalogs keeps the legacy reviewed snapshots available as an
-// explicit supplement without making runtime enrichment depend on data shipped
-// with the application.
+// ApplyEmbeddedCatalogs supplies only portable assertions from the audited
+// station registry. Legacy provider-position snapshots do not enter this path.
 func (s *Service) ApplyEmbeddedCatalogs(inputs []InputChannel) []SourceStatus {
-	if s == nil || !s.options.UseEmbeddedCatalogs {
+	if s == nil {
 		return nil
 	}
-	statuses := ApplyNetworkCatalog(inputs)
-	return append(statuses, ApplyPBSCatalog(inputs)...)
+	// Verified portable assertions are independent of the historical all-or-none
+	// compatibility switch. Unsafe old snapshots remain available for audit only.
+	return applyVerifiedStationCatalogs(inputs, s.options.UseEmbeddedCatalogs)
 }
 
 func applyExactStationCatalog(data []byte, fallbackID, fallbackLabel string, inputs []InputChannel) []SourceStatus {
