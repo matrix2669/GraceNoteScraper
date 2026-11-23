@@ -1445,7 +1445,8 @@ func main() {
 	lineuparrHandlers := &lineuparrServer{
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
-		exportDir: util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
+		addressTester: providersource.NewService(),
+		exportDir:     util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1474,6 +1475,7 @@ func main() {
 	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
 	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
 	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
+	mux.HandleFunc("/lineuparr/address-help.png", lineuparrHandlers.handleAddressHelpImage)
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)

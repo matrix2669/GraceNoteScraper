@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -25,7 +26,7 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
-//go:embed lineuparr.html
+//go:embed lineuparr.html assets/google-maps-address-help.png
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
@@ -36,6 +37,9 @@ type lineuparrServer struct {
 	marketIndex     *lineupindex.Service
 	addressSearcher providerAddressSearcher
 	aliasQueue      *aliasJobQueue
+	addressTester   providerAddressTester
+	addressMu       sync.Mutex
+	nextAddressTest time.Time
 }
 
 type providerAddressSearcher interface {
@@ -48,16 +52,18 @@ type aliasIndexResponse struct {
 }
 
 type providerAddressConfigResponse struct {
-	Fingerprint    string                       `json:"fingerprint"`
-	Address        *lineupindex.ProviderAddress `json:"address,omitempty"`
-	Required       bool                         `json:"required"`
-	Enabled        bool                         `json:"enabled"`
-	ProviderID     string                       `json:"providerId,omitempty"`
-	ProviderLabel  string                       `json:"providerLabel,omitempty"`
-	PostalCode     string                       `json:"postalCode,omitempty"`
-	CountryCode    string                       `json:"countryCode,omitempty"`
-	AttributionURL string                       `json:"attributionUrl,omitempty"`
-	Message        string                       `json:"message,omitempty"`
+	Fingerprint    string                        `json:"fingerprint"`
+	Address        *lineupindex.ProviderAddress  `json:"address,omitempty"`
+	Required       bool                          `json:"required"`
+	Enabled        bool                          `json:"enabled"`
+	ProviderID     string                        `json:"providerId,omitempty"`
+	ProviderLabel  string                        `json:"providerLabel,omitempty"`
+	PostalCode     string                        `json:"postalCode,omitempty"`
+	CountryCode    string                        `json:"countryCode,omitempty"`
+	AttributionURL string                        `json:"attributionUrl,omitempty"`
+	Message        string                        `json:"message,omitempty"`
+	Checks         []providersource.AddressCheck `json:"checks,omitempty"`
+	TestedAt       string                        `json:"testedAt,omitempty"`
 }
 
 // Include the active provider even if the discovery service omits it. Address
@@ -139,9 +145,11 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	} else if len(raw) > 0 {
-		var address lineupindex.ProviderAddress
+		var address savedProviderAddress
 		if json.Unmarshal(raw, &address) == nil {
-			response.Address = &address
+			response.Address = &address.ProviderAddress
+			response.Checks = address.Checks
+			response.TestedAt = address.TestedAt
 		}
 	}
 	names, err := s.addressProviders(r.Context(), config)
@@ -155,13 +163,8 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 		response.ProviderID = source.ID
 	}
 	if response.Required {
-		response.Enabled = s.addressSearcher != nil
-		response.AttributionURL = "https://www.openstreetmap.org/copyright"
-		if response.Enabled {
-			response.Message = "Select an address in this ZIP before scanning. It is saved privately on this server, sent to the listed address-required provider sources during scans, and removed when you change providers."
-		} else {
-			response.Message = "Address search is disabled. Set NOMINATIM_URL to a public, hosted, or self-managed Nominatim endpoint."
-		}
+		response.Enabled = true
+		response.Message = "Copy the full address from Google Maps, then Save & test. The address is saved privately on this server and removed when you change providers."
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeLineuparrJSON(w, http.StatusOK, response)
@@ -232,6 +235,11 @@ func autocompleteCountryCode(country string) string {
 }
 
 func (s *lineuparrServer) handleProviderAddressSave(w http.ResponseWriter, r *http.Request) {
+	if !s.addressMu.TryLock() {
+		http.Error(w, "An address operation is in progress; please wait and retry.", http.StatusConflict)
+		return
+	}
+	defer s.addressMu.Unlock()
 	if s.store == nil {
 		http.Error(w, "Choose a provider first", http.StatusConflict)
 		return
@@ -242,6 +250,7 @@ func (s *lineuparrServer) handleProviderAddressSave(w http.ResponseWriter, r *ht
 	var body struct {
 		Fingerprint string                      `json:"fingerprint"`
 		Address     lineupindex.ProviderAddress `json:"address"`
+		AddressText string                      `json:"addressText"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -249,6 +258,10 @@ func (s *lineuparrServer) handleProviderAddressSave(w http.ResponseWriter, r *ht
 	config, configured, _ := s.store.Get()
 	if !configured || body.Fingerprint != config.Fingerprint() {
 		http.Error(w, "Provider changed; reload the page", http.StatusConflict)
+		return
+	}
+	if r.Method != http.MethodDelete && body.AddressText != "" {
+		s.testPastedAddress(w, r, body.Fingerprint, body.AddressText)
 		return
 	}
 	var raw json.RawMessage

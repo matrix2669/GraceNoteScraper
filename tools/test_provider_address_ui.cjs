@@ -12,16 +12,23 @@ function declaration(name) {
  const next = rest.slice(1).search(/\n    (?:async )?function /);
  return next < 0 ? rest : rest.slice(0,next+1);
 }
-const controls = {postalScan:{},providerAddressForget:{},providerAddressQuery:{},providerAddressResults:{replaceChildren(){}}};
+const controls = {postalScan:{},providerAddressForget:{},providerAddressQuery:{value:'1 Example Street'},providerAddressSearch:{},providerAddressPasted:{},providerAddressResults:{replaceChildren(){}}};
 const context = vm.createContext({els:controls, Object,String,JSON, addressSaving:false,scanStarting:false,scanRequestError:'',selectedProviderAddress:null,providerAddressConfig:{required:true,fingerprint:'source'},document:{getElementById(){return {open:false}}},setMarketMessage(text){context.message=text},setProviderAddressStatus(text){context.addressMessage=text},loadAliasIndex:async()=>{},initProviderAddress:async()=>{}});
-for (const name of ['addressFields','saveProviderAddress','startAliasScan']) vm.runInContext(declaration(name),context);
+context.renderAddressChecks=()=>{};
+context.encodeURIComponent=encodeURIComponent;
+context.window={open:(url)=>{context.opened=url}};
+for (const name of ['addressFields','saveProviderAddress','startAliasScan','openProviderAddressMaps']) vm.runInContext(declaration(name),context);
 (async()=>{
  let payload;
- context.api=async(path,options)=>{payload=JSON.parse(options.body);return {started:true}};
- await context.saveProviderAddress({id:'geocoder-only',formattedAddress:'1 Test Street',streetAddress:'1 Test Street',postalCode:'11743',countryCode:'US'});
- assert.equal(payload.address.id,undefined);
+ context.api=async(path,options)=>{payload=JSON.parse(options.body);return {formattedAddress:'1 Test Street, City, NY 11743',checks:[]}};
+ await context.saveProviderAddress('1 Test Street, City, NY 11743');
+ assert.equal(payload.address,undefined);
+ assert.equal(payload.addressText,'1 Test Street, City, NY 11743');
  assert.equal(payload.fingerprint,'source');
  assert.ok(context.selectedProviderAddress);
+ context.providerAddressConfig.postalCode='11743';
+ context.openProviderAddressMaps();
+ assert.equal(new URL(context.opened).searchParams.get('query'),'1 Example Street, 11743');
  await context.startAliasScan('postal');
  assert.equal(payload.action,'postal');
  assert.equal(payload.sourceFingerprint,'source');
