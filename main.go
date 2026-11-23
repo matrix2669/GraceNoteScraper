@@ -1514,6 +1514,8 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/review", dispatcharrHandlers.handleReview)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", dispatcharrHandlers.handleDecision)
+	shareLinks := &shareLinksServer{path: configPath + ".links.json"}
+	mux.HandleFunc("/api/setup/share-links", shareLinks.handle)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/api/lineup.json", handleLineupJSON(state, configStore))

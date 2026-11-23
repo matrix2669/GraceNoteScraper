@@ -407,6 +407,10 @@
           <span class="xmltv-url-label">XMLTV guide URL</span>
           <button class="xmltv-url-link" id="xmltvGuideLink" type="button" title="Copy XMLTV guide URL"></button>
           <span class="xmltv-copy-status" id="xmltvCopyStatus" aria-live="polite"></span>
+          <span id="internalXMLTVRow" hidden>
+            <span class="xmltv-url-label">Docker-network XMLTV URL</span>
+            <button class="xmltv-url-link" id="internalXMLTVLink" type="button" title="Copy Docker-network XMLTV URL"></button>
+          </span>
         </div>
       </div>
       <div class="current-actions">
@@ -453,7 +457,17 @@
     </section>
 
     <p class="footnote">Lineup availability comes from Gracenote's provider directory. GraceNoteScraper stores the selected lineup identifiers locally; this step does not require a provider account or password.</p>
-
+    <section style="margin-top:20px;padding:24px;border:1px solid var(--line);border-radius:16px">
+      <h2>Docker-network links (optional)</h2>
+      <p>Use a URL reachable by containers on the same Docker network. Browser links, guide data and image URLs stay unchanged.</p>
+      <form id="internalLinkForm">
+        <label for="internalBaseURL">Internal base URL</label>
+        <input id="internalBaseURL" type="url" maxlength="2048" placeholder="http://gracenote-dev:8080" style="width:100%;margin:12px 0">
+        <button type="submit" id="internalLinkSave">Save internal URL</button>
+        <p>Leave blank to hide Docker-network links. Use the container's listening port, not its host-mapped port.</p>
+      </form>
+      <p id="internalLinkStatus" role="status"></p>
+    </section>
   </main>
 
   <script>
@@ -499,9 +513,9 @@
         xmltvCopyStatus.className = 'xmltv-copy-status' + (kind ? ' ' + kind : '');
       }
 
-      function fallbackCopyXMLTVGuideURL() {
+      function fallbackCopyXMLTVGuideURL(value) {
         var input = document.createElement('textarea');
-        input.value = xmltvGuideURL;
+        input.value = value || xmltvGuideURL;
         input.setAttribute('readonly', '');
         input.style.position = 'fixed';
         input.style.opacity = '0';
@@ -517,14 +531,15 @@
         if (!copied) throw new Error('Clipboard unavailable');
       }
 
-      function copyXMLTVGuideURL() {
+      function copyXMLTVGuideURL(value) {
+        value = typeof value === 'string' ? value : xmltvGuideURL;
         setXMLTVCopyStatus('Copying…');
         if (navigator.clipboard && window.isSecureContext) {
-          navigator.clipboard.writeText(xmltvGuideURL)
+          navigator.clipboard.writeText(value)
             .then(function () { setXMLTVCopyStatus('Copied to clipboard.', 'success'); })
             .catch(function () {
               try {
-                fallbackCopyXMLTVGuideURL();
+                fallbackCopyXMLTVGuideURL(value);
                 setXMLTVCopyStatus('Copied to clipboard.', 'success');
               } catch (error) {
                 setXMLTVCopyStatus('Could not copy automatically. Select and copy the URL manually.', 'error');
@@ -533,7 +548,7 @@
           return;
         }
         try {
-          fallbackCopyXMLTVGuideURL();
+          fallbackCopyXMLTVGuideURL(value);
           setXMLTVCopyStatus('Copied to clipboard.', 'success');
         } catch (error) {
           setXMLTVCopyStatus('Could not copy automatically. Select and copy the URL manually.', 'error');
@@ -541,6 +556,26 @@
       }
 
       xmltvGuideLink.addEventListener('click', copyXMLTVGuideURL);
+      var internalBaseInput = document.getElementById('internalBaseURL');
+      var internalLinkStatus = document.getElementById('internalLinkStatus');
+      var internalXMLTVLink = document.getElementById('internalXMLTVLink');
+      function renderInternalLinks(config) {
+        internalBaseInput.value = config.internalBaseURL || '';
+        document.getElementById('internalXMLTVRow').hidden = !config.internalBaseURL;
+        internalXMLTVLink.textContent = config.internalBaseURL ? new URL('/xmlguide.xmltv', config.internalBaseURL).href : '';
+      }
+      internalXMLTVLink.addEventListener('click', function () { copyXMLTVGuideURL(internalXMLTVLink.textContent); });
+      fetch('/api/setup/share-links', {cache:'no-store'}).then(function(response){if(!response.ok)throw new Error('Unable to read internal URL settings');return response.json();}).then(renderInternalLinks).catch(function(error){internalLinkStatus.textContent=error.message;});
+      document.getElementById('internalLinkForm').addEventListener('submit', async function(event) {
+        event.preventDefault();
+        var button=document.getElementById('internalLinkSave');button.disabled=true;
+        try {
+          var response=await fetch('/api/setup/share-links',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({internalBaseURL:internalBaseInput.value})});
+          if(!response.ok)throw new Error(await response.text());
+          renderInternalLinks(await response.json());internalLinkStatus.textContent='Saved. Docker-network links require a shared network; connectivity has not been tested.';
+        } catch(error) {internalLinkStatus.textContent=error.message;}
+        finally {button.disabled=false;}
+      });
 
       function setMessage(text, kind) {
         message.textContent = text || '';
