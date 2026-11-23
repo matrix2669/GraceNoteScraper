@@ -228,7 +228,25 @@ func parseXfinity(data []byte) ([]catalogEntry, error) {
 			name := firstString(typed, "channelName", "name", "displayName")
 			number := firstString(typed, "channelNumber", "channelNo")
 			if name != "" && number != "" {
-				entries = append(entries, catalogEntry{Numbers: splitChannelNumbers(number), Name: cleanText(name), Category: firstString(typed, "category", "genre")})
+				entry := catalogEntry{Numbers: splitChannelNumbers(number), Name: cleanText(name), Category: firstString(typed, "genreName", "category", "genre")}
+				// These fields describe this record's feed. Do not mix in the
+				// linked hd*/sd* feed, or interpret Xfinity stationId as Gracenote.
+				for _, key := range []string{"channelShortName", "stationName"} {
+					if value := cleanText(firstString(typed, key)); value != "" {
+						entry.Aliases = append(entry.Aliases, value)
+					}
+				}
+				if value := cleanText(firstString(typed, "callSign")); value != "" {
+					entry.CallSigns = []string{value}
+				}
+				if ppv, _ := typed["ppv"].(bool); ppv {
+					entry.Category = "PPV & Events"
+					entry.EventFeed = true
+				}
+				if strings.EqualFold(entry.Category, "Unknown") {
+					entry.Category = ""
+				}
+				entries = append(entries, entry)
 			}
 			for _, child := range typed {
 				visit(child)

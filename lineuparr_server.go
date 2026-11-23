@@ -629,7 +629,12 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 		added := false
 		for _, candidate := range candidates[inputs[index].StationID] {
 			normalized := normalizeAlias(candidate.Value)
-			if normalized == "" || known[normalized] {
+			if normalized == "" {
+				continue
+			}
+			// Keep each provider's corroborating attribution even if its name
+			// is already known. The builder deduplicates exported alias values.
+			if known[normalized] && candidate.SourceID == "" {
 				continue
 			}
 			known[normalized] = true
