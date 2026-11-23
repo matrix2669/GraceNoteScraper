@@ -267,8 +267,9 @@ type RunRequest struct {
 	Language   string `json:"language,omitempty"`
 	// ProviderAddress and AddressProvider are populated at the HTTP boundary
 	// for one postal scan and intentionally excluded from serialization.
-	ProviderAddress ProviderAddress `json:"-"`
-	AddressProvider string          `json:"-"`
+	ProviderAddress  ProviderAddress `json:"-"`
+	AddressProvider  string          `json:"-"`
+	AddressProviders []string        `json:"-"`
 }
 
 type JobView struct {

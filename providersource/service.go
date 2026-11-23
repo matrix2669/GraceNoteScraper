@@ -330,6 +330,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 		} else {
 			factMethod += "; " + match.method
 		}
+		factMethod += "; identity-policy-v2"
 		aliases := append([]string{entry.Name}, entry.Aliases...)
 		aliases = append(aliases, entry.CallSigns...)
 		seenAliases := make(map[string]bool)
@@ -415,10 +416,8 @@ func matchEntry(entry catalogEntry, byNumber map[string][]web.JSONChannel, byIde
 	for _, number := range entry.Numbers {
 		normalizedNumber := normalizeNumber(number)
 		matches := byNumber[normalizedNumber]
-		if len(matches) == 1 && !ambiguousNumbers[normalizedNumber] {
-			return matches, "exact provider channel number", true
-		}
-		if len(matches) > 1 {
+		// Numbers alone cannot prove that a provider document covers this headend.
+		if len(matches) > 0 && !ambiguousNumbers[normalizedNumber] {
 			entryIdentities := make(map[string]bool)
 			for _, value := range append(append([]string{entry.Name}, entry.Aliases...), entry.CallSigns...) {
 				if key := identityKey(value); key != "" {
@@ -510,10 +509,17 @@ func normalizeNumber(value string) string {
 }
 
 func identityKey(value string) string {
-	return strings.Map(func(character rune) rune {
+	key := strings.Map(func(character rune) rune {
 		if unicode.IsLetter(character) || unicode.IsDigit(character) {
 			return unicode.ToUpper(character)
 		}
 		return -1
 	}, strings.TrimSpace(value))
+	if strings.HasSuffix(key, "HD") && len(key) > 4 {
+		key = strings.TrimSuffix(key, "HD")
+	}
+	if (strings.HasPrefix(key, "W") || strings.HasPrefix(key, "K")) && (len(key) == 5 || len(key) == 6) && strings.HasSuffix(key, "DT") {
+		key = strings.TrimSuffix(key, "DT")
+	}
+	return key
 }

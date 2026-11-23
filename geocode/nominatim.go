@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -64,7 +65,7 @@ func (c *NominatimClient) Search(ctx context.Context, query, postalCode, country
 		return nil, fmt.Errorf("building Nominatim search URL: %w", err)
 	}
 	parameters := url.Values{
-		"q":              {query + ", " + postalCode},
+		"q":              {addressQuery(query, postalCode)},
 		"format":         {"jsonv2"},
 		"addressdetails": {"1"},
 		"layer":          {"address"},
@@ -83,7 +84,7 @@ func (c *NominatimClient) Search(ctx context.Context, query, postalCode, country
 
 	response, err := c.doRateLimited(req)
 	if err != nil {
-		return nil, fmt.Errorf("searching addresses: %w", err)
+		return nil, errors.New("address search request failed; retry or check the configured geocoder")
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
@@ -159,6 +160,14 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func addressQuery(query, postalCode string) string {
+	pattern := regexp.MustCompile(`(?i)(^|[^a-z0-9])` + regexp.QuoteMeta(postalCode) + `(?:-[0-9]{4})?([^a-z0-9]|$)`)
+	if pattern.MatchString(query) {
+		return query
+	}
+	return query + ", " + postalCode
 }
 
 func (c *NominatimClient) doRateLimited(request *http.Request) (*http.Response, error) {
