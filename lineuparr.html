@@ -474,7 +474,7 @@
         <span class="panel-chevron" aria-hidden="true">›</span>
       </summary>
       <div class="panel-body">
-        <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared with this lineup only through an exact station ID.</p>
+        <p class="panel-help">Each official provider source is joined to its own Gracenote grid, then categories and aliases are shared through exact station IDs or confirmed weekday EPG comparisons.</p>
         <p class="alias-refresh-time" id="alias-last-refresh">Last provider refresh: never</p>
         <div class="scan-progress">
           <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
@@ -922,11 +922,6 @@
       await loadAliasIndex();
     }
 
-    async function reloadDraft() {
-      draft = await api('/api/lineuparr/draft');
-      renderAll();
-    }
-
     async function loadDispatchConfig() {
       try {
         dispatchConfig = await api('/api/lineuparr/dispatcharr/config');
@@ -1279,10 +1274,6 @@
       if (!matchReview?.confirmedCount || els.decisionHistory.hidden) return;
       els.decisionHistory.open = true;
       els.decisionHistory.scrollIntoView({behavior:'smooth', block:'start'});
-    }
-
-    function emptyMessage(text) {
-      const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item;
     }
 
     async function loadDraft() {
