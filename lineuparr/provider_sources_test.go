@@ -169,3 +169,19 @@ func TestExactStationCatalogSuppressesConflictingCategories(t *testing.T) {
 		t.Fatalf("conflict status = %+v", status)
 	}
 }
+
+func TestProviderRenameCannotBeEstablishedByProgrammeOrAffiliateOnly(t *testing.T) {
+	catalog := loadProviderSourceCatalog()
+	for _, rule := range catalog.Renames {
+		if len(rule.Current) == 0 {
+			continue
+		}
+		inputs := []InputChannel{{CallSign: "UNRELATED_FIXTURE", Affiliate: rule.Current[0], EventCallSigns: []string{rule.Current[0]}}}
+		ApplyProviderGuideAliasesForLineup("Verizon", "", "", inputs)
+		if len(inputs[0].ExternalAliases) > 0 || inputs[0].PreferredName != nil {
+			t.Fatal("programme/affiliate-only rename bypassed identity boundary")
+		}
+		return
+	}
+	t.Fatal("no rename fixture")
+}

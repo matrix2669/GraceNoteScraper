@@ -138,3 +138,17 @@ func TestRegionalSuffixWithTimeShiftRemainsDistinct(t *testing.T) {
 		t.Fatalf("regional suffix plus shift grouped: %+v", got)
 	}
 }
+
+func TestExactStationCatalogProofGroupsWithoutLineupNumberAssertion(t *testing.T) {
+	proof := func() ServiceIdentityEvidence {
+		return ServiceIdentityEvidence{Value: "Verified Service", SourceID: "spectrum-official-lineup", SourceRowID: "catalog-row", SourceRevision: "catalog-revision", BindingKind: "station-id-catalog-v1", Policy: "provider-identity-v1"}
+	}
+	cs := []DraftChannel{{ID: "a", StationID: "A", CallSign: "SOURCEA", ServiceEvidence: []ServiceIdentityEvidence{proof()}}, {ID: "b", StationID: "B", CallSign: "SOURCEB", ServiceEvidence: []ServiceIdentityEvidence{proof()}}}
+	if len(verifiedServiceSuggestions(cs)) != 1 {
+		t.Fatal("valid exact-ID catalog identity ignored")
+	}
+	cs[0].ServiceEvidence[0].SourceRevision = ""
+	if len(verifiedServiceSuggestions(cs)) != 0 {
+		t.Fatal("incomplete catalog proof admitted")
+	}
+}

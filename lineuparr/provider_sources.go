@@ -116,7 +116,7 @@ func ApplyProviderGuideAliasesForLineup(providerName, location, postalCode strin
 	}
 	for index := range inputs {
 		identities := make(map[string]bool)
-		for _, value := range append([]string{inputs[index].CallSign, inputs[index].Affiliate}, inputs[index].EventCallSigns...) {
+		for _, value := range []string{inputs[index].CallSign} {
 			identities[providerNameKey(value)] = true
 		}
 		for _, rule := range catalog.Renames {

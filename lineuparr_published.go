@@ -15,6 +15,7 @@ import (
 	"time"
 
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 )
 
 const lineuparrPublishedPrefix = "/lineuparr/exports/"
@@ -52,6 +53,10 @@ func (s *lineuparrServer) handleExportSummary(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Provider changed; reload", 409)
 		return
 	}
+	if record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint != config.Fingerprint() {
+		writeLineuparrJSON(w, 200, map[string]any{"exists": false, "retained": true, "requiresRegeneration": true, "message": "Generate the lineup again for the current source and evidence rules."})
+		return
+	}
 	signatures, err := lineuparrbuilder.SignExportJSON(record.Data)
 	if err != nil {
 		http.Error(w, "The saved export could not be compared", http.StatusInternalServerError)
@@ -63,12 +68,15 @@ func (s *lineuparrServer) handleExportSummary(w http.ResponseWriter, r *http.Req
 var publishedLineuparrFilename = regexp.MustCompile(`^[A-Z]{2}_[\pL\pN-]+_lineup\.json$`)
 
 // One atomic record per export filename keeps the last explicit export independent of
-// guide availability, subsequent draft edits, and provider selection changes.
+// guide availability and subsequent draft edits. Old policy/source records remain
+// retained for audit but cannot serve active imports until explicitly regenerated.
 type publishedLineuparr struct {
-	Version     int             `json:"version"`
-	Filename    string          `json:"filename"`
-	PublishedAt time.Time       `json:"publishedAt"`
-	Data        json.RawMessage `json:"data"`
+	EvidencePolicy    string          `json:"evidencePolicy,omitempty"`
+	SourceFingerprint string          `json:"sourceFingerprint,omitempty"`
+	Version           int             `json:"version"`
+	Filename          string          `json:"filename"`
+	PublishedAt       time.Time       `json:"publishedAt"`
+	Data              json.RawMessage `json:"data"`
 }
 
 func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) {
@@ -108,7 +116,7 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Unable to create Lineuparr JSON", http.StatusInternalServerError)
 		return
 	}
-	record := publishedLineuparr{Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
+	record := publishedLineuparr{EvidencePolicy: lineupindex.ActiveEvidencePolicy, SourceFingerprint: config.Fingerprint(), Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
 		return savePublishedLineuparr(s.exportDir, record)
 	})
@@ -177,22 +185,37 @@ func (s *lineuparrServer) handlePublishedExport(w http.ResponseWriter, r *http.R
 		http.Error(w, "The saved export could not be read; export the lineup again", http.StatusInternalServerError)
 		return
 	}
-	disposition := "inline"
-	if r.URL.Query().Get("download") == "1" {
-		disposition = "attachment"
-	}
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": record.Filename}))
-	w.Header().Set("X-Content-Type-Options", "nosniff")
-	// Serve the same serialized document for URL imports and explicit downloads.
-	var pretty bytes.Buffer
-	if err := json.Indent(&pretty, record.Data, "", "  "); err != nil {
-		http.Error(w, "The saved export could not be read", http.StatusInternalServerError)
+	if s.store == nil || record.EvidencePolicy != lineupindex.ActiveEvidencePolicy || record.SourceFingerprint == "" {
+		http.Error(w, "Generate the lineup again for the current source and evidence rules", http.StatusConflict)
 		return
 	}
-	pretty.WriteByte('\n')
-	w.Header().Set("Content-Length", fmt.Sprint(pretty.Len()))
-	if r.Method == http.MethodGet {
-		_, _ = w.Write(pretty.Bytes())
+	current, err := s.store.WhileCurrent(record.SourceFingerprint, func() error {
+		disposition := "inline"
+		if r.URL.Query().Get("download") == "1" {
+			disposition = "attachment"
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": record.Filename}))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		// Serve the same serialized document for URL imports and explicit downloads.
+		var pretty bytes.Buffer
+		if err := json.Indent(&pretty, record.Data, "", "  "); err != nil {
+			http.Error(w, "The saved export could not be read", http.StatusInternalServerError)
+			return nil
+		}
+		pretty.WriteByte('\n')
+		w.Header().Set("Content-Length", fmt.Sprint(pretty.Len()))
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(pretty.Bytes())
+		}
+		return nil
+	})
+	if err != nil {
+		http.Error(w, "Unable to read the saved export", http.StatusInternalServerError)
+		return
 	}
+	if !current {
+		http.Error(w, "The selected lineup changed; generate the current lineup again", http.StatusConflict)
+	}
+
 }

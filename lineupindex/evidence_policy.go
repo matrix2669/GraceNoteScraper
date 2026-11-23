@@ -135,7 +135,13 @@ func auditEvidence(idx *Index, apply bool) EvidenceAudit {
 				if scope == "" && len(keys) > 0 {
 					scope = keys[0]
 				}
-				bad = append(bad, root{sid, normalizeName(f.Value), f.SourceRowID, scope, f.SourceID, stationRawKeys(st)})
+				scopes := []string{scope}
+				if f.RootSourceLineupKey == "" && len(keys) > 0 {
+					scopes = keys
+				}
+				for _, unsafeScope := range scopes {
+					bad = append(bad, root{sid, normalizeName(f.Value), f.SourceRowID, unsafeScope, f.SourceID, stationRawKeys(st)})
+				}
 			}
 		}
 	}

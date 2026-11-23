@@ -71,6 +71,9 @@ func safeIdentityProof(c DraftChannel, p ServiceIdentityEvidence) bool {
 			return false
 		}
 	}
+	if p.BindingKind == "station-id-catalog-v1" && p.SourceID == "spectrum-official-lineup" && p.SourceRowID != "" && p.SourceRevision != "" {
+		return true
+	}
 	return p.PeerStationID != "" || strings.HasSuffix(p.SourceID, "-official-lineup") && p.SourceRowID != "" && p.RootStationID == c.StationID && p.RootLineupKey != ""
 }
 

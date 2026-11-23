@@ -615,7 +615,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 		config.Gracenote.Country,
 		config.Gracenote.PostalCode,
 		providersource.OfficialSourceID(config.Gracenote.ProviderName),
-		inputs,
+		inputs, lineupindex.EvidenceContext{Country: config.Gracenote.Country, PostalCode: config.Gracenote.PostalCode, LineupID: config.Gracenote.LineupID, Device: config.Gracenote.Device, Headend: config.Gracenote.HeadendID, Language: config.Gracenote.Language, Fingerprint: config.Fingerprint()},
 	)...)
 	draft, err := s.builder.Build(r.Context(), lineuparrbuilder.LineupContext{
 		SourceFingerprint: config.Fingerprint(),
@@ -638,7 +638,7 @@ func (s *lineuparrServer) buildDraft(w http.ResponseWriter, r *http.Request) (*l
 	return draft, config, inputs, true
 }
 
-func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourceID string, inputs []lineuparrbuilder.InputChannel) []lineuparrbuilder.SourceStatus {
+func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourceID string, inputs []lineuparrbuilder.InputChannel, contexts ...lineupindex.EvidenceContext) []lineuparrbuilder.SourceStatus {
 	if s.marketIndex == nil {
 		return nil
 	}
@@ -648,10 +648,19 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			stationIDs = append(stationIDs, input.StationID)
 		}
 	}
-	candidates := s.marketIndex.AliasesForStations(stationIDs)
+	evidenceContext := lineupindex.EvidenceContext{Country: country, PostalCode: postalCode}
+	if len(contexts) == 1 {
+		evidenceContext = contexts[0]
+	}
+	evidenceContext.RawCallSigns = make(map[string][]string)
+	for _, input := range inputs {
+		evidenceContext.RawCallSigns[input.StationID] = append(evidenceContext.RawCallSigns[input.StationID], input.CallSign)
+	}
+	view := s.marketIndex.EvidenceForLineup(evidenceContext)
+	candidates := view.AliasesForStations(stationIDs)
 	// Category votes are independent of the active provider; the former
 	// preferred-source override allowed one lineup to mask disagreement.
-	categories := s.marketIndex.CategoriesForStations(stationIDs)
+	categories := view.CategoriesForStations(stationIDs)
 	matched := 0
 	providerMatched := make(map[string]map[int]bool)
 	providerConflicts := make(map[string]int)
@@ -684,7 +693,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			}
 			inputs[index].ExternalAliases = append(inputs[index].ExternalAliases, lineuparrbuilder.AttributedAlias{
 				Value: candidate.Value, Source: sourceID, Method: method,
-				Identity: &lineuparrbuilder.ServiceIdentityEvidence{Value: candidate.Value, SourceID: sourceID, SourceRowID: candidate.SourceRowID, PeerStationID: candidate.PeerStationID, RootStationID: candidate.RootSourceStationID, RootLineupKey: candidate.RootSourceLineupKey, Policy: candidate.EvidencePolicy},
+				Identity: &lineuparrbuilder.ServiceIdentityEvidence{BindingKind: candidate.BindingKind, SourceRevision: candidate.SourceRevision, Value: candidate.Value, SourceID: sourceID, SourceRowID: candidate.SourceRowID, PeerStationID: candidate.PeerStationID, RootStationID: candidate.RootSourceStationID, RootLineupKey: candidate.RootSourceLineupKey, Policy: candidate.EvidencePolicy},
 			})
 			if providerMatched[sourceID] == nil {
 				providerMatched[sourceID] = make(map[int]bool)
@@ -750,10 +759,10 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			matched++
 		}
 	}
-	snapshot := s.marketIndex.SnapshotForPostal(country, postalCode)
+	snapshot := view.Snapshot()
 	statuses := []lineuparrbuilder.SourceStatus{{
 		ID: "gracenote-market-index", Label: "Gracenote lineup alias index", Status: "local", Matched: matched,
-		Message: fmt.Sprintf("%d unique lineups indexed; exact station-ID aliases plus confirmed pair-level weekday EPG evidence", snapshot.Summary.Lineups),
+		Message: fmt.Sprintf("%d unique lineups indexed; eligible current-lineup assertions and independently reusable station identities; historical counts are audit-only", snapshot.Summary.Lineups),
 	}}
 	if snapshot.PostalScan != nil {
 		for _, source := range snapshot.PostalScan.Sources {

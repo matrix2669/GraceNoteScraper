@@ -78,6 +78,8 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 	return summary
 }
 
+// AliasesForStations is an audit projection of retained observations. Active
+// builders use EvidenceForLineup; station storage alone does not confer eligibility.
 func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -106,7 +108,7 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 			}
 			result[stationID] = append(result[stationID], AliasCandidate{
 				StationID: stationID, Value: fact.Value, Kind: FactAlias,
-				EvidencePolicy: identityViewPolicy(fact), PeerStationID: identityPeer(fact, stationID), SourceRowID: fact.SourceRowID, RootSourceID: fact.RootSourceID, RootSourceStationID: fact.RootSourceStationID, RootSourceLineupKey: fact.RootSourceLineupKey, StationBound: fact.StationBound,
+				SourceRevision: fact.SourceRevision, EvidencePolicy: identityViewPolicy(fact), PeerStationID: identityPeer(fact, stationID), SourceRowID: fact.SourceRowID, RootSourceID: fact.RootSourceID, RootSourceStationID: fact.RootSourceStationID, RootSourceLineupKey: fact.RootSourceLineupKey, StationBound: fact.StationBound,
 				LineupKeys: append([]string(nil), fact.LineupKeys...), SourceID: fact.SourceID,
 				SourceLabel: fact.SourceLabel, SourceURL: fact.SourceURL, Method: fact.Method,
 			})
