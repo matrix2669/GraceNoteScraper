@@ -20,10 +20,11 @@ func ExportFromDraft(draft *Draft) ExportFile {
 			category = uncategorized
 		}
 		categories[category] = append(categories[category], ExportChannel{
-			Name:    channel.Name,
-			Number:  exportNumber(channel.Number),
-			Aliases: append([]string(nil), channel.Aliases...),
-			EPGIDs:  append([]string(nil), channel.EPGIDs...),
+			Name:            channel.Name,
+			Number:          exportNumber(channel.Number),
+			Aliases:         append([]string(nil), channel.Aliases...),
+			ExcludedAliases: append([]string(nil), channel.ExcludedAliases...),
+			EPGIDs:          append([]string(nil), channel.EPGIDs...),
 		})
 	}
 	for category := range categories {
@@ -45,7 +46,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 		Date:        time.Now().UTC().Format("2006-01-02"),
 		Description: fmt.Sprintf("Lineuparr-compatible export for the active %s Gracenote lineup.", draft.ProviderName),
 		Source:      strings.Join(sourceNames, "; "),
-		Notes:       "All channels were retained by default. Exclusions and duplicate-SD removals in this file reflect explicit builder choices. Uncategorized channels remain visible for review.",
+		Notes:       "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr names below 95% are exported as aliases; denied names at 95% or above are exported as excluded_aliases. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices.",
 		Categories:  categories,
 	}
 }

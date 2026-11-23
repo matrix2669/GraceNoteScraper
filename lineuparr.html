@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Lineuparr builder · GraceNoteScraper</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <style>
     :root {
       color-scheme: dark;
@@ -22,6 +23,7 @@
     }
 
     * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
 
     body {
       margin: 0;
@@ -173,6 +175,77 @@
     .status-pill.error { color: var(--danger); background: rgba(255,95,87,.08); }
     .status-pill.running { color: var(--warning); }
 
+    .dispatch-panel > .panel-summary { padding-top: 20px; padding-bottom: 16px; }
+    .dispatch-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .dispatch-form {
+      display: grid; grid-template-columns: minmax(220px, 2fr) minmax(135px, .8fr) minmax(140px, 1fr) minmax(160px, 1fr) auto;
+      gap: 10px; align-items: end; margin-top: 17px;
+    }
+    .dispatch-form .field { min-width: 0; }
+    .dispatch-form .api-key-field { grid-column: span 2; }
+    .dispatch-connection {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      margin-top: 15px; padding: 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px;
+      background: rgba(7,17,14,.42);
+    }
+    .dispatch-connected { color: var(--accent); font-size: 12px; font-weight: 760; }
+    .dispatch-meta { margin-top: 3px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+    .dispatch-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .dispatch-actions button { min-height: 36px; font-size: 12px; }
+    .danger-button { color: var(--danger); }
+    .match-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+    .match-stat { padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .match-stat-button { display: block; width: 100%; min-height: 0; color: var(--text); text-align: left; font-weight: inherit; cursor: pointer; }
+    .match-stat-button:not(:disabled):hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
+    .match-stat-button:disabled { cursor: default; opacity: 1; }
+    .match-stat strong { display: block; font-size: 19px; }
+    .match-stat span { color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+    .match-status { margin: 9px 2px 0; color: var(--muted); font-size: 11px; }
+    .match-status.warning { color: var(--warning); }
+    .match-list { display: grid; gap: 9px; margin-top: 13px; }
+    .match-card {
+      display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+      gap: 14px; align-items: center; padding: 13px; border: 1px solid rgba(43,70,59,.75);
+      border-radius: 11px; background: rgba(7,17,14,.42);
+    }
+    .match-name { font-size: 13px; font-weight: 760; overflow-wrap: anywhere; }
+    .match-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .match-evidence { margin-top: 8px; color: var(--muted); font-size: 11px; }
+    .match-evidence summary { cursor: pointer; }
+    .match-evidence-list { display: grid; gap: 4px; margin-top: 7px; overflow-wrap: anywhere; }
+    .match-tier { display: inline-flex; margin-right: 6px; padding: 2px 6px; border-radius: 999px; background: rgba(124,230,166,.1); color: var(--accent); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .match-tier.contained { color: var(--warning); background: rgba(255,203,92,.1); }
+    .match-tier.fuzzy { color: var(--danger); background: rgba(255,95,87,.1); }
+    .match-arrow { color: var(--accent); font-size: 18px; }
+    .match-score { color: var(--accent); font-weight: 850; }
+    .match-buttons { display: flex; gap: 7px; }
+    .match-buttons button { min-height: 36px; padding: 0 11px; font-size: 12px; }
+    .confirm-button { border-color: rgba(124,230,166,.55); color: var(--accent); }
+    .deny-button { color: var(--danger); }
+    .match-load-more { justify-self: center; margin-top: 4px; }
+    .match-dialog {
+      width: min(760px, calc(100% - 28px)); max-height: min(82vh, 780px); padding: 0;
+      border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow);
+    }
+    .match-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .match-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--line); }
+    .match-dialog-head h2 { margin: 0; font-size: 20px; }
+    .match-dialog-head p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .match-dialog-close { min-height: 34px; padding: 0 11px; }
+    .match-alternative-list { display: grid; gap: 10px; max-height: calc(82vh - 108px); padding: 16px 20px 20px; overflow: auto; }
+    .match-alternative-card { padding: 14px; border: 1px solid rgba(43,70,59,.75); border-radius: 11px; background: rgba(7,17,14,.42); }
+    .match-alternative-main { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    .match-alternative-card .match-buttons { margin-top: 12px; justify-content: flex-end; }
+    .decision-list { display: grid; gap: 7px; margin-top: 10px; }
+    .decision-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 10px 11px; border: 1px solid rgba(43,70,59,.55); border-radius: 9px; color: var(--muted); font-size: 11px;
+    }
+    .decision-row strong { color: var(--text); }
+    .decision-row button { min-height: 32px; padding: 0 10px; font-size: 11px; }
+    .privacy-note { margin-top: 10px; color: #789087; font-size: 11px; line-height: 1.45; }
+    .dispatch-panel details { margin: 14px 0 0; }
+
     .builder-panel { overflow: hidden; }
     .builder-panel > .panel-summary { border-bottom: 1px solid transparent; }
     .builder-panel[open] > .panel-summary { border-bottom-color: var(--line); }
@@ -194,21 +267,58 @@
       background: rgba(255,255,255,.04); color: var(--text); font-weight: 760; text-decoration: none; cursor: pointer;
     }
     button:hover, .export-button:hover { border-color: var(--accent); }
-    button:disabled { cursor: wait; opacity: .5; }
+    button:disabled { cursor: not-allowed; opacity: .5; }
+    button.busy:disabled { cursor: progress; }
     .export-button { border-color: var(--accent); background: var(--accent); color: #092015; }
     .export-button:hover { background: #9af0bb; }
+    .export-dialog { width: min(560px, calc(100% - 28px)); padding: 22px; border: 1px solid var(--line); border-radius: 16px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    .export-dialog::backdrop { background: rgba(0,0,0,.7); }
+    .export-dialog h2 { margin: 0 0 12px; font-size: 21px; }
+    .export-dialog p { color: var(--muted); line-height: 1.5; }
+    .export-dialog .export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    .export-result { margin-top: 18px; min-width: 0; }
+    .export-result label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+    .export-result input { font-family: ui-monospace, monospace; }
+    .export-dialog .export-status { min-height: 1.5em; margin-bottom: 0; overflow-wrap: anywhere; }
+    .export-status.error { color: var(--danger); }
     .duplicate-button:not(:disabled) { border-color: rgba(246,210,116,.55); color: var(--warning); }
+    .batch-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: rgba(124,230,166,.08); }
+    .batch-bar { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; padding: 13px 18px; border-bottom: 1px solid var(--line); background: rgba(124,230,166,.045); }
+    .batch-count { min-width: 112px; color: var(--accent); font-size: 12px; font-weight: 760; }
+    .batch-bar .field { min-width: 190px; }
+    .duplicate-review { width: min(780px, calc(100% - 28px)); max-height: min(82vh, 760px); padding: 0; border: 1px solid var(--line); border-radius: 16px; background: #0d1c17; color: var(--text); box-shadow: var(--shadow); }
+    .duplicate-review::backdrop { background: rgba(0, 0, 0, .68); backdrop-filter: blur(2px); }
+    .duplicate-review-form { display: grid; max-height: inherit; grid-template-rows: auto minmax(0, 1fr) auto; }
+    .duplicate-review-header { padding: 18px 20px 14px; border-bottom: 1px solid var(--line); }
+    .duplicate-review-header h2 { margin: 0; font-size: 19px; }
+    .duplicate-review-header p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .duplicate-review-list { display: grid; gap: 8px; overflow-y: auto; padding: 14px 20px; }
+    .duplicate-review-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,17,14,.48); }
+    .duplicate-review-row input { width: 17px; height: 17px; accent-color: var(--accent); }
+    .duplicate-review-copy { min-width: 0; }
+    .duplicate-review-name { font-size: 12px; font-weight: 730; overflow-wrap: anywhere; }
+    .duplicate-review-meta { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+    .duplicate-review-arrow { color: var(--accent); text-align: center; }
+    .duplicate-review-actions { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 20px 18px; border-top: 1px solid var(--line); }
 
     .channel-list { display: grid; }
+    .channel-count { flex: 0 0 auto; align-self: end; min-height: 42px; padding: 0 4px; color: var(--muted); font-size: 12px; line-height: 42px; white-space: nowrap; }
     .channel-card { padding: 15px 18px; border-bottom: 1px solid rgba(43,70,59,.75); }
     .channel-card:last-child { border-bottom: 0; }
     .channel-card.excluded { opacity: .55; background: rgba(0,0,0,.16); }
+    .channel-card.batch-selected { background: rgba(124,230,166,.065); }
     .channel-main { gap: 13px; align-items: flex-start; }
+    .batch-toggle { display: none; flex: 0 0 22px; width: 22px; height: 32px; place-items: center; }
+    .builder-panel.batch-mode .batch-toggle { display: grid; }
+    .batch-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
     .include-toggle { display: grid; flex: 0 0 22px; width: 22px; height: 32px; place-items: center; }
     .include-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
     .channel-number { flex: 0 0 68px; padding-top: 4px; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 820; }
     .channel-copy { min-width: 0; flex: 1 1 auto; }
     .channel-name { font-weight: 760; overflow-wrap: anywhere; }
+    .channel-name-button { display: inline-flex; min-height: 0; max-width: 100%; align-items: baseline; justify-content: flex-start; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
+    .channel-name-button:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .channel-detail-name { margin-left: 8px; color: var(--muted); font-size: 12px; font-weight: 520; }
     .channel-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
     .badges { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
     .badge { padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); font-size: 10px; }
@@ -219,7 +329,31 @@
     .channel-card > details { margin: 11px 0 0 103px; }
     .channel-card > details > summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
     .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-    .alias { padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
+    .builder-panel.compact .channel-card { padding-top: 8px; padding-bottom: 8px; }
+    .builder-panel.compact .channel-main { align-items: center; }
+    .builder-panel.compact .include-toggle { height: 30px; }
+    .builder-panel.compact .channel-number { padding-top: 0; }
+    .builder-panel.compact .channel-copy { display: flex; align-items: baseline; gap: 8px; }
+    .builder-panel.compact .channel-meta,
+    .builder-panel.compact .badges,
+    .builder-panel.compact details { display: none; }
+    .builder-panel.compact .channel-detail-name { font-size: 11px; }
+    .program-dialog { width: min(780px, calc(100% - 28px)); max-height: min(84vh, 820px); padding: 0; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); color: var(--text); box-shadow: var(--shadow); }
+    .program-dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(3px); }
+    .program-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 19px 20px; border-bottom: 1px solid var(--line); }
+    .program-dialog-head h2 { margin: 0; font-size: 20px; }
+    .program-dialog-head p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
+    .program-dialog-close { min-height: 34px; padding: 0 11px; }
+    .program-list { display: grid; max-height: calc(84vh - 92px); overflow: auto; }
+    .program-row { display: grid; grid-template-columns: minmax(145px, .42fr) minmax(0, 1fr); gap: 16px; padding: 13px 20px; border-bottom: 1px solid rgba(43,70,59,.65); }
+    .program-time { color: var(--accent); font-size: 11px; line-height: 1.45; }
+    .program-title { font-weight: 760; }
+    .program-meta, .program-description { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+    .alias { display: inline-flex; align-items: center; gap: 6px; padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
+    .alias.removed { border-style: dashed; color: #899d94; text-decoration: line-through; }
+    .alias button { min-height: 0; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 11px; font-weight: 800; }
+    .alias button:hover { color: var(--danger); }
+    .alias.removed button:hover { color: var(--accent); }
     .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
     .loading { padding: 70px 20px; color: var(--muted); text-align: center; }
     .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border: 3px solid rgba(124,230,166,.18); border-top-color: var(--accent); border-radius: 50%; animation: spin .85s linear infinite; }
@@ -233,6 +367,7 @@
       .channel-main { flex-wrap: wrap; }
       .channel-copy { flex-basis: calc(100% - 120px); }
       .channel-actions { flex: 1 1 100%; margin-left: 103px; }
+      .batch-bar .field { flex: 1 1 220px; }
     }
 
     @media (max-width: 600px) {
@@ -247,6 +382,7 @@
       .field { flex: 1 1 100%; }
       .actions { width: 100%; margin-left: 0; }
       .actions > * { flex: 1 1 auto; }
+      .channel-count { width: 100%; padding: 0; line-height: 24px; }
       .channel-card { padding: 14px 12px; }
       .channel-number { flex-basis: 48px; }
       .channel-copy { flex-basis: calc(100% - 96px); }
@@ -254,6 +390,15 @@
       .channel-card > details { margin-left: 83px; }
       .source-row { align-items: flex-start; }
       .provider-address { grid-template-columns: 1fr; }
+      .source-message { white-space: normal; }
+      .program-row { grid-template-columns: 1fr; gap: 5px; }
+      .dispatch-form { grid-template-columns: 1fr; }
+      .dispatch-head, .dispatch-connection { align-items: flex-start; flex-direction: column; }
+      .match-summary { grid-template-columns: repeat(2, 1fr); }
+      .match-card { grid-template-columns: 1fr; gap: 8px; }
+      .match-arrow { transform: rotate(90deg); }
+      .match-buttons { width: 100%; }
+      .match-buttons button { flex: 1; }
     }
   </style>
 </head>
@@ -349,6 +494,71 @@
       </div>
     </details>
 
+    <details class="panel dispatch-panel collapsible-panel" id="dispatch-panel" data-section-key="dispatcharr" open>
+      <summary class="panel-summary dispatch-head">
+        <span class="panel-summary-copy">
+          <span class="panel-title">Dispatcharr M3U matching</span>
+          <span class="panel-help">Review grouped aliases from every active M3U stream.</span>
+        </span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+      <p class="panel-help">Connect with a Dispatcharr username and password or an API key, compare every active M3U stream with this lineup, then confirm or deny each proposed alias group.</p>
+      <form class="dispatch-form" id="dispatch-form">
+        <div class="field">
+          <label for="dispatch-url">Dispatcharr address</label>
+          <input id="dispatch-url" type="url" placeholder="http://dispatcharr:9191" required>
+        </div>
+        <div class="field">
+          <label for="dispatch-auth">Authentication</label>
+          <select id="dispatch-auth">
+            <option value="password">User / password</option>
+            <option value="api-key">API key</option>
+          </select>
+        </div>
+        <div class="field" id="dispatch-user-field">
+          <label for="dispatch-user">Username</label>
+          <input id="dispatch-user" autocomplete="username" required>
+        </div>
+        <div class="field" id="dispatch-password-field">
+          <label for="dispatch-password">Password</label>
+          <input id="dispatch-password" type="password" autocomplete="current-password" placeholder="Required to connect">
+        </div>
+        <div class="field api-key-field" id="dispatch-api-key-field" hidden>
+          <label for="dispatch-api-key">API key</label>
+          <input id="dispatch-api-key" type="password" autocomplete="off" placeholder="Required to connect">
+        </div>
+        <button class="confirm-button" id="dispatch-save" type="submit">Save &amp; test</button>
+      </form>
+      <div class="privacy-note">The scraper stores the selected credential in a separate owner-only file, keeps JWT access tokens in memory, and discards stream URLs server-side. Use HTTPS unless both apps share a trusted private network.</div>
+      <div class="dispatch-connection" id="dispatch-connection" hidden>
+        <div>
+          <div class="dispatch-connected">Connected</div>
+          <div class="dispatch-meta" id="dispatch-meta"></div>
+        </div>
+        <div class="dispatch-actions">
+          <button type="button" id="dispatch-refresh">Refresh streams</button>
+          <button type="button" id="dispatch-disconnect" class="danger-button">Disconnect</button>
+        </div>
+      </div>
+      <div id="match-review" hidden>
+        <div class="match-summary">
+          <div class="match-stat"><strong id="match-streams">—</strong><span>M3U streams</span></div>
+          <div class="match-stat"><strong id="match-candidates">—</strong><span>Alias groups to review</span></div>
+          <button class="match-stat match-stat-button" id="match-confirmed-jump" type="button" disabled aria-label="Show confirmed matches"><strong id="match-confirmed">—</strong><span>Confirmed</span></button>
+          <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
+        </div>
+        <div class="match-status" id="match-status"></div>
+        <div class="match-list" id="match-list"></div>
+        <details id="decision-history">
+          <summary>Reviewed matches</summary>
+          <div class="decision-list" id="decision-list"></div>
+        </details>
+      </div>
+      <div class="match-list" id="dispatch-loading"></div>
+      </div>
+    </details>
+
     <details class="panel builder-panel collapsible-panel" data-section-key="channels" open>
       <summary class="panel-summary">
         <span class="panel-summary-copy">
@@ -370,18 +580,37 @@
         <div class="field">
           <label for="included-filter">Visibility</label>
           <select id="included-filter">
+            <option value="included" selected>Included only</option>
             <option value="all">All channels</option>
-            <option value="included">Included only</option>
             <option value="excluded">Excluded only</option>
           </select>
         </div>
+        <div class="field">
+          <label for="sort-order">Sort by</label>
+          <select id="sort-order">
+            <option value="number">Channel number</option>
+            <option value="name">Channel name</option>
+          </select>
+        </div>
+        <div class="channel-count" id="visible-count" aria-live="polite"></div>
         <div class="actions">
+          <button type="button" id="view-toggle" aria-pressed="false">Compact view</button>
+          <button type="button" id="batch-toggle" class="batch-button" aria-pressed="false">Batch categorize</button>
           <button type="button" id="remove-duplicates" class="duplicate-button">Remove suggested SD</button>
           <button type="button" id="restore-all">Restore all</button>
-          <a class="export-button" href="/api/lineuparr/export">Export JSON</a>
+          <button type="button" class="export-button" id="export-open">Export JSON</button>
         </div>
       </div>
-      <datalist id="category-options"></datalist>
+      <div class="batch-bar" id="batch-bar" hidden>
+        <div class="batch-count" id="batch-count" aria-live="polite">0 selected</div>
+        <button type="button" id="batch-select-visible">Select visible</button>
+        <button type="button" id="batch-clear">Clear</button>
+        <div class="field">
+          <label for="batch-category">Set category</label>
+          <select id="batch-category"></select>
+        </div>
+        <button type="button" id="batch-apply" class="export-button">Apply to selected</button>
+      </div>
       <div class="channel-list" id="channel-list">
         <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
       </div>
@@ -407,8 +636,61 @@
     </div>
   </dialog>
 
+  <dialog class="export-dialog" id="export-dialog" aria-labelledby="export-title" aria-describedby="export-description">
+    <h2 id="export-title">Export Lineuparr JSON</h2>
+    <p id="export-description">Download a file or copy a URL to use in Lineuparr. Either option publishes your current included channels, categories, and aliases.</p>
+    <p>The URL keeps this exported version until you export again. Later edits are not published automatically.</p>
+    <div class="export-actions">
+      <button type="button" class="export-button" id="export-download">Download JSON</button>
+      <button type="button" id="export-copy">Copy URL</button>
+      <button type="button" id="export-close">Cancel</button>
+    </div>
+    <div class="export-result" id="export-result" hidden>
+      <label for="export-url">Published lineup URL</label>
+      <input id="export-url" type="text" readonly spellcheck="false">
+    </div>
+    <p class="export-status" id="export-status" role="status" aria-live="polite"></p>
+  </dialog>
+
+  <dialog class="program-dialog" id="program-dialog">
+    <div class="program-dialog-head">
+      <div><h2 id="program-title">Upcoming programmes</h2><p id="program-channel"></p></div>
+      <button class="program-dialog-close" id="program-close" type="button">Close</button>
+    </div>
+    <div class="program-list" id="program-list"></div>
+  </dialog>
+
+  <dialog class="duplicate-review" id="duplicate-review">
+    <form class="duplicate-review-form" id="duplicate-review-form">
+      <header class="duplicate-review-header">
+        <h2>Review suggested SD duplicates</h2>
+        <p>Each checked channel will be excluded from the Lineuparr export while the retained channel stays included. Uncheck any pair you do not want to apply.</p>
+      </header>
+      <div class="duplicate-review-list" id="duplicate-review-list"></div>
+      <div class="duplicate-review-actions">
+        <button class="secondary" type="button" id="duplicate-review-cancel">Cancel</button>
+        <button type="submit" id="duplicate-review-confirm">Remove selected</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog class="match-dialog" id="match-alternative-dialog">
+    <div class="match-dialog-head">
+      <div>
+        <h2 id="match-alternative-title">Other possible matches</h2>
+        <p id="match-alternative-help"></p>
+      </div>
+      <button class="match-dialog-close" id="match-alternative-close" type="button" aria-label="Close alternate matches">Close</button>
+    </div>
+    <div class="match-alternative-list" id="match-alternative-list"></div>
+  </dialog>
+
   <script>
     const els = {
+      exportOpen: document.getElementById('export-open'), exportDialog: document.getElementById('export-dialog'),
+      exportDownload: document.getElementById('export-download'), exportCopy: document.getElementById('export-copy'),
+      exportClose: document.getElementById('export-close'), exportResult: document.getElementById('export-result'),
+      exportURL: document.getElementById('export-url'), exportStatus: document.getElementById('export-status'),
       message: document.getElementById('message'), stats: document.getElementById('stats'),
       providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
       sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
@@ -421,8 +703,15 @@
       sourceEvidenceSite: document.getElementById('source-evidence-site'), sourceEvidenceRows: document.getElementById('source-evidence-rows'),
       sourceEvidenceEmpty: document.getElementById('source-evidence-empty'), sourceEvidenceClose: document.getElementById('source-evidence-close'),
       list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
-      includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
+      includedFilter: document.getElementById('included-filter'), sortOrder: document.getElementById('sort-order'), visibleCount: document.getElementById('visible-count'),
+      builderPanel: document.querySelector('.builder-panel'), viewToggle: document.getElementById('view-toggle'),
+      batchToggle: document.getElementById('batch-toggle'), batchBar: document.getElementById('batch-bar'),
+      batchCount: document.getElementById('batch-count'), batchSelectVisible: document.getElementById('batch-select-visible'),
+      batchClear: document.getElementById('batch-clear'), batchCategory: document.getElementById('batch-category'), batchApply: document.getElementById('batch-apply'),
       removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
+      duplicateReview: document.getElementById('duplicate-review'), duplicateReviewForm: document.getElementById('duplicate-review-form'),
+      duplicateReviewList: document.getElementById('duplicate-review-list'), duplicateReviewCancel: document.getElementById('duplicate-review-cancel'),
+      duplicateReviewConfirm: document.getElementById('duplicate-review-confirm'),
       included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
       categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'), lineupsMetric: document.getElementById('lineups-metric'),
       stationsMetric: document.getElementById('stations-metric'), aliasesMetric: document.getElementById('aliases-metric'),
@@ -431,7 +720,24 @@
       marketMessage: document.getElementById('market-message'),
       postalScan: document.getElementById('postal-scan'),
       stopScan: document.getElementById('stop-scan'),
-      aliasLastRefresh: document.getElementById('alias-last-refresh')
+      aliasLastRefresh: document.getElementById('alias-last-refresh'),
+      programDialog: document.getElementById('program-dialog'), programTitle: document.getElementById('program-title'),
+      programChannel: document.getElementById('program-channel'), programList: document.getElementById('program-list'), programClose: document.getElementById('program-close'),
+      dispatchForm: document.getElementById('dispatch-form'), dispatchURL: document.getElementById('dispatch-url'),
+      dispatchAuth: document.getElementById('dispatch-auth'), dispatchUserField: document.getElementById('dispatch-user-field'),
+      dispatchPasswordField: document.getElementById('dispatch-password-field'), dispatchAPIKeyField: document.getElementById('dispatch-api-key-field'),
+      dispatchUser: document.getElementById('dispatch-user'), dispatchPassword: document.getElementById('dispatch-password'), dispatchAPIKey: document.getElementById('dispatch-api-key'),
+      dispatchSave: document.getElementById('dispatch-save'), dispatchConnection: document.getElementById('dispatch-connection'),
+      dispatchMeta: document.getElementById('dispatch-meta'), dispatchRefresh: document.getElementById('dispatch-refresh'),
+      dispatchDisconnect: document.getElementById('dispatch-disconnect'), dispatchLoading: document.getElementById('dispatch-loading'),
+      matchReview: document.getElementById('match-review'), matchStreams: document.getElementById('match-streams'),
+      matchCandidates: document.getElementById('match-candidates'), matchConfirmed: document.getElementById('match-confirmed'),
+      matchConfirmedJump: document.getElementById('match-confirmed-jump'),
+      matchDenied: document.getElementById('match-denied'), matchList: document.getElementById('match-list'),
+      matchStatus: document.getElementById('match-status'), decisionHistory: document.getElementById('decision-history'),
+      decisionList: document.getElementById('decision-list'), alternativeDialog: document.getElementById('match-alternative-dialog'),
+      alternativeTitle: document.getElementById('match-alternative-title'), alternativeHelp: document.getElementById('match-alternative-help'),
+      alternativeList: document.getElementById('match-alternative-list'), alternativeClose: document.getElementById('match-alternative-close')
     };
 
     let draft = null;
@@ -443,6 +749,21 @@
     let providerAddressConfig = null;
     let sourceEvidence = null;
     const providerAddressCache = new Map();
+    let pendingChannelSaves = 0;
+    let publishing = false;
+    let publishedExport = null;
+    let compact = localStorage.getItem('lineuparr-view') === 'compact';
+    let batchMode = false;
+    const selectedChannels = new Set();
+    let programRequest = 0;
+    const channelCollator = new Intl.Collator('en', {numeric: true, sensitivity: 'base'});
+    let dispatchConfig = null;
+    let matchReview = null;
+    let dispatchBusy = false;
+    const pendingDecisions = new Set();
+    let decisionRevision = 0;
+    let matchReviewRequest = 0;
+    let matchReviewLimit = 100;
 
     function showMessage(text, error = false) {
       els.message.textContent = text || '';
@@ -606,17 +927,381 @@
       renderAll();
     }
 
+    async function loadDispatchConfig() {
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config');
+        renderDispatchConfig();
+        if (dispatchConfig.configured && draft && !dispatchBusy) loadMatchReview();
+      } catch (error) {
+        els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+      }
+    }
+
+    function renderDispatchConfig() {
+      const configured = !!dispatchConfig?.configured;
+      els.dispatchConnection.hidden = !configured;
+      els.matchReview.hidden = !configured || !matchReview;
+      els.dispatchURL.value = dispatchConfig?.baseUrl || els.dispatchURL.value;
+      els.dispatchAuth.value = dispatchConfig?.authMethod || 'password';
+      els.dispatchUser.value = dispatchConfig?.username || els.dispatchUser.value;
+      renderDispatchAuthFields();
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      els.dispatchPassword.required = passwordAuth && !configured;
+      els.dispatchPassword.placeholder = configured && passwordAuth ? 'Leave blank to keep saved password' : 'Required to connect';
+      els.dispatchAPIKey.required = !passwordAuth && !configured;
+      els.dispatchAPIKey.placeholder = configured && !passwordAuth ? 'Leave blank to keep saved API key' : 'Required to connect';
+      const identity = dispatchConfig?.authMethod === 'api-key' ? 'API key' : dispatchConfig?.username;
+      els.dispatchMeta.textContent = configured ? `${identity} at ${dispatchConfig.baseUrl}` : '';
+      if (!configured) {
+        matchReview = null;
+        els.matchReview.hidden = true;
+        els.dispatchLoading.replaceChildren(emptyMessage('Connect Dispatcharr when you are ready to review provider stream names.'));
+      }
+    }
+
+    function renderDispatchAuthFields() {
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      const savedMethod = dispatchConfig?.authMethod || 'password';
+      const canKeepSavedSecret = !!dispatchConfig?.configured && savedMethod === els.dispatchAuth.value;
+      els.dispatchUserField.hidden = !passwordAuth;
+      els.dispatchPasswordField.hidden = !passwordAuth;
+      els.dispatchAPIKeyField.hidden = passwordAuth;
+      els.dispatchUser.required = passwordAuth;
+      els.dispatchPassword.required = passwordAuth && !canKeepSavedSecret;
+      els.dispatchAPIKey.required = !passwordAuth && !canKeepSavedSecret;
+      setDispatchControls();
+    }
+
+    async function saveDispatch(event) {
+      event.preventDefault();
+      if (dispatchBusy) return;
+      let saved = false;
+      dispatchBusy = true;
+      setDispatchControls();
+      els.dispatchLoading.replaceChildren(emptyMessage('Testing the connection…'));
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({baseUrl: els.dispatchURL.value, authMethod: els.dispatchAuth.value, username: els.dispatchUser.value, password: els.dispatchPassword.value, apiKey: els.dispatchAPIKey.value})
+        });
+        els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
+        matchReview = null;
+        renderDispatchConfig();
+        els.dispatchLoading.replaceChildren();
+        saved = true;
+        showMessage('Dispatcharr connected. Loading active M3U streams…');
+      } catch (error) {
+        els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+        showMessage(error.message, true);
+      } finally {
+        dispatchBusy = false;
+        setDispatchControls();
+      }
+      if (saved) await loadMatchReview(true);
+    }
+
+    async function disconnectDispatch() {
+      if (dispatchBusy || !confirm('Remove the saved Dispatcharr connection? Confirmed aliases will remain until you undo or remove them.')) return;
+      dispatchBusy = true;
+      setDispatchControls();
+      try {
+        dispatchConfig = await api('/api/lineuparr/dispatcharr/config', {method:'DELETE'});
+        matchReview = null;
+        els.dispatchURL.value = '';
+        els.dispatchUser.value = '';
+        els.dispatchPassword.value = '';
+        els.dispatchAPIKey.value = '';
+        renderDispatchConfig();
+        showMessage('Dispatcharr connection removed. Previously confirmed aliases remain attributable and editable.');
+      } catch (error) {
+        showMessage(error.message, true);
+      } finally {
+        dispatchBusy = false;
+        setDispatchControls();
+      }
+    }
+
+    async function loadMatchReview(force = false, interactive = true, requestedLimit = matchReviewLimit) {
+      if (!draft || !dispatchConfig?.configured || (interactive && dispatchBusy)) return;
+      if (force) requestedLimit = 100;
+      const requestNumber = ++matchReviewRequest;
+      const revision = decisionRevision;
+      if (interactive) {
+        dispatchBusy = true;
+        setDispatchControls();
+        els.dispatchLoading.replaceChildren(emptyMessage(force ? 'Refreshing every active M3U stream…' : 'Comparing active M3U streams with this lineup…'));
+      }
+      try {
+        const query = new URLSearchParams({limit: String(requestedLimit)});
+        if (force) query.set('refresh', 'true');
+        const review = await api(`/api/lineuparr/dispatcharr/review?${query}`);
+        if (requestNumber !== matchReviewRequest || revision !== decisionRevision) return;
+        matchReview = review;
+        matchReviewLimit = review.visibleLimit || requestedLimit;
+        renderMatchReview();
+        return true;
+      } catch (error) {
+        if (interactive) els.dispatchLoading.replaceChildren(emptyMessage(error.message));
+        showMessage(error.message, true);
+        return false;
+      } finally {
+        if (interactive) {
+          dispatchBusy = false;
+          setDispatchControls();
+        }
+      }
+    }
+
+    function renderMatchReview() {
+      if (!matchReview) return;
+      els.matchReview.hidden = false;
+      els.dispatchLoading.replaceChildren();
+      els.matchStreams.textContent = matchReview.streamCount.toLocaleString();
+      els.matchCandidates.textContent = matchReview.candidateCount.toLocaleString();
+      els.matchConfirmed.textContent = matchReview.confirmedCount.toLocaleString();
+      els.matchConfirmedJump.disabled = matchReview.confirmedCount === 0;
+      els.matchDenied.textContent = matchReview.deniedCount.toLocaleString();
+      const fetched = matchReview.fetchedAt ? new Date(matchReview.fetchedAt).toLocaleString() : '';
+      const grouped = matchReview.candidateStreamCount || matchReview.candidateCount;
+      els.matchStatus.textContent = matchReview.warning || `${matchReview.cached ? 'Using cached' : 'Loaded'} active stream list${fetched ? ` from ${fetched}` : ''}. ${grouped.toLocaleString()} matching stream${grouped === 1 ? '' : 's'} are grouped into ${matchReview.candidateCount.toLocaleString()} alias review${matchReview.candidateCount === 1 ? '' : 's'}.`;
+      els.matchStatus.classList.toggle('warning', !!matchReview.warning);
+      els.matchList.replaceChildren();
+      const candidates = matchReview.candidates || [];
+      const hasMore = matchReview.candidateCount > candidates.length;
+      if (!candidates.length) {
+        const message = hasMore
+          ? 'Current review page is complete. Load more to continue.'
+          : 'No current proposals remain. Unmatched streams stay unchanged.';
+        els.matchList.append(emptyMessage(message));
+      }
+      for (const candidate of candidates) els.matchList.append(matchCard(candidate));
+      if (hasMore) {
+        const remaining = matchReview.candidateCount - candidates.length;
+        const amount = Math.min(100, remaining);
+        const loadMore = document.createElement('button'); loadMore.type = 'button'; loadMore.className = 'match-load-more';
+        loadMore.textContent = `Load ${amount} more (${remaining.toLocaleString()} remaining)`;
+        loadMore.addEventListener('click', () => loadMoreMatches());
+        els.matchList.append(loadMore);
+      }
+      els.decisionList.replaceChildren();
+      for (const decision of matchReview.decisions || []) els.decisionList.append(decisionRow(decision));
+      els.decisionHistory.hidden = !(matchReview.decisions || []).length;
+    }
+
+    async function loadMoreMatches() {
+      if (!matchReview || dispatchBusy) return;
+      const requested = Math.min(matchReview.candidateCount, matchReviewLimit + 100);
+      await loadMatchReview(false, true, requested);
+    }
+
+    function matchCard(candidate) {
+      const card = document.createElement('article'); card.className = 'match-card'; card.dataset.key = candidate.key;
+      const stream = document.createElement('div');
+      const streamName = document.createElement('div'); streamName.className = 'match-name'; streamName.textContent = candidate.alias;
+      const streamMeta = document.createElement('div'); streamMeta.className = 'match-meta';
+      const accounts = (candidate.m3uAccountIds || []).join(', ');
+      streamMeta.textContent = `${candidate.streamCount.toLocaleString()} stream${candidate.streamCount === 1 ? '' : 's'}${accounts ? ` · M3U accounts ${accounts}` : ''}`;
+      stream.append(streamName, streamMeta);
+      const evidence = document.createElement('details'); evidence.className = 'match-evidence';
+      const evidenceSummary = document.createElement('summary'); evidenceSummary.textContent = `View ${(candidate.streamNames || []).length} raw name variant${(candidate.streamNames || []).length === 1 ? '' : 's'}`;
+      const evidenceList = document.createElement('div'); evidenceList.className = 'match-evidence-list';
+      for (const value of candidate.streamNames || []) { const item = document.createElement('div'); item.textContent = value; evidenceList.append(item); }
+      evidence.append(evidenceSummary, evidenceList); stream.append(evidence);
+      const arrow = document.createElement('div'); arrow.className = 'match-arrow'; arrow.textContent = '→';
+      const channel = document.createElement('div');
+      const channelName = document.createElement('div'); channelName.className = 'match-name'; channelName.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const channelMeta = document.createElement('div'); channelMeta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
+      const score = document.createElement('span'); score.className = 'match-score'; score.textContent = `${candidate.score}%`;
+      const scoreText = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      score.textContent = scoreText;
+      channelMeta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`)); channel.append(channelName, channelMeta);
+      const buttons = document.createElement('div'); buttons.className = 'match-buttons';
+      const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm';
+      confirmButton.addEventListener('click', () => decideMatch(candidate.key, 'confirmed'));
+      const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
+      denyButton.addEventListener('click', () => decideMatch(candidate.key, 'denied'));
+      buttons.append(confirmButton, denyButton); card.append(stream, arrow, channel, buttons);
+      return card;
+    }
+
+    function decisionRow(decision) {
+      const row = document.createElement('div'); row.className = 'decision-row';
+      const copy = document.createElement('div');
+      const title = document.createElement('strong'); title.textContent = `${decision.decision === 'confirmed' ? 'Confirmed' : 'Denied'} · ${decision.streamName}`;
+      const meta = document.createElement('div'); meta.textContent = `${decision.channelNumber} ${decision.channelName} · ${decision.streamCount || 1} stream${(decision.streamCount || 1) === 1 ? '' : 's'} · ${decision.score}%`;
+      copy.append(title, meta);
+      const undo = document.createElement('button'); undo.type = 'button'; undo.textContent = 'Undo'; undo.addEventListener('click', () => clearDecision(decision.key));
+      row.append(copy, undo); return row;
+    }
+
+    async function decideMatch(key, decision) {
+      if (pendingDecisions.has(key) || !matchReview) return;
+      const candidate = (matchReview.candidates || []).find(item => item.key === key);
+      if (!candidate) return;
+      pendingDecisions.add(key);
+      decisionRevision++;
+      matchReview = {
+        ...matchReview,
+        candidateCount: Math.max(0, matchReview.candidateCount - 1),
+        candidateStreamCount: Math.max(0, (matchReview.candidateStreamCount || matchReview.candidateCount) - candidate.streamCount),
+        confirmedCount: matchReview.confirmedCount + (decision === 'confirmed' ? 1 : 0),
+        deniedCount: matchReview.deniedCount + (decision === 'denied' ? 1 : 0),
+        candidates: (matchReview.candidates || []).filter(item => item.key !== key),
+        decisions: [{key, decision, channelNumber: candidate.channelNumber, channelName: candidate.channelName, streamName: candidate.alias, streamCount: candidate.streamCount, score: candidate.maximumScore}, ...(matchReview.decisions || [])]
+      };
+      renderMatchReview();
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
+        });
+        if (decision === 'confirmed') await reloadDraft();
+        const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
+        if (alternatives.length) {
+          openMatchAlternatives(candidate);
+          showMessage('Match denied. Review the other qualifying possibilities or close this list.');
+        } else {
+          showMessage(decision === 'confirmed' ? 'Match confirmed and aliases updated.' : 'Match denied. Load more when you are ready for another review page.');
+        }
+      } catch (error) {
+        matchReview.candidateCount++;
+        matchReview.candidateStreamCount = (matchReview.candidateStreamCount || 0) + candidate.streamCount;
+        matchReview.confirmedCount -= decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount -= decision === 'denied' ? 1 : 0;
+        matchReview.candidates = [candidate, ...(matchReview.candidates || [])];
+        matchReview.decisions = (matchReview.decisions || []).filter(item => item.key !== key);
+        renderMatchReview();
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(key);
+      }
+    }
+
+    function openMatchAlternatives(candidate) {
+      els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
+      els.alternativeHelp.textContent = 'These channels also cleared the fuzzy-match threshold in the same scan. Confirm the right target, deny incorrect options, or close this list without deciding.';
+      renderMatchAlternatives(candidate);
+      if (typeof els.alternativeDialog.showModal === 'function') els.alternativeDialog.showModal();
+      else els.alternativeDialog.setAttribute('open', '');
+    }
+
+    function renderMatchAlternatives(candidate) {
+      els.alternativeList.replaceChildren();
+      const alternatives = candidate.alternatives || [];
+      if (!alternatives.length) {
+        els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+        return;
+      }
+      for (const alternate of alternatives) els.alternativeList.append(alternativeMatchCard(candidate, alternate));
+    }
+
+    function alternativeMatchCard(primary, candidate) {
+      const card = document.createElement('article'); card.className = 'match-alternative-card'; card.dataset.key = candidate.key;
+      const main = document.createElement('div'); main.className = 'match-alternative-main';
+      const copy = document.createElement('div');
+      const name = document.createElement('div'); name.className = 'match-name'; name.textContent = `${candidate.channelNumber} · ${candidate.channelName}`;
+      const meta = document.createElement('div'); meta.className = 'match-meta';
+      const tier = document.createElement('span'); tier.className = `match-tier ${candidate.tier}`; tier.textContent = candidate.tier;
+      const score = document.createElement('span'); score.className = 'match-score';
+      score.textContent = candidate.minimumScore === candidate.maximumScore ? `${candidate.maximumScore}%` : `${candidate.minimumScore}–${candidate.maximumScore}%`;
+      meta.append(tier, score, document.createTextNode(` · ${(candidate.reasons || []).join(', ')}`));
+      copy.append(name, meta); main.append(copy); card.append(main);
+      const buttons = document.createElement('div'); buttons.className = 'match-buttons';
+      const confirmButton = document.createElement('button'); confirmButton.type = 'button'; confirmButton.className = 'confirm-button'; confirmButton.textContent = 'Confirm this match';
+      confirmButton.addEventListener('click', () => decideAlternative(primary, candidate, 'confirmed', card));
+      const denyButton = document.createElement('button'); denyButton.type = 'button'; denyButton.className = 'deny-button'; denyButton.textContent = 'Deny';
+      denyButton.addEventListener('click', () => decideAlternative(primary, candidate, 'denied', card));
+      buttons.append(confirmButton, denyButton); card.append(buttons);
+      return card;
+    }
+
+    async function decideAlternative(primary, candidate, decision, card) {
+      if (pendingDecisions.has(candidate.key)) return;
+      pendingDecisions.add(candidate.key);
+      for (const button of card.querySelectorAll('button')) button.disabled = true;
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key:candidate.key, decision, tvgIds:[]})
+        });
+        matchReview.confirmedCount += decision === 'confirmed' ? 1 : 0;
+        matchReview.deniedCount += decision === 'denied' ? 1 : 0;
+        matchReview.decisions = [{key:candidate.key, decision, channelNumber:candidate.channelNumber, channelName:candidate.channelName, streamName:primary.alias, streamCount:candidate.streamCount, score:candidate.maximumScore}, ...(matchReview.decisions || [])];
+        primary.alternatives = (primary.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        for (const item of matchReview.candidates || []) item.alternatives = (item.alternatives || []).filter(alternate => alternate.key !== candidate.key);
+        renderMatchReview();
+        if (decision === 'confirmed') {
+          await reloadDraft();
+          closeMatchAlternatives();
+          showMessage('Alternate match confirmed and aliases updated.');
+        } else {
+          card.remove();
+          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+          showMessage('Alternate match denied.');
+        }
+      } catch (error) {
+        for (const button of card.querySelectorAll('button')) button.disabled = false;
+        showMessage(error.message, true);
+      } finally {
+        pendingDecisions.delete(candidate.key);
+      }
+    }
+
+    function closeMatchAlternatives() {
+      if (typeof els.alternativeDialog.close === 'function') els.alternativeDialog.close();
+      else els.alternativeDialog.removeAttribute('open');
+    }
+
+    async function clearDecision(key) {
+      if (dispatchBusy) return;
+      dispatchBusy = true; setDispatchControls();
+      try {
+        await api('/api/lineuparr/dispatcharr/decision', {
+          method:'DELETE', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key})
+        });
+        await reloadDraft();
+        showMessage('Match review undone.');
+      } catch (error) { showMessage(error.message, true); }
+      finally { dispatchBusy = false; setDispatchControls(); }
+      await loadMatchReview();
+    }
+
+    function setDispatchControls() {
+      const passwordAuth = els.dispatchAuth.value === 'password';
+      for (const control of [els.dispatchURL, els.dispatchAuth, els.dispatchSave, els.dispatchRefresh, els.dispatchDisconnect]) control.disabled = dispatchBusy;
+      els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
+      els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
+      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
+    }
+
+    function showConfirmedMatches() {
+      if (!matchReview?.confirmedCount || els.decisionHistory.hidden) return;
+      els.decisionHistory.open = true;
+      els.decisionHistory.scrollIntoView({behavior:'smooth', block:'start'});
+    }
+
+    function emptyMessage(text) {
+      const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item;
+    }
+
     async function loadDraft() {
       try {
         draft = await api('/api/lineuparr/draft');
         showMessage('');
         renderAll();
+        if (dispatchConfig?.configured && !dispatchBusy) loadMatchReview();
       } catch (error) {
         const waiting = /still being generated/i.test(error.message);
         document.getElementById('loading-copy').textContent = waiting ? 'The guide is still being generated. This page will retry automatically…' : 'The lineup could not be loaded.';
         showMessage(error.message, !waiting);
         if (waiting) setTimeout(loadDraft, 10000);
       }
+    }
+
+    async function reloadDraft() {
+      draft = await api('/api/lineuparr/draft');
+      renderAll();
     }
 
     function renderAll() {
@@ -629,21 +1314,30 @@
       renderSummary();
       renderSources();
       renderCategoryOptions();
+      renderViewMode();
+      renderBatchControls();
       renderChannels();
     }
 
     function renderSummary() {
-      const included = draft.channels.filter(channel => channel.included).length;
-      const categorized = draft.channels.filter(channel => channel.category !== 'Uncategorized').length;
-      els.included.textContent = included.toLocaleString();
+      const includedChannels = draft.channels.filter(channel => channel.included);
+      const categorized = includedChannels.filter(channel => channel.category !== 'Uncategorized').length;
+      els.included.textContent = includedChannels.length.toLocaleString();
       els.total.textContent = draft.channels.length.toLocaleString();
       els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
       els.categorized.textContent = categorized.toLocaleString();
-      els.unresolved.textContent = (draft.channels.length - categorized).toLocaleString();
-      const count = (draft.duplicateSuggestions || []).length;
-      els.removeDuplicates.textContent = count ? `Remove ${count} suggested SD` : 'No SD duplicates suggested';
+      els.unresolved.textContent = (includedChannels.length - categorized).toLocaleString();
+      const count = remainingDuplicateSuggestions().length;
+      els.removeDuplicates.textContent = count ? `Review ${count} suggested SD duplicate${count === 1 ? '' : 's'}` : 'No SD duplicates suggested';
+      els.removeDuplicates.title = count ? 'Review the SD positions identified by exact shared-source evidence before excluding them.' : 'No SD/HD pair was identified by exact shared-source evidence in this lineup.';
       els.removeDuplicates.disabled = saving || count === 0;
-      els.restoreAll.disabled = saving || included === draft.channels.length;
+      els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
+      els.exportOpen.disabled = saving || pendingChannelSaves > 0;
+    }
+
+    function remainingDuplicateSuggestions() {
+      const included = new Set(draft.channels.filter(channel => channel.included).map(channel => channel.id));
+      return (draft.duplicateSuggestions || []).filter(suggestion => included.has(suggestion.removeId));
     }
 
     function renderSources() {
@@ -713,20 +1407,72 @@
 
     function renderCategoryOptions() {
       const previous = els.categoryFilter.value;
+      const batchPrevious = els.batchCategory.value;
       els.categoryFilter.replaceChildren(new Option('All categories', ''));
-      els.categoryOptions.replaceChildren();
+      els.batchCategory.replaceChildren();
       for (const category of categories()) {
         els.categoryFilter.add(new Option(category, category));
-        const option = document.createElement('option'); option.value = category; els.categoryOptions.append(option);
+        els.batchCategory.add(new Option(category, category));
       }
       els.categoryFilter.value = previous;
+      els.batchCategory.value = categories().includes(batchPrevious) ? batchPrevious : 'Uncategorized';
+    }
+
+    function renderViewMode() {
+      els.builderPanel.classList.toggle('compact', compact);
+      els.viewToggle.textContent = compact ? 'Detailed view' : 'Compact view';
+      els.viewToggle.setAttribute('aria-pressed', String(compact));
+    }
+
+    function renderBatchControls() {
+      els.builderPanel.classList.toggle('batch-mode', batchMode);
+      els.batchToggle.setAttribute('aria-pressed', String(batchMode));
+      els.batchToggle.textContent = batchMode ? 'Finish batch edit' : 'Batch categorize';
+      els.batchBar.hidden = !batchMode;
+      els.batchCount.textContent = `${selectedChannels.size.toLocaleString()} selected`;
+      els.batchApply.disabled = saving || selectedChannels.size === 0;
+      els.batchClear.disabled = selectedChannels.size === 0;
     }
 
     function sourceLabel(id) {
       return draft.sources.find(source => source.id === id || (source.relatedIds || []).includes(id))?.label || id;
     }
 
-    function renderChannels() {
+    function equivalentChannelNames(left, right) {
+      const normalize = value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return normalize(left) === normalize(right);
+    }
+
+    function descriptiveChannelName(channel) {
+      const callSign = String(channel.callSign || channel.name || '').trim();
+      const rejected = new Set([
+        callSign, channel.stationId, channel.placementId, channel.number,
+        `${channel.number || ''} ${callSign}`
+      ].map(value => String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, '')).filter(Boolean));
+      const candidates = [];
+      const add = (value, score) => {
+        value = String(value || '').trim();
+        const normalized = value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (!value || rejected.has(normalized) || /^\d+$/.test(value)) return;
+        candidates.push({value, score: score + (value.includes(' ') ? 8 : 0) + Math.min(value.length, 40) / 10});
+      };
+      if (!String(channel.nameSource || '').toLowerCase().startsWith('dispatcharr')) add(channel.name, 35);
+      add(channel.affiliate, 45);
+      for (const evidence of channel.aliasEvidence || []) {
+        const methods = (evidence.methods || []).join(' ').toLowerCase();
+        const sources = (evidence.sources || []).map(value => String(value).toLowerCase());
+        if (/station id|position id|channel number plus|event callsign/.test(methods)) continue;
+        const external = sources.some(source => source !== 'gracenote' && !source.startsWith('dispatcharr'));
+        if (!external && !/affiliate/.test(methods)) continue;
+        let score = external ? 55 : 20;
+        if (/official|provider|lineup|affiliate|network|catalog/.test(methods)) score += 20;
+        add(evidence.value, score);
+      }
+      candidates.sort((left, right) => right.score - left.score || left.value.localeCompare(right.value));
+      return candidates[0]?.value || '';
+    }
+
+    function filteredChannels() {
       const query = els.search.value.trim().toLowerCase();
       const category = els.categoryFilter.value;
       const visibility = els.includedFilter.value;
@@ -737,6 +1483,28 @@
         if (!query) return true;
         return [channel.number, channel.name, channel.callSign, channel.affiliate, ...(channel.aliases || [])].join(' ').toLowerCase().includes(query);
       });
+      visible.sort(channelSortComparator(els.sortOrder.value));
+      return visible;
+    }
+
+    function channelSortComparator(order) {
+      const number = channel => String(channel.number || '');
+      const name = channel => String(channel.callSign || channel.name || '').trim();
+      return (left, right) => {
+        const primary = order === 'name'
+          ? channelCollator.compare(name(left), name(right))
+          : channelCollator.compare(number(left), number(right));
+        if (primary) return primary;
+        const secondary = order === 'name'
+          ? channelCollator.compare(number(left), number(right))
+          : channelCollator.compare(name(left), name(right));
+        return secondary || channelCollator.compare(String(left.id || ''), String(right.id || ''));
+      };
+    }
+
+    function renderChannels() {
+      const visible = filteredChannels();
+      els.visibleCount.textContent = `Showing ${visible.length.toLocaleString()} of ${draft.channels.length.toLocaleString()} channels`;
 
       if (!visible.length) {
         const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No channels match these filters.';
@@ -749,15 +1517,34 @@
     }
 
     function channelCard(channel) {
-      const card = document.createElement('article'); card.className = 'channel-card' + (channel.included ? '' : ' excluded');
+      const card = document.createElement('article');
+      card.className = 'channel-card' + (channel.included ? '' : ' excluded') + (selectedChannels.has(channel.id) ? ' batch-selected' : '');
       const main = document.createElement('div'); main.className = 'channel-main';
+      const batchLabel = document.createElement('label'); batchLabel.className = 'batch-toggle'; batchLabel.title = 'Select for batch category change';
+      const batchCheckbox = document.createElement('input'); batchCheckbox.type = 'checkbox'; batchCheckbox.checked = selectedChannels.has(channel.id); batchCheckbox.disabled = saving;
+      batchCheckbox.setAttribute('aria-label', `Select ${channel.name} for batch category change`);
+      batchCheckbox.addEventListener('change', () => {
+        if (batchCheckbox.checked) selectedChannels.add(channel.id); else selectedChannels.delete(channel.id);
+        renderBatchControls(); renderChannels();
+      });
+      batchLabel.append(batchCheckbox);
       const toggleLabel = document.createElement('label'); toggleLabel.className = 'include-toggle'; toggleLabel.title = 'Include in export';
       const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = channel.included; toggle.disabled = saving;
       toggle.addEventListener('change', () => saveChannel(channel, { included: toggle.checked }, toggle));
       toggleLabel.append(toggle);
       const number = document.createElement('div'); number.className = 'channel-number'; number.textContent = channel.number || '—';
       const copy = document.createElement('div'); copy.className = 'channel-copy';
-      const name = document.createElement('div'); name.className = 'channel-name'; name.textContent = channel.name;
+      const name = document.createElement('button'); name.type = 'button'; name.className = 'channel-name channel-name-button';
+      const callSign = String(channel.callSign || channel.name || '').trim();
+      const detailedName = descriptiveChannelName(channel);
+      const callSignText = document.createElement('span'); callSignText.textContent = callSign || 'Unnamed channel';
+      name.append(callSignText);
+      if (detailedName && !equivalentChannelNames(callSign, detailedName)) {
+        const detail = document.createElement('span'); detail.className = 'channel-detail-name'; detail.textContent = `· ${detailedName}`;
+        name.append(detail);
+      }
+      name.title = 'Show upcoming programmes';
+      name.addEventListener('click', () => openChannelPrograms(channel));
       const meta = document.createElement('div'); meta.className = 'channel-meta';
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';
@@ -766,24 +1553,26 @@
       for (const source of channel.matchedSources || []) if (source !== 'gracenote') badges.append(badge(sourceLabel(source)));
       copy.append(name, meta, badges);
       const actions = document.createElement('div'); actions.className = 'channel-actions';
-      const categoryInput = document.createElement('input'); categoryInput.className = 'category-input'; categoryInput.value = channel.category; categoryInput.setAttribute('list', 'category-options'); categoryInput.setAttribute('aria-label', `Category for ${channel.name}`); categoryInput.disabled = saving;
+      const categoryInput = document.createElement('select'); categoryInput.className = 'category-input'; categoryInput.setAttribute('aria-label', `Category for ${channel.name}`); categoryInput.disabled = saving;
+      for (const category of categories()) categoryInput.add(new Option(category, category, category === channel.category, category === channel.category));
       const saveCategory = () => {
-        const category = categoryInput.value.trim() || 'Uncategorized';
+        const category = categoryInput.value || 'Uncategorized';
         if (category !== channel.category) saveChannel(channel, { category }, categoryInput);
       };
       categoryInput.addEventListener('change', saveCategory);
-      categoryInput.addEventListener('blur', saveCategory);
-      categoryInput.addEventListener('keydown', event => {
-        if (event.key === 'Enter') categoryInput.blur();
-      });
       actions.append(categoryInput);
-      main.append(toggleLabel, number, copy, actions); card.append(main);
+      main.append(batchLabel, toggleLabel, number, copy, actions); card.append(main);
 
       const details = document.createElement('details');
-      const summary = document.createElement('summary'); summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs`;
+      const removedCount = (channel.suppressedAliasEvidence || []).length;
+      const summary = document.createElement('summary');
+      summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs` + (removedCount ? ` · ${removedCount} removed` : '');
       const aliases = document.createElement('div'); aliases.className = 'alias-list';
       for (const evidence of channel.aliasEvidence || []) {
-        const item = document.createElement('span'); item.className = 'alias'; item.textContent = evidence.value; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
+        aliases.append(aliasChip(channel, evidence, false));
+      }
+      for (const evidence of channel.suppressedAliasEvidence || []) {
+        aliases.append(aliasChip(channel, evidence, true));
       }
       for (const evidence of channel.epgIdEvidence || []) {
         const item = document.createElement('span'); item.className = 'alias'; item.textContent = `EPG: ${evidence.value}`; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
@@ -792,12 +1581,128 @@
       return card;
     }
 
+    function aliasChip(channel, evidence, suppressed) {
+      const item = document.createElement('span'); item.className = 'alias' + (suppressed ? ' removed' : '');
+      item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`;
+      const value = document.createElement('span'); value.textContent = evidence.value;
+      const button = document.createElement('button'); button.type = 'button'; button.textContent = suppressed ? 'Restore' : 'Remove';
+      button.setAttribute('aria-label', `${suppressed ? 'Restore' : 'Remove'} alias ${evidence.value}`);
+      button.addEventListener('click', () => setAlias(channel.id, evidence.value, !suppressed));
+      item.append(value, button); return item;
+    }
+
+    async function setAlias(channelId, alias, suppressed) {
+      if (saving) return;
+      saving = true; renderSummary();
+      try {
+        await api('/api/lineuparr/alias', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelId, alias, suppressed})
+        });
+        await reloadDraft();
+        showMessage(suppressed ? 'Alias removed from this export.' : 'Alias restored.');
+      } catch (error) { showMessage(error.message, true); }
+      finally { saving = false; renderSummary(); renderChannels(); }
+    }
+
     function badge(text, kind = '') { const item = document.createElement('span'); item.className = `badge ${kind}`; item.textContent = text; return item; }
+
+    function toggleBatchMode() {
+      batchMode = !batchMode;
+      if (!batchMode) selectedChannels.clear();
+      renderBatchControls();
+      renderChannels();
+    }
+
+    function selectVisibleChannels() {
+      for (const channel of filteredChannels()) selectedChannels.add(channel.id);
+      renderBatchControls();
+      renderChannels();
+    }
+
+    function clearBatchSelection() {
+      selectedChannels.clear();
+      renderBatchControls();
+      renderChannels();
+    }
+
+    async function applyBatchCategory() {
+      if (saving || selectedChannels.size === 0) return;
+      const channelIDs = [...selectedChannels];
+      const category = els.batchCategory.value || 'Uncategorized';
+      saving = true; renderBatchControls(); renderSummary();
+      try {
+        await api('/api/lineuparr/categories', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:channelIDs, category})
+        });
+        const selected = new Set(channelIDs);
+        for (const channel of draft.channels) {
+          if (!selected.has(channel.id)) continue;
+          channel.category = category;
+          channel.categorySource = 'user';
+          channel.categoryMethod = 'user edit';
+        }
+        selectedChannels.clear();
+        renderCategoryOptions();
+        showMessage(`${channelIDs.length} channel${channelIDs.length === 1 ? '' : 's'} moved to ${category}.`);
+      } catch (error) {
+        showMessage(error.message, true);
+      } finally {
+        saving = false; renderBatchControls(); renderSummary(); renderChannels();
+      }
+    }
+
+    async function openChannelPrograms(channel) {
+      const requestNumber = ++programRequest;
+      els.programTitle.textContent = 'Upcoming programmes';
+      els.programChannel.textContent = `${channel.number || '—'} · ${channel.callSign || channel.name}`;
+      els.programList.replaceChildren(emptyMessage('Loading the selected guide schedule…'));
+      if (typeof els.programDialog.showModal === 'function') els.programDialog.showModal();
+      else els.programDialog.setAttribute('open', '');
+      try {
+        const result = await api(`/api/lineuparr/channel-programs?channelId=${encodeURIComponent(channel.id)}`);
+        if (requestNumber !== programRequest) return;
+        els.programChannel.textContent = `${result.number || '—'} · ${result.name || channel.name}`;
+        renderPrograms(result.programs || []);
+      } catch (error) {
+        els.programList.replaceChildren(emptyMessage(error.message));
+      }
+    }
+
+    function renderPrograms(programs) {
+      els.programList.replaceChildren();
+      if (!programs.length) {
+        els.programList.append(emptyMessage('No current or upcoming programmes are available in the selected guide.'));
+        return;
+      }
+      for (const program of programs) {
+        const row = document.createElement('article'); row.className = 'program-row';
+        const time = document.createElement('div'); time.className = 'program-time';
+        const start = new Date(program.start); const end = new Date(program.end);
+        time.textContent = Number.isNaN(start.getTime()) ? program.start : `${start.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})}\n${start.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}–${end.toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}`;
+        time.style.whiteSpace = 'pre-line';
+        const copy = document.createElement('div');
+        const title = document.createElement('div'); title.className = 'program-title'; title.textContent = program.title || 'Untitled programme';
+        copy.append(title);
+        const metaValues = [program.subTitle, program.category, program.rating, program.isNew && 'New'].filter(Boolean);
+        if (metaValues.length) { const meta = document.createElement('div'); meta.className = 'program-meta'; meta.textContent = metaValues.join(' · '); copy.append(meta); }
+        if (program.description) { const description = document.createElement('div'); description.className = 'program-description'; description.textContent = program.description; copy.append(description); }
+        row.append(time, copy); els.programList.append(row);
+      }
+    }
+
+    function closeProgramDialog() {
+      programRequest++;
+      if (typeof els.programDialog.close === 'function') els.programDialog.close();
+      else els.programDialog.removeAttribute('open');
+    }
+
+    function emptyMessage(text) { const item = document.createElement('div'); item.className = 'empty'; item.textContent = text; return item; }
 
     async function saveChannel(channel, patch, control) {
       const oldIncluded = channel.included; const oldCategory = channel.category;
       if ('included' in patch) channel.included = patch.included;
       if ('category' in patch) channel.category = patch.category.trim() || 'Uncategorized';
+      pendingChannelSaves++;
       control.disabled = true; renderSummary();
       try {
         await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
@@ -807,17 +1712,51 @@
         channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
         showMessage(error.message, true);
       } finally {
+        pendingChannelSaves--;
         control.disabled = false; renderSummary(); renderChannels();
       }
     }
 
-    async function removeDuplicates() {
+    function updateDuplicateReviewCount() {
+      const count = els.duplicateReviewList.querySelectorAll('input:checked').length;
+      els.duplicateReviewConfirm.textContent = count ? `Remove selected (${count})` : 'Select at least one match';
+      els.duplicateReviewConfirm.disabled = count === 0;
+    }
+
+    function openDuplicateReview() {
+      const suggestions = remainingDuplicateSuggestions();
+      if (!suggestions.length) return;
+      els.duplicateReviewList.replaceChildren();
+      for (const suggestion of suggestions) {
+        const row = document.createElement('label'); row.className = 'duplicate-review-row';
+        const input = document.createElement('input'); input.type = 'checkbox'; input.value = suggestion.removeId; input.checked = true;
+        input.addEventListener('change', updateDuplicateReviewCount);
+        const remove = document.createElement('div'); remove.className = 'duplicate-review-copy';
+        const removeName = document.createElement('div'); removeName.className = 'duplicate-review-name'; removeName.textContent = `${suggestion.removeNumber || '—'} · ${suggestion.removeName}`;
+        const removeMeta = document.createElement('div'); removeMeta.className = 'duplicate-review-meta'; removeMeta.textContent = 'Exclude this lower-quality position';
+        remove.append(removeName, removeMeta);
+        const arrow = document.createElement('div'); arrow.className = 'duplicate-review-arrow'; arrow.textContent = '→';
+        const keep = document.createElement('div'); keep.className = 'duplicate-review-copy';
+        const keepName = document.createElement('div'); keepName.className = 'duplicate-review-name'; keepName.textContent = `${suggestion.keepNumber || '—'} · ${suggestion.keepName}`;
+        const keepMeta = document.createElement('div'); keepMeta.className = 'duplicate-review-meta'; keepMeta.textContent = suggestion.reason || 'Keep this stronger position';
+        keep.append(keepName, keepMeta);
+        row.append(input, remove, arrow, keep); els.duplicateReviewList.append(row);
+      }
+      updateDuplicateReviewCount();
+      els.duplicateReview.showModal();
+    }
+
+    async function removeDuplicates(event) {
+      event.preventDefault();
+      const ids = [...els.duplicateReviewList.querySelectorAll('input:checked')].map(input => input.value);
+      if (!ids.length) return;
+      els.duplicateReview.close();
       saving = true; renderSummary(); showMessage('Applying the duplicate-SD suggestions…');
       try {
-        await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
-        const ids = new Set((draft.duplicateSuggestions || []).map(item => item.removeId));
-        for (const channel of draft.channels) if (ids.has(channel.id)) channel.included = false;
-        showMessage(`${ids.size} suggested SD channel${ids.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
+        await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:ids})});
+        const selected = new Set(ids);
+        for (const channel of draft.channels) if (selected.has(channel.id)) channel.included = false;
+        showMessage(`${selected.size} suggested SD channel${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
       } catch (error) { showMessage(error.message, true); }
       finally { saving = false; renderSummary(); renderChannels(); }
     }
@@ -845,11 +1784,92 @@
       }
     }
 
+    function openExport() {
+      if (!draft || saving || pendingChannelSaves) return;
+      publishedExport = null;
+      els.exportResult.hidden = true;
+      els.exportURL.value = '';
+      els.exportStatus.textContent = '';
+      els.exportStatus.className = 'export-status';
+      els.exportClose.textContent = 'Cancel';
+      els.exportDialog.showModal();
+    }
+
+    async function copyExportURL() {
+      if (navigator.clipboard && window.isSecureContext) {
+        try { await navigator.clipboard.writeText(els.exportURL.value); return true; }
+        catch (_) { /* Try the local HTTP fallback, then leave the URL selected. */ }
+      }
+      els.exportURL.focus();
+      els.exportURL.select();
+      try { return document.execCommand('copy'); }
+      catch (_) { return false; }
+    }
+
+    async function exportLineup(action) {
+      if (publishing || !draft || saving || pendingChannelSaves) return;
+      publishing = true;
+      els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = true;
+      els.exportStatus.className = 'export-status';
+      els.exportStatus.textContent = 'Preparing your export…';
+      try {
+        if (!publishedExport) {
+          publishedExport = await api('/api/lineuparr/publish', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({sourceFingerprint: draft.sourceFingerprint})
+          });
+          els.exportURL.value = new URL(publishedExport.path, window.location.href).href;
+          els.exportResult.hidden = false;
+          els.exportClose.textContent = 'Close';
+        }
+        if (action === 'copy') {
+          const copied = await copyExportURL();
+          els.exportStatus.textContent = copied ? 'URL copied. Export again to publish later changes.' : 'Export saved. Copy the selected URL manually, or click Copy URL again.';
+          els.exportStatus.classList.toggle('error', !copied);
+        } else {
+          const response = await fetch(els.exportURL.value + '?download=1', {cache: 'no-store'});
+          if (!response.ok) throw new Error('Export saved, but the download failed. Please try again.');
+          const objectURL = URL.createObjectURL(await response.blob());
+          const link = document.createElement('a');
+          link.href = objectURL; link.download = publishedExport.filename;
+          document.body.append(link); link.click(); link.remove();
+          setTimeout(() => URL.revokeObjectURL(objectURL), 1000);
+          els.exportStatus.textContent = 'Download started. This version is also available at the URL below.';
+        }
+      } catch (error) {
+        els.exportStatus.textContent = error.message;
+        els.exportStatus.className = 'export-status error';
+      } finally {
+        publishing = false;
+        els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = false;
+      }
+    }
+
+    els.exportOpen.addEventListener('click', openExport);
+    els.exportCopy.addEventListener('click', () => exportLineup('copy'));
+    els.exportDownload.addEventListener('click', () => exportLineup('download'));
+    els.exportClose.addEventListener('click', () => els.exportDialog.close());
+    els.exportDialog.addEventListener('cancel', event => { if (publishing) event.preventDefault(); });
+    els.exportURL.addEventListener('click', () => els.exportURL.select());
+
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
     els.categoryFilter.addEventListener('change', renderChannels);
     els.includedFilter.addEventListener('change', renderChannels);
-    els.removeDuplicates.addEventListener('click', removeDuplicates);
+    els.sortOrder.addEventListener('change', renderChannels);
+    els.viewToggle.addEventListener('click', () => {
+      compact = !compact;
+      localStorage.setItem('lineuparr-view', compact ? 'compact' : 'detailed');
+      renderViewMode();
+    });
+    els.batchToggle.addEventListener('click', toggleBatchMode);
+    els.batchSelectVisible.addEventListener('click', selectVisibleChannels);
+    els.batchClear.addEventListener('click', clearBatchSelection);
+    els.batchApply.addEventListener('click', applyBatchCategory);
+    els.programClose.addEventListener('click', closeProgramDialog);
+    els.removeDuplicates.addEventListener('click', openDuplicateReview);
+    els.duplicateReviewForm.addEventListener('submit', removeDuplicates);
+    els.duplicateReviewCancel.addEventListener('click', () => els.duplicateReview.close());
     els.restoreAll.addEventListener('click', restoreAll);
     els.providerAddressForm.addEventListener('submit', searchProviderAddress);
     els.sourceEvidenceSearch.addEventListener('input', renderSourceEvidenceRows);
@@ -865,6 +1885,13 @@
     initCollapsibleSections();
     loadAliasIndex();
     initProviderAddress();
+    els.dispatchForm.addEventListener('submit', saveDispatch);
+    els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
+    els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
+    els.alternativeClose.addEventListener('click', closeMatchAlternatives);
+    els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
+    els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
+    loadDispatchConfig();
     loadDraft();
   </script>
 </body>

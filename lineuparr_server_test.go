@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
@@ -80,11 +82,39 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 	request := httptest.NewRequest(http.MethodGet, "/lineuparr", nil)
 	recorder := httptest.NewRecorder()
 	server.handlePage(recorder, request)
-	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Shape your current lineup") {
+	body := recorder.Body.String()
+	if recorder.Code != http.StatusOK || !strings.Contains(body, "Shape your current lineup") {
 		t.Fatalf("page response = %d body %q", recorder.Code, recorder.Body.String())
 	}
 	if !strings.Contains(recorder.Body.String(), "Queued — click to cancel") {
 		t.Fatal("queued alias action is missing from the Lineuparr page")
+	}
+	for _, expected := range []string{
+		`href="/favicon.svg"`, `id="visible-count"`, `id="view-toggle"`, `id="batch-toggle"`, `id="program-dialog"`, `id="sort-order"`,
+		`<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`,
+		"const includedChannels = draft.channels.filter(channel => channel.included)",
+		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
+		"includedChannels.length - categorized", `id="duplicate-review"`, `Review ${count} suggested SD duplicate`,
+	} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page is missing editor behavior %q", expected)
+		}
+	}
+	for _, expected := range []string{`id="match-alternative-dialog"`, `const hasMore = matchReview.candidateCount > candidates.length`, `Current review page is complete. Load more to continue.`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page is missing stable review control %q", expected)
+		}
+	}
+	for _, removed := range []string{"appendTVGOptions(", "match-tvg-option", "provider-reported TVG ID will be added"} {
+		if strings.Contains(body, removed) {
+			t.Fatalf("page still exposes removed TVG-ID selector %q", removed)
+		}
+	}
+	if got := strings.Count(body, "tvgIds:[]"); got != 2 {
+		t.Fatalf("browser decisions do not explicitly suppress provider TVG IDs: found %d requests", got)
+	}
+	if strings.Contains(body, "scheduleMatchReconcile") {
+		t.Fatal("page still schedules automatic match-review reloads")
 	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
@@ -290,6 +320,126 @@ func TestScheduleCategoryHintsTreatFamilyAsKidsOnlyForKidsNetworks(t *testing.T)
 	}
 }
 
+func TestLineuparrDuplicateRemovalAcceptsReviewedSubset(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["1001"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"removed":1`) {
+		t.Fatalf("selective duplicate response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.Channels[0].Included || !draft.Channels[1].Included {
+		t.Fatalf("reviewed duplicate inclusion = %+v", draft.Channels)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/remove-duplicates", strings.NewReader(`{"channelIds":["not-a-suggestion"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleRemoveDuplicates(recorder, request)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown duplicate response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestLineuparrBatchCategoryUpdateIsValidatedAndAtomic(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	payload := `{"channelIds":["1001","1002"],"category":"Sports"}`
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/categories", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleCategories(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("batch category response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range draft.Channels {
+		if channel.Category != "Sports" || channel.CategorySource != "user" {
+			t.Fatalf("batch category was not applied: %+v", draft.Channels)
+		}
+	}
+
+	server = newLineuparrTestServer(t, true)
+	payload = `{"channelIds":["1001","missing"],"category":"Movies"}`
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/categories", strings.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleCategories(recorder, request)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("unknown batch channel response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	for _, channel := range draft.Channels {
+		if channel.Category == "Movies" {
+			t.Fatalf("invalid batch partially updated channels: %+v", draft.Channels)
+		}
+	}
+}
+
+func TestLineuparrChannelProgramsUseOnlyActiveGuide(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	programs := []guide.Program{{Channel: "200", Start: "20990101190000 +0000", Stop: "20990101200000 +0000", Title: "Other Channel"}}
+	base := time.Date(2099, time.January, 1, 0, 0, 0, 0, time.UTC)
+	for index := 25; index >= 0; index-- {
+		start := base.Add(time.Duration(index) * time.Hour)
+		programs = append(programs, guide.Program{
+			Channel: "100", Start: start.Format("20060102150405 -0700"), Stop: start.Add(time.Hour).Format("20060102150405 -0700"),
+			Title: fmt.Sprintf("Programme %02d", index), Description: "Headlines", Categories: []guide.Category{{Name: "News"}},
+		})
+	}
+	server.state.UpdateForSource(&guide.TVGuide{
+		LineupChannels: []guide.Channel{
+			{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TWO", Affiliate: "Two Network"},
+			{ID: "200", PlacementID: "2001", ChannelNo: "3", CallSign: "THREE"},
+		},
+		Programs: programs,
+	}, config.Fingerprint())
+
+	request := httptest.NewRequest(http.MethodGet, "/api/lineuparr/channel-programs?channelId=1001", nil)
+	recorder := httptest.NewRecorder()
+	server.handleChannelPrograms(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("program response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	var response lineuparrChannelProgramsResponse
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.StationID != "100" || len(response.Programs) != 24 || response.Programs[0].Title != "Programme 00" || response.Programs[23].Title != "Programme 23" || response.Programs[0].Category != "News" {
+		t.Fatalf("program response = %+v", response)
+	}
+}
+
+func TestFaviconUsesExistingGNBrand(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/favicon.svg", nil)
+	recorder := httptest.NewRecorder()
+	handleFavicon(recorder, request)
+	if recorder.Code != http.StatusOK || recorder.Header().Get("Content-Type") != "image/svg+xml" || !strings.Contains(recorder.Body.String(), ">GN</text>") {
+		t.Fatalf("favicon response = %d %q body %q", recorder.Code, recorder.Header().Get("Content-Type"), recorder.Body.String())
+	}
+}
+
 func TestLineuparrChannelChoiceAndExport(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	payload := `{"channelId":"1001","included":false,"category":"Local"}`
@@ -363,4 +513,43 @@ func TestLineuparrBulkChangesRequireJSON(t *testing.T) {
 	if recorder.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("restore without JSON response = %d", recorder.Code)
 	}
+}
+
+func TestLineuparrAliasCanBeRemovedAndRestored(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias", strings.NewReader(`{"channelId":"1001","alias":"TWO","suppressed":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleAlias(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("remove alias response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	channel := draft.Channels[0]
+	if containsString(channel.Aliases, "TWO") || len(channel.SuppressedAliasEvidence) != 1 {
+		t.Fatalf("suppressed alias draft = %+v", channel)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias", strings.NewReader(`{"channelId":"1001","alias":"TWO","suppressed":false}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleAlias(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("restore alias response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

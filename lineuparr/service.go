@@ -15,7 +15,10 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
-const uncategorized = "Uncategorized"
+const (
+	uncategorized              = "Uncategorized"
+	lineuparrExactMatchMinimum = 95
+)
 
 type Service struct {
 	store   *StateStore
@@ -43,6 +46,7 @@ type channelWork struct {
 	draft            DraftChannel
 	input            InputChannel
 	aliases          map[string]*aliasWork
+	excludedAliases  map[string]string
 	epgIDs           map[string]*aliasWork
 	matchedSourceSet map[string]bool
 }
@@ -55,6 +59,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	defer s.buildMu.Unlock()
 
 	overrides := s.store.Snapshot(lineup.SourceFingerprint)
+	matchDecisions := s.store.MatchDecisionSnapshot(lineup.SourceFingerprint)
 	channels := make([]*channelWork, 0, len(inputs))
 	seenKeys := make(map[string]int)
 	for _, input := range inputs {
@@ -146,6 +151,49 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
 		})
 	}
+	channelByID := make(map[string]*channelWork, len(channels))
+	for _, channel := range channels {
+		channelByID[channel.draft.ID] = channel
+	}
+	confirmedMatches := 0
+	confirmedAliases := 0
+	excludedMatches := 0
+	for _, group := range groupMatchDecisions(matchDecisions) {
+		channel := channelByID[group.ChannelID]
+		if channel == nil {
+			continue
+		}
+		switch group.Decision {
+		case "confirmed":
+			if group.NameScore < lineuparrExactMatchMinimum {
+				channel.addAlias(group.Alias, "dispatcharr-confirmed", "user-confirmed M3U stream match below Lineuparr Exact threshold")
+				confirmedAliases++
+			}
+			for _, tvgID := range group.TVGIDs {
+				channel.addEPGID(tvgID, "dispatcharr-confirmed", "user-confirmed M3U tvg-id")
+			}
+			channel.matchedSourceSet["dispatcharr-confirmed"] = true
+			confirmedMatches++
+		case "denied":
+			if group.NameScore >= lineuparrExactMatchMinimum {
+				channel.addExcludedAlias(group.Alias)
+				channel.matchedSourceSet["dispatcharr-denied"] = true
+				excludedMatches++
+			}
+		}
+	}
+	if confirmedMatches > 0 {
+		statuses = append(statuses, SourceStatus{
+			ID: "dispatcharr-confirmed", Label: "Confirmed Dispatcharr M3U matches", Status: "saved", Matched: confirmedMatches,
+			Message: fmt.Sprintf("%d reviewed groups; %d names below 95%% were retained as aliases, while higher-scoring names rely on Lineuparr Exact matching", confirmedMatches, confirmedAliases),
+		})
+	}
+	if excludedMatches > 0 {
+		statuses = append(statuses, SourceStatus{
+			ID: "dispatcharr-denied", Label: "Denied Dispatcharr M3U matches", Status: "saved", Matched: excludedMatches,
+			Message: fmt.Sprintf("%d denied names at or above 95%% were retained as channel-scoped excluded_aliases", excludedMatches),
+		})
+	}
 
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
@@ -159,6 +207,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 				channel.draft.CategorySource = "user"
 				channel.draft.CategoryMethod = "user edit"
 			}
+			applyAliasSuppressions(&channel.draft, override.SuppressedAliases)
 		}
 		resultChannels = append(resultChannels, channel.draft)
 	}
@@ -199,15 +248,15 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	for _, channel := range resultChannels {
 		if channel.Included {
 			draft.Included++
+			if channel.Category == uncategorized {
+				draft.Uncategorized++
+			} else {
+				draft.Categorized++
+			}
 		} else {
 			draft.Excluded++
 		}
 		draft.AliasCount += len(channel.Aliases)
-		if channel.Category == uncategorized {
-			draft.Uncategorized++
-		} else {
-			draft.Categorized++
-		}
 	}
 	return draft, nil
 }
@@ -411,6 +460,17 @@ func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpd
 	return s.store.Update(fingerprint, channelID, update)
 }
 
+func (s *Service) UpdateChannelsCategory(fingerprint string, channelIDs []string, category string) error {
+	category = cleanCategory(category)
+	if category == "" {
+		category = uncategorized
+	}
+	if len(category) > 80 {
+		return errors.New("category must be 80 characters or fewer")
+	}
+	return s.store.SetCategory(fingerprint, channelIDs, category)
+}
+
 func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) error {
 	ids := make([]string, 0, len(draft.DuplicateSuggestions))
 	for _, suggestion := range draft.DuplicateSuggestions {
@@ -419,8 +479,212 @@ func (s *Service) RemoveSuggestedDuplicates(fingerprint string, draft *Draft) er
 	return s.store.SetIncluded(fingerprint, ids, false)
 }
 
+func (s *Service) RemoveSuggestedDuplicateIDs(fingerprint string, draft *Draft, requested []string) error {
+	allowed := make(map[string]bool, len(draft.DuplicateSuggestions))
+	for _, suggestion := range draft.DuplicateSuggestions {
+		allowed[suggestion.RemoveID] = true
+	}
+	ids := make([]string, 0, len(requested))
+	seen := make(map[string]bool, len(requested))
+	for _, id := range requested {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+		if !allowed[id] {
+			return fmt.Errorf("channel %q is not a current duplicate suggestion", id)
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return s.store.SetIncluded(fingerprint, ids, false)
+}
+
 func (s *Service) RestoreAll(fingerprint string) error {
 	return s.store.RestoreAll(fingerprint)
+}
+
+func (s *Service) SetAliasSuppressed(fingerprint, channelID, alias string, suppressed bool) error {
+	alias = cleanText(alias)
+	if len(alias) > 512 {
+		return errors.New("alias must be 512 characters or fewer")
+	}
+	return s.store.SetAliasSuppressed(fingerprint, channelID, alias, suppressed)
+}
+
+func (s *Service) MatchDecisions(fingerprint string) map[string]MatchDecision {
+	return s.store.MatchDecisionSnapshot(fingerprint)
+}
+
+func (s *Service) SetMatchDecision(fingerprint string, decision MatchDecision) error {
+	return s.SetMatchDecisions(fingerprint, []MatchDecision{decision})
+}
+
+func (s *Service) SetMatchDecisions(fingerprint string, decisions []MatchDecision) error {
+	if len(decisions) == 0 {
+		return errors.New("at least one match decision is required")
+	}
+	now := time.Now().UTC()
+	normalized := make([]MatchDecision, 0, len(decisions))
+	for _, decision := range decisions {
+		cleaned, err := normalizeMatchDecision(decision, now)
+		if err != nil {
+			return err
+		}
+		normalized = append(normalized, cleaned)
+	}
+	return s.store.SetMatchDecisions(fingerprint, normalized)
+}
+
+func normalizeMatchDecision(decision MatchDecision, updatedAt time.Time) (MatchDecision, error) {
+	decision.Key = strings.TrimSpace(decision.Key)
+	decision.Decision = strings.ToLower(strings.TrimSpace(decision.Decision))
+	decision.DispatcharrFingerprint = strings.TrimSpace(decision.DispatcharrFingerprint)
+	decision.StreamFingerprint = strings.TrimSpace(decision.StreamFingerprint)
+	decision.StreamKey = strings.TrimSpace(decision.StreamKey)
+	decision.ChannelID = strings.TrimSpace(decision.ChannelID)
+	decision.StreamName = cleanText(decision.StreamName)
+	decision.NormalizedAlias = cleanText(decision.NormalizedAlias)
+	decision.TVGID = cleanText(decision.TVGID)
+	decision.ChannelName = cleanText(decision.ChannelName)
+	decision.ChannelNumber = cleanText(decision.ChannelNumber)
+	decision.Reason = cleanText(decision.Reason)
+	if decision.Decision != "confirmed" && decision.Decision != "denied" {
+		return MatchDecision{}, errors.New("match decision must be confirmed or denied")
+	}
+	if decision.Key == "" || decision.DispatcharrFingerprint == "" || decision.StreamFingerprint == "" || decision.StreamKey == "" || decision.ChannelID == "" || decision.StreamName == "" {
+		return MatchDecision{}, errors.New("match decision is incomplete")
+	}
+	if len(decision.StreamName) > 512 || len(decision.NormalizedAlias) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
+		return MatchDecision{}, errors.New("match decision metadata is too long")
+	}
+	if decision.NameScore < 0 || decision.NameScore > 100 {
+		return MatchDecision{}, errors.New("match decision name score must be between 0 and 100")
+	}
+	decision.UpdatedAt = updatedAt
+	return decision, nil
+}
+
+type matchDecisionGroup struct {
+	Decision  string
+	ChannelID string
+	Alias     string
+	NameScore int
+	TVGIDs    []string
+}
+
+func groupMatchDecisions(decisions map[string]MatchDecision) []matchDecisionGroup {
+	grouped := make(map[string]*matchDecisionGroup)
+	for _, decision := range decisions {
+		alias := cleanText(decision.StreamName)
+		if alias == "" {
+			continue
+		}
+		normalized := strings.ToLower(cleanText(decision.NormalizedAlias))
+		if normalized == "" {
+			normalized = strings.ToLower(alias)
+		}
+		key := decision.Decision + "\x00" + decision.ChannelID + "\x00" + normalized
+		group := grouped[key]
+		if group == nil {
+			group = &matchDecisionGroup{Decision: decision.Decision, ChannelID: decision.ChannelID, Alias: alias}
+			grouped[key] = group
+		}
+		if preferredMatchAlias(alias, group.Alias) {
+			group.Alias = alias
+		}
+		group.NameScore = max(group.NameScore, decisionNameScore(decision))
+		if decision.Decision == "confirmed" {
+			group.TVGIDs = appendUniqueFold(group.TVGIDs, cleanText(decision.TVGID))
+		}
+	}
+
+	keys := make([]string, 0, len(grouped))
+	for key := range grouped {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]matchDecisionGroup, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, *grouped[key])
+	}
+	return result
+}
+
+func decisionNameScore(decision MatchDecision) int {
+	if decision.NameScore > 0 {
+		return min(100, decision.NameScore)
+	}
+	if strings.EqualFold(strings.TrimSpace(decision.Reason), "Exact EPG ID") {
+		return 0
+	}
+	score := decision.Score
+	if strings.Contains(strings.ToLower(decision.Reason), "+ channel number") {
+		score -= 4
+	}
+	return max(0, min(100, score))
+}
+
+func preferredMatchAlias(candidate, current string) bool {
+	candidate = strings.TrimSpace(candidate)
+	current = strings.TrimSpace(current)
+	if current == "" || len([]rune(candidate)) != len([]rune(current)) {
+		return current == "" || len([]rune(candidate)) < len([]rune(current))
+	}
+	return strings.ToLower(candidate) < strings.ToLower(current)
+}
+
+func appendUniqueFold(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func (s *Service) ClearMatchDecision(fingerprint, key string) error {
+	return s.store.ClearMatchDecision(fingerprint, strings.TrimSpace(key))
+}
+
+func (s *Service) ClearMatchDecisions(fingerprint string, keys []string) error {
+	cleaned := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key = strings.TrimSpace(key); key != "" {
+			cleaned = append(cleaned, key)
+		}
+	}
+	return s.store.ClearMatchDecisions(fingerprint, cleaned)
+}
+
+func applyAliasSuppressions(channel *DraftChannel, suppressed []string) {
+	if len(suppressed) == 0 || len(channel.AliasEvidence) == 0 {
+		return
+	}
+	suppressedSet := make(map[string]bool, len(suppressed))
+	for _, alias := range suppressed {
+		suppressedSet[strings.ToLower(cleanText(alias))] = true
+	}
+	aliases := make([]string, 0, len(channel.Aliases))
+	evidence := make([]AliasEvidence, 0, len(channel.AliasEvidence))
+	removed := make([]AliasEvidence, 0)
+	for _, item := range channel.AliasEvidence {
+		if suppressedSet[strings.ToLower(item.Value)] {
+			removed = append(removed, item)
+			continue
+		}
+		evidence = append(evidence, item)
+		aliases = append(aliases, item.Value)
+	}
+	channel.Aliases = aliases
+	channel.AliasEvidence = evidence
+	channel.SuppressedAliasEvidence = removed
 }
 
 func normalizeInput(input InputChannel) InputChannel {
@@ -514,6 +778,7 @@ func newChannelWork(input InputChannel) *channelWork {
 			CategorySource: "unresolved",
 		},
 		aliases:          make(map[string]*aliasWork),
+		excludedAliases:  make(map[string]string),
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
@@ -569,6 +834,17 @@ func (c *channelWork) addAlias(value, source, method string) {
 	}
 }
 
+func (c *channelWork) addExcludedAlias(value string) {
+	value = cleanText(value)
+	if value == "" || strings.EqualFold(value, "null") {
+		return
+	}
+	key := strings.ToLower(value)
+	if _, exists := c.excludedAliases[key]; !exists {
+		c.excludedAliases[key] = value
+	}
+}
+
 func (c *channelWork) addEPGID(value, source, method string) {
 	value = cleanText(value)
 	if value == "" || strings.EqualFold(value, "null") {
@@ -601,6 +877,12 @@ func finalizeChannel(channel *channelWork) {
 	sort.SliceStable(evidence, func(i, j int) bool { return aliasLess(evidence[i].Value, evidence[j].Value) })
 	channel.draft.Aliases = aliases
 	channel.draft.AliasEvidence = evidence
+	excludedAliases := make([]string, 0, len(channel.excludedAliases))
+	for _, alias := range channel.excludedAliases {
+		excludedAliases = append(excludedAliases, alias)
+	}
+	sort.SliceStable(excludedAliases, func(i, j int) bool { return aliasLess(excludedAliases[i], excludedAliases[j]) })
+	channel.draft.ExcludedAliases = excludedAliases
 	epgIDs := make([]string, 0, len(channel.epgIDs))
 	epgEvidence := make([]IdentifierEvidence, 0, len(channel.epgIDs))
 	for _, identifier := range channel.epgIDs {
@@ -821,18 +1103,18 @@ func addScores(scores map[int]int, candidates []int, score int) {
 }
 
 func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
-	groups := make(map[string][]int)
+	nameGroups := make(map[string][]int)
 	for index, channel := range channels {
 		if channel.NameSource == "gracenote" {
 			continue
 		}
 		key := identityKey(channel.Name)
 		if key != "" {
-			groups[key] = append(groups[key], index)
+			nameGroups[key] = append(nameGroups[key], index)
 		}
 	}
-	var suggestions []DuplicateSuggestion
-	for _, indexes := range groups {
+	suggestionByRemoveID := make(map[string]DuplicateSuggestion)
+	for _, indexes := range nameGroups {
 		if len(indexes) < 2 {
 			continue
 		}
@@ -857,16 +1139,216 @@ func findDuplicateSuggestions(channels []DraftChannel) []DuplicateSuggestion {
 				continue
 			}
 			reason := fmt.Sprintf("Exact source identity maps both positions to %s; %s carries the stronger HD/digital marker", keep.Name, keep.CallSign)
-			suggestions = append(suggestions, DuplicateSuggestion{
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
 				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
 				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
-			})
+			}
 		}
 	}
+
+	suffixGroups := make(map[string][]int)
+	groupsWithSuffix := make(map[string]bool)
+	for index, channel := range channels {
+		base, hasSuffix := qualitySuffixBase(channel.CallSign)
+		if base == "" {
+			continue
+		}
+		suffixGroups[base] = append(suffixGroups[base], index)
+		groupsWithSuffix[base] = groupsWithSuffix[base] || hasSuffix
+	}
+	for base, indexes := range suffixGroups {
+		if len(indexes) < 2 || !groupsWithSuffix[base] {
+			continue
+		}
+		bestRank := -1
+		keepIndexes := make([]int, 0, 1)
+		for _, index := range indexes {
+			rank := qualityRank(channels[index])
+			if rank > bestRank {
+				bestRank = rank
+				keepIndexes = []int{index}
+			} else if rank == bestRank {
+				keepIndexes = append(keepIndexes, index)
+			}
+		}
+		if len(keepIndexes) != 1 || bestRank <= 1 {
+			continue
+		}
+		keep := channels[keepIndexes[0]]
+		for _, index := range indexes {
+			remove := channels[index]
+			if remove.ID == keep.ID || qualityRank(remove) >= bestRank {
+				continue
+			}
+			if _, exists := suggestionByRemoveID[remove.ID]; exists {
+				continue
+			}
+			reason := fmt.Sprintf("Callsigns differ only by an HD/SD/DT quality suffix; %s carries the stronger HD/digital marker", keep.CallSign)
+			suggestionByRemoveID[remove.ID] = DuplicateSuggestion{
+				RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+				KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+			}
+		}
+	}
+
+	aliasGroups := make(map[string]*duplicateAliasGroup)
+	for index, channel := range channels {
+		for _, evidence := range channel.AliasEvidence {
+			aliasKey := identityKey(evidence.Value)
+			if aliasKey == "" || isDigits(aliasKey) {
+				continue
+			}
+			for _, source := range evidence.Sources {
+				sourceKey := strings.ToLower(cleanText(source))
+				if sourceKey == "" || sourceKey == "gracenote" {
+					continue
+				}
+				group := aliasGroups[aliasKey]
+				if group == nil {
+					group = &duplicateAliasGroup{
+						alias:                   evidence.Value,
+						sources:                 make(map[string]bool),
+						sourceMembers:           make(map[string]map[int]bool),
+						providerPositionBridges: make(map[int]map[string]bool),
+						seen:                    make(map[int]bool),
+					}
+					aliasGroups[aliasKey] = group
+				}
+				group.sources[source] = true
+				if group.sourceMembers[sourceKey] == nil {
+					group.sourceMembers[sourceKey] = make(map[int]bool)
+				}
+				group.sourceMembers[sourceKey][index] = true
+				for _, method := range evidence.Methods {
+					if number := providerPositionNumber(method); number != "" {
+						if group.providerPositionBridges[index] == nil {
+							group.providerPositionBridges[index] = make(map[string]bool)
+						}
+						group.providerPositionBridges[index][number] = true
+					}
+				}
+				if !group.seen[index] {
+					group.indexes = append(group.indexes, index)
+					group.seen[index] = true
+				}
+			}
+		}
+	}
+	aliasCandidates := make(map[string]map[string]DuplicateSuggestion)
+	for _, group := range aliasGroups {
+		if len(group.indexes) != 2 {
+			continue
+		}
+		left := channels[group.indexes[0]]
+		right := channels[group.indexes[1]]
+		if looksLikeNumberedDigitalSubchannel(left.CallSign) || looksLikeNumberedDigitalSubchannel(right.CallSign) {
+			continue
+		}
+		leftRank := qualityRank(left)
+		rightRank := qualityRank(right)
+		if leftRank == rightRank || (!hasExplicitQualityMarker(left) && !hasExplicitQualityMarker(right)) {
+			continue
+		}
+		remove, keep := left, right
+		if rightRank < leftRank {
+			remove, keep = right, left
+		}
+		if hasExplicitSDMarker(remove) {
+			if !group.hasSharedSource() {
+				continue
+			}
+		} else if !group.hasSharedNonScheduleSource() && !group.hasProviderPositionBridge(group.indexes[0], left, group.indexes[1], right) {
+			continue
+		}
+		sources := strings.Join(mapKeys(group.sources), ", ")
+		reason := fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s has the unique stronger quality rank", group.alias, sources, keep.CallSign)
+		if hasExplicitSDMarker(remove) && !hasExplicitQualityMarker(keep) {
+			reason = fmt.Sprintf("Exact attributable alias %s identifies both positions from %s; %s is explicitly SD and %s is the unique non-SD counterpart", group.alias, sources, remove.CallSign, keep.CallSign)
+		}
+		suggestion := DuplicateSuggestion{
+			RemoveID: remove.ID, RemoveNumber: remove.Number, RemoveName: remove.Name,
+			KeepID: keep.ID, KeepNumber: keep.Number, KeepName: keep.Name, Reason: reason,
+		}
+		if aliasCandidates[remove.ID] == nil {
+			aliasCandidates[remove.ID] = make(map[string]DuplicateSuggestion)
+		}
+		aliasCandidates[remove.ID][keep.ID] = suggestion
+	}
+	for removeID, candidates := range aliasCandidates {
+		if _, exists := suggestionByRemoveID[removeID]; exists || len(candidates) != 1 {
+			continue
+		}
+		for _, suggestion := range candidates {
+			suggestionByRemoveID[removeID] = suggestion
+		}
+	}
+
+	suggestions := make([]DuplicateSuggestion, 0, len(suggestionByRemoveID))
+	for _, suggestion := range suggestionByRemoveID {
+		suggestions = append(suggestions, suggestion)
+	}
 	sort.SliceStable(suggestions, func(i, j int) bool {
-		return numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber)
+		if numberLess(suggestions[i].RemoveNumber, suggestions[j].RemoveNumber) {
+			return true
+		}
+		if numberLess(suggestions[j].RemoveNumber, suggestions[i].RemoveNumber) {
+			return false
+		}
+		return suggestions[i].RemoveID < suggestions[j].RemoveID
 	})
 	return suggestions
+}
+
+type duplicateAliasGroup struct {
+	alias                   string
+	sources                 map[string]bool
+	sourceMembers           map[string]map[int]bool
+	providerPositionBridges map[int]map[string]bool
+	indexes                 []int
+	seen                    map[int]bool
+}
+
+func (group *duplicateAliasGroup) hasSharedSource() bool {
+	for _, members := range group.sourceMembers {
+		if len(members) == 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasSharedNonScheduleSource() bool {
+	for source, members := range group.sourceMembers {
+		if len(members) == 2 && !strings.HasPrefix(source, "gracenote-weekday-epg-") {
+			return true
+		}
+	}
+	return false
+}
+
+func (group *duplicateAliasGroup) hasProviderPositionBridge(leftIndex int, left DraftChannel, rightIndex int, right DraftChannel) bool {
+	return group.providerPositionBridges[leftIndex][cleanText(right.Number)] ||
+		group.providerPositionBridges[rightIndex][cleanText(left.Number)]
+}
+
+func providerPositionNumber(method string) string {
+	lower := strings.ToLower(method)
+	const marker = "provider-position:"
+	index := strings.Index(lower, marker)
+	if index < 0 {
+		return ""
+	}
+	value := method[index+len(marker):]
+	if fields := strings.FieldsFunc(value, func(r rune) bool {
+		return unicode.IsSpace(r) || r == ',' || r == ')' || r == ';'
+	}); len(fields) > 0 {
+		value = fields[0]
+	}
+	separator := strings.LastIndex(value, "|")
+	if separator < 0 {
+		return ""
+	}
+	return cleanText(value[separator+1:])
 }
 
 func sharesAttributableSource(left, right DraftChannel) bool {
@@ -884,6 +1366,24 @@ func sharesAttributableSource(left, right DraftChannel) bool {
 	return false
 }
 
+func qualitySuffixBase(value string) (string, bool) {
+	key := identityKey(value)
+	if key == "" {
+		return "", false
+	}
+	for _, suffix := range []string{"hd", "sd", "dt"} {
+		if !strings.HasSuffix(key, suffix) {
+			continue
+		}
+		base := strings.TrimSuffix(key, suffix)
+		if len(base) < 3 {
+			return "", false
+		}
+		return base, true
+	}
+	return key, false
+}
+
 func qualityRank(channel DraftChannel) int {
 	value := strings.ToUpper(channel.CallSign + " " + channel.OriginalName)
 	callSign := strings.ToUpper(identityKey(channel.CallSign))
@@ -898,6 +1398,38 @@ func qualityRank(channel DraftChannel) int {
 		return 0
 	}
 	return 1
+}
+
+func hasExplicitSDMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, " SD") || hasTerminalSDMarker(callSign) || hasTerminalSDMarker(originalName)
+}
+
+func hasExplicitQualityMarker(channel DraftChannel) bool {
+	value := strings.ToUpper(cleanText(channel.CallSign + " " + channel.OriginalName))
+	callSign := strings.ToUpper(identityKey(channel.CallSign))
+	originalName := strings.ToUpper(identityKey(channel.OriginalName))
+	return strings.Contains(value, "4K") || strings.Contains(value, "UHD") ||
+		strings.Contains(value, " HD") || strings.Contains(value, " SD") ||
+		hasTerminalQualityMarker(callSign, "HD") || hasTerminalQualityMarker(callSign, "SD") ||
+		hasTerminalQualityMarker(originalName, "HD") || hasTerminalQualityMarker(originalName, "SD") ||
+		looksLikeDigitalCallSign(callSign)
+}
+
+func hasTerminalSDMarker(value string) bool {
+	return hasTerminalQualityMarker(value, "SD")
+}
+
+func hasTerminalQualityMarker(value, marker string) bool {
+	return strings.HasSuffix(value, marker) && len(strings.TrimSuffix(value, marker)) >= 3
+}
+
+func looksLikeNumberedDigitalSubchannel(value string) bool {
+	key := identityKey(value)
+	index := strings.LastIndex(key, "dt")
+	return index >= 3 && index+2 < len(key) && isDigits(key[index+2:])
 }
 
 func looksLikeDigitalCallSign(value string) bool {

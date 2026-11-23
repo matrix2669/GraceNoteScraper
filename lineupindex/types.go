@@ -52,19 +52,24 @@ type Index struct {
 // this pass also collects attributable aliases and categories from official
 // provider sources.
 type PostalScanRecord struct {
-	Key            string                 `json:"key"`
-	Country        string                 `json:"country"`
-	PostalCode     string                 `json:"postalCode"`
-	Status         string                 `json:"status"`
-	ProviderCount  int                    `json:"providerCount"`
-	LineupsScanned int                    `json:"lineupsScanned"`
-	GridRequests   int                    `json:"gridRequests"`
-	Aliases        int                    `json:"aliases"`
-	Categories     int                    `json:"categories"`
-	Sources        []EvidenceSourceRecord `json:"sources,omitempty"`
-	StartedAt      string                 `json:"startedAt,omitempty"`
-	CompletedAt    string                 `json:"completedAt,omitempty"`
-	LastError      string                 `json:"lastError,omitempty"`
+	Key             string                 `json:"key"`
+	Country         string                 `json:"country"`
+	PostalCode      string                 `json:"postalCode"`
+	Status          string                 `json:"status"`
+	ProviderCount   int                    `json:"providerCount"`
+	LineupsScanned  int                    `json:"lineupsScanned"`
+	GridRequests    int                    `json:"gridRequests"`
+	Aliases         int                    `json:"aliases"`
+	Categories      int                    `json:"categories"`
+	EPGMatches      int                    `json:"epgMatches"`
+	EPGQuestionable int                    `json:"epgQuestionable"`
+	EPGRejected     int                    `json:"epgRejected"`
+	EPGAliases      int                    `json:"epgAliases"`
+	EPGCategories   int                    `json:"epgCategories"`
+	Sources         []EvidenceSourceRecord `json:"sources,omitempty"`
+	StartedAt       string                 `json:"startedAt,omitempty"`
+	CompletedAt     string                 `json:"completedAt,omitempty"`
+	LastError       string                 `json:"lastError,omitempty"`
 }
 
 type MarketRecord struct {
@@ -95,6 +100,7 @@ type LineupRecord struct {
 	ProviderType string `json:"providerType,omitempty"`
 	Device       string `json:"device"`
 	Location     string `json:"location,omitempty"`
+	Timezone     string `json:"timezone,omitempty"`
 	Country      string `json:"country"`
 	PostalCode   string `json:"postalCode"`
 	Language     string `json:"language"`

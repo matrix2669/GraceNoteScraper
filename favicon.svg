@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#274a3b"/>
+      <stop offset="1" stop-color="#12251d"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#bg)" stroke="#7ce6a6" stroke-width="2"/>
+  <text x="32" y="40" fill="#7ce6a6" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="23" font-weight="700" text-anchor="middle">GN</text>
+</svg>

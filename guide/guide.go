@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -196,8 +197,36 @@ func formatXMLTVTime(iso string) string {
 	return s
 }
 
+// appendCanonicalCategory adds a category case-insensitively. When the same
+// category already came from Gracenote, its spelling is normalized to the
+// requested canonical form instead of adding a duplicate.
+func appendCanonicalCategory(categories []Category, name, lang string) []Category {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return categories
+	}
+	for i := range categories {
+		if strings.EqualFold(strings.TrimSpace(categories[i].Name), name) {
+			categories[i].Name = name
+			if categories[i].Lang == "" {
+				categories[i].Lang = lang
+			}
+			return categories
+		}
+	}
+	return append(categories, Category{Name: name, Lang: lang})
+}
+
 // converts a JSON channel to a template Channel struct.
 func ConvertChannel(ch web.JSONChannel) Channel {
+	// Register whether this channel remains in the guide but should be excluded
+	// from TMDB enrichment. This does not alter the returned channel or events.
+	tmdb.RegisterChannelEligibility(ch.ChannelID, ch.CallSign, ch.AffiliateName, ch.ChannelNo)
+
+	// Dedicated news and sports networks add an XMLTV category to each of their
+	// programmes. This classification is independent of enrichment eligibility.
+	tmdb.RegisterChannelProgramCategories(ch.ChannelID, ch.CallSign, ch.AffiliateName, ch.ChannelNo)
+
 	// Build icon URL: strip leading slashes, strip query params, prepend http://
 	iconURL := ""
 	if ch.Thumbnail != "" {
@@ -281,10 +310,25 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 
 	// Categories from filter array (strip "filter-" prefix)
 	var categories []Category
+	isMovie := false
 	for _, f := range ev.Filter {
 		name := strings.TrimPrefix(f, "filter-")
 		categories = append(categories, Category{Name: name, Lang: lang})
+		if name == "movie" {
+			isMovie = true
+		}
 	}
+
+	// XMLTV categories belong to programmes, so programmes on dedicated news or
+	// sports networks inherit the channel's canonical category. The channel
+	// remains eligible for TMDB enrichment and is never removed from the guide.
+	for _, category := range tmdb.ChannelProgramCategories(channelID) {
+		categories = appendCanonicalCategory(categories, category, lang)
+	}
+
+	// Record whether this title occurs in a TMDB-eligible context. Categories
+	// affect only this programme/title lookup and never classify its channel.
+	tmdb.RegisterProgramEligibility(ev.Program.Title, isMovie, channelID, ev.Filter)
 
 	// Episode numbers
 	var episodeNumbers []EpisodeNumber

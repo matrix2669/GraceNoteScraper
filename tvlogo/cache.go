@@ -2,10 +2,11 @@ package tvlogo
 
 import (
 	"encoding/json"
-	"log"
 	"os"
 	"sync"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const cacheTTL = 30 * 24 * time.Hour
@@ -34,7 +35,7 @@ func LoadCache(path string) *Cache {
 	}
 
 	if err := json.Unmarshal(data, &c.entries); err != nil {
-		log.Printf("tvlogo: cache file corrupt, starting fresh: %v", err)
+		applog.Warnf("tvlogo cache file is corrupt, starting fresh: %v", err)
 		c.entries = make(map[string]CacheEntry)
 	}
 	return c
@@ -76,10 +77,10 @@ func (c *Cache) Save() {
 
 	data, err := json.MarshalIndent(c.entries, "", "  ")
 	if err != nil {
-		log.Printf("tvlogo: failed to marshal cache: %v", err)
+		applog.Errorf("tvlogo failed to marshal cache: %v", err)
 		return
 	}
 	if err := os.WriteFile(c.path, data, 0644); err != nil {
-		log.Printf("tvlogo: failed to write cache file: %v", err)
+		applog.Errorf("tvlogo failed to write cache file: %v", err)
 	}
 }

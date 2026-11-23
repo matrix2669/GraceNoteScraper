@@ -122,6 +122,33 @@ func TestBuildConsolidatesProviderSourceRowsAndListsMatchedEvidence(t *testing.T
 	}
 }
 
+func TestDraftCategoryCountsIncludeOnlyIncludedChannels(t *testing.T) {
+	service := newTestService(t, "", "")
+	news := "News"
+	excluded := false
+	if err := service.UpdateChannel("source-one", "excluded-uncategorized", ChannelUpdate{Included: &excluded}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateChannel("source-one", "included-categorized", ChannelUpdate{Category: &news}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.UpdateChannel("source-one", "excluded-categorized", ChannelUpdate{Included: &excluded, Category: &news}); err != nil {
+		t.Fatal(err)
+	}
+	draft, err := service.Build(context.Background(), testContext("source-one"), []InputChannel{
+		{Key: "included-uncategorized", Number: "1", CallSign: "ONE"},
+		{Key: "excluded-uncategorized", Number: "2", CallSign: "TWO"},
+		{Key: "included-categorized", Number: "3", CallSign: "THREE"},
+		{Key: "excluded-categorized", Number: "4", CallSign: "FOUR"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if draft.Included != 2 || draft.Excluded != 2 || draft.Categorized != 1 || draft.Uncategorized != 1 {
+		t.Fatalf("included category counts = included %d excluded %d categorized %d uncategorized %d", draft.Included, draft.Excluded, draft.Categorized, draft.Uncategorized)
+	}
+}
+
 func TestBuildAppliesOnlyUniqueExactCatalogMatches(t *testing.T) {
 	catalog := `{
       "package":"Curated test",
@@ -322,6 +349,27 @@ func TestBuildCategorizesExplicitPEGAndBroadcastIdentities(t *testing.T) {
 	}
 }
 
+func TestRemoveSuggestedDuplicateIDsAppliesOnlyReviewedSelections(t *testing.T) {
+	service := newTestService(t, "", "")
+	draft := &Draft{DuplicateSuggestions: []DuplicateSuggestion{
+		{RemoveID: "sd-one", KeepID: "hd-one"},
+		{RemoveID: "sd-two", KeepID: "hd-two"},
+	}}
+	if err := service.RemoveSuggestedDuplicateIDs("source-one", draft, []string{"sd-two"}); err != nil {
+		t.Fatalf("RemoveSuggestedDuplicateIDs() error = %v", err)
+	}
+	overrides := service.store.Snapshot("source-one")
+	if len(overrides) != 1 || overrides["sd-two"].Included == nil || *overrides["sd-two"].Included {
+		t.Fatalf("selective duplicate overrides = %+v", overrides)
+	}
+	if _, ok := overrides["sd-one"]; ok {
+		t.Fatalf("unselected duplicate was removed = %+v", overrides)
+	}
+	if err := service.RemoveSuggestedDuplicateIDs("source-one", draft, []string{"not-a-suggestion"}); err == nil {
+		t.Fatal("unknown duplicate suggestion was accepted")
+	}
+}
+
 func TestDuplicateSuggestionRecognizesLocalDigitalCallsign(t *testing.T) {
 	catalog := `{"package":"Local test","categories":{"Local":[{"name":"CBS 2 New York","number":502,"aliases":["WCBS","WCBSDT"]}]}}`
 	service := newTestService(t, catalog, "")
@@ -339,11 +387,216 @@ func TestDuplicateSuggestionRecognizesLocalDigitalCallsign(t *testing.T) {
 
 func TestDuplicateSuggestionRequiresSharedAttributableSource(t *testing.T) {
 	suggestions := findDuplicateSuggestions([]DraftChannel{
-		{ID: "sd", Number: "2", Name: "Example", OriginalName: "EXAMPLE", CallSign: "EXAMPLE", NameSource: "source one", MatchedSources: []string{"gracenote", "source-one"}},
-		{ID: "hd", Number: "502", Name: "Example", OriginalName: "EXAMPLEHD", CallSign: "EXAMPLEHD", NameSource: "source two", MatchedSources: []string{"gracenote", "source-two"}},
+		{ID: "sd", Number: "2", Name: "Example", OriginalName: "EXAMPLEA", CallSign: "EXAMPLEA", NameSource: "source one", MatchedSources: []string{"gracenote", "source-one"}},
+		{ID: "hd", Number: "502", Name: "Example", OriginalName: "EXAMPLEBHD", CallSign: "EXAMPLEBHD", NameSource: "source two", MatchedSources: []string{"gracenote", "source-two"}},
 	})
 	if len(suggestions) != 0 {
 		t.Fatalf("cross-source duplicate suggestion = %+v", suggestions)
+	}
+}
+
+func TestDuplicateSuggestionRecognizesExactQualitySuffixWithGracenoteNames(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{ID: "vice-sd", Number: "161", Name: "VICE", OriginalName: "VICE", CallSign: "VICE", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "vice-hd", Number: "661", Name: "VICEHD", OriginalName: "VICEHD", CallSign: "VICEHD", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "reelz-sd", Number: "128", Name: "REELZ", OriginalName: "REELZ", CallSign: "REELZ", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "reelz-hd", Number: "628", Name: "REELZHD", OriginalName: "REELZHD", CallSign: "REELZHD", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+	})
+	if len(suggestions) != 2 {
+		t.Fatalf("quality-suffix duplicate suggestions = %+v", suggestions)
+	}
+	want := map[string]string{"reelz-sd": "reelz-hd", "vice-sd": "vice-hd"}
+	for _, suggestion := range suggestions {
+		if want[suggestion.RemoveID] != suggestion.KeepID {
+			t.Fatalf("quality-suffix duplicate suggestion = %+v", suggestion)
+		}
+		if !strings.Contains(suggestion.Reason, "quality suffix") {
+			t.Fatalf("quality-suffix duplicate reason = %q", suggestion.Reason)
+		}
+	}
+}
+
+func TestDuplicateSuggestionRecognizesTerminalDigitalCallsignWithoutCatalog(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{ID: "wcbs-sd", Number: "2", Name: "WCBS", OriginalName: "WCBS", CallSign: "WCBS", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+		{ID: "wcbs-hd", Number: "502", Name: "WCBSDT", OriginalName: "WCBSDT", CallSign: "WCBSDT", NameSource: "gracenote", MatchedSources: []string{"gracenote"}},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "wcbs-sd" || suggestions[0].KeepID != "wcbs-hd" {
+		t.Fatalf("terminal-DT duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "HD/SD/DT quality suffix") {
+		t.Fatalf("terminal-DT duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *testing.T) {
+	source := "gracenote-weekday-epg-usa-11743"
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "newsnation-sd", Number: "82", Name: "NWSNTSD", OriginalName: "NWSNTSD", CallSign: "NWSNTSD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+		{
+			ID: "newsnation", Number: "686", Name: "NEWSNTN", OriginalName: "NEWSNTN", CallSign: "NEWSNTN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "newsnation-sd" || suggestions[0].KeepID != "newsnation" {
+		t.Fatalf("attributed-alias duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "explicitly SD") || !strings.Contains(suggestions[0].Reason, "NewsNation") {
+		t.Fatalf("attributed-alias duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestDuplicateSuggestionRecognizesAttributedAliasWithExplicitHD(t *testing.T) {
+	suggestions := findDuplicateSuggestions([]DraftChannel{
+		{
+			ID: "i24-unmarked", Number: "14", Name: "I24NWEN", OriginalName: "I24NWEN", CallSign: "I24NWEN", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"directv-official-lineup"}, Methods: []string{"exact provider identity"}}},
+		},
+		{
+			ID: "i24-hd", Number: "697", Name: "I24NEHD", OriginalName: "I24NEHD", CallSign: "I24NEHD", NameSource: "gracenote",
+			AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:I24NEWS, provider-position:optimum|14)"}}},
+		},
+	})
+	if len(suggestions) != 1 || suggestions[0].RemoveID != "i24-unmarked" || suggestions[0].KeepID != "i24-hd" {
+		t.Fatalf("attributed-alias HD duplicate suggestions = %+v", suggestions)
+	}
+	if !strings.Contains(suggestions[0].Reason, "unique stronger quality rank") || !strings.Contains(suggestions[0].Reason, "i24 News") {
+		t.Fatalf("attributed-alias HD duplicate reason = %q", suggestions[0].Reason)
+	}
+}
+
+func TestSharedAliasDuplicateSuggestionRejectsWeakOrAmbiguousEvidence(t *testing.T) {
+	tests := []struct {
+		name     string
+		channels []DraftChannel
+	}{
+		{
+			name: "gracenote-only alias",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"gracenote"}}}},
+			},
+		},
+		{
+			name: "only one position has attributable evidence",
+			channels: []DraftChannel{
+				{ID: "unmarked", CallSign: "I24NWEN", OriginalName: "I24NWEN", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"gracenote"}}}},
+				{ID: "hd", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "explicit SD aliases come from different sources",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "other", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "unmarked and HD aliases have schedule evidence only",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "714", CallSign: "SHOPLCH", OriginalName: "SHOPLCH", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:SHOPLC)"}}}},
+				{ID: "hd", Number: "785", CallSign: "WRNNDT", OriginalName: "WRNNDT", AliasEvidence: []AliasEvidence{{Value: "WRNNSD", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (affiliate:SHOPLC, identity-name:WRNN, provider-position:optimum|48)"}}}},
+			},
+		},
+		{
+			name: "official alias and unlinked schedule alias",
+			channels: []DraftChannel{
+				{ID: "unmarked", Number: "1", CallSign: "IN2TV", OriginalName: "IN2TV", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"optimum-official-lineup"}, Methods: []string{"exact provider channel number"}}}},
+				{ID: "hd", Number: "100", CallSign: "CHDDRHD", OriginalName: "CHDDRHD", AliasEvidence: []AliasEvidence{{Value: "Cheddar News", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:CHDDR, provider-position:optimum|100)"}}}},
+			},
+		},
+		{
+			name: "multiple non-SD counterparts",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "NWSNTSD", OriginalName: "NWSNTSD", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+				{ID: "two", CallSign: "NEWSNTNALT", OriginalName: "NEWSNTNALT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "competing counterparts across aliases",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "EXAMPLESD", OriginalName: "EXAMPLESD", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}, {Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+				{ID: "one", CallSign: "EXAMPLE", OriginalName: "EXAMPLE", AliasEvidence: []AliasEvidence{{Value: "Example Network", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "EXAMPLEALT", OriginalName: "EXAMPLEALT", AliasEvidence: []AliasEvidence{{Value: "Example Alternate", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "numbered digital subchannel",
+			channels: []DraftChannel{
+				{ID: "sd", CallSign: "WABCSD", OriginalName: "WABCSD", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+				{ID: "subchannel", CallSign: "WABCDT2", OriginalName: "WABCDT2", AliasEvidence: []AliasEvidence{{Value: "ABC New York", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "no explicit quality marker",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "NEWSNTN", OriginalName: "NEWSNTN", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "NWSNT", OriginalName: "NWSNT", AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{"provider-source"}}}},
+			},
+		},
+		{
+			name: "equal explicit quality ranks",
+			channels: []DraftChannel{
+				{ID: "one", CallSign: "I24NEHD", OriginalName: "I24NEHD", AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"provider-source"}}}},
+				{ID: "two", CallSign: "I24NEWSHD", OriginalName: "I24NEWSHD", AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"epg-confirmed"}}}},
+			},
+		},
+		{
+			name: "natural callsign ending in SD",
+			channels: []DraftChannel{
+				{ID: "kusd", CallSign: "KUSD", OriginalName: "KUSD", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+				{ID: "peer", CallSign: "SDPBS", OriginalName: "SDPBS", AliasEvidence: []AliasEvidence{{Value: "South Dakota PBS", Sources: []string{"provider-source"}}}},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if suggestions := findDuplicateSuggestions(test.channels); len(suggestions) != 0 {
+				t.Fatalf("duplicate suggestions = %+v", suggestions)
+			}
+		})
+	}
+}
+
+func TestQualitySuffixDuplicateSuggestionPreservesSubchannelsAndAmbiguity(t *testing.T) {
+	tests := []struct {
+		name     string
+		channels []DraftChannel
+	}{
+		{
+			name: "digital subchannel suffix",
+			channels: []DraftChannel{
+				{ID: "main", Number: "7", CallSign: "WABC", NameSource: "gracenote"},
+				{ID: "subchannel", Number: "7.2", CallSign: "WABCDT2", NameSource: "gracenote"},
+				{ID: "subchannel-three", Number: "7.3", CallSign: "WABCDT3", NameSource: "gracenote"},
+			},
+		},
+		{
+			name: "short base",
+			channels: []DraftChannel{
+				{ID: "short", Number: "1", CallSign: "MT", NameSource: "gracenote"},
+				{ID: "short-hd", Number: "501", CallSign: "MTHD", NameSource: "gracenote"},
+			},
+		},
+		{
+			name: "equal strongest variants",
+			channels: []DraftChannel{
+				{ID: "base", Number: "161", CallSign: "VICE", NameSource: "gracenote"},
+				{ID: "hd-one", Number: "661", CallSign: "VICEHD", NameSource: "gracenote"},
+				{ID: "hd-two", Number: "1661", CallSign: "VICE HD", NameSource: "gracenote"},
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if suggestions := findDuplicateSuggestions(test.channels); len(suggestions) != 0 {
+				t.Fatalf("duplicate suggestions = %+v", suggestions)
+			}
+		})
 	}
 }
 
@@ -362,6 +615,123 @@ func TestOverridesAreScopedToActiveSource(t *testing.T) {
 	draft, _ = service.Build(context.Background(), testContext("source-two"), inputs)
 	if channel := channelByID(t, draft, "one"); !channel.Included || channel.Category != uncategorized {
 		t.Fatalf("old override leaked into source-two: %+v", channel)
+	}
+}
+
+func TestConfirmedDispatcharrMatchAndAliasSuppressionAreReversible(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	decision := MatchDecision{
+		Key: "candidate", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source",
+		StreamFingerprint: "stream-hash", StreamKey: "3:10", StreamID: 10, M3UAccountID: 3,
+		ChannelID: "one", ChannelNumber: "5", ChannelName: "ONE", StreamName: "US| One Network HD",
+		TVGID: "OneNetwork.us", Score: 92, NameScore: 92, Reason: "Fuzzy name 92%",
+	}
+	if err := service.SetMatchDecision(lineup.SourceFingerprint, decision); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []InputChannel{{Key: "one", StationID: "1", Number: "5", CallSign: "ONE"}}
+	draft, err := service.Build(context.Background(), lineup, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	channel := channelByID(t, draft, "one")
+	if !contains(channel.Aliases, decision.StreamName) || !contains(channel.EPGIDs, decision.TVGID) {
+		t.Fatalf("confirmed aliases/EPG IDs = %v / %v", channel.Aliases, channel.EPGIDs)
+	}
+	if err := service.SetAliasSuppressed(lineup.SourceFingerprint, "one", decision.StreamName, true); err != nil {
+		t.Fatal(err)
+	}
+	draft, _ = service.Build(context.Background(), lineup, inputs)
+	channel = channelByID(t, draft, "one")
+	if contains(channel.Aliases, decision.StreamName) || len(channel.SuppressedAliasEvidence) != 1 {
+		t.Fatalf("suppressed channel = %+v", channel)
+	}
+	if err := service.SetAliasSuppressed(lineup.SourceFingerprint, "one", decision.StreamName, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.ClearMatchDecision(lineup.SourceFingerprint, decision.Key); err != nil {
+		t.Fatal(err)
+	}
+	draft, _ = service.Build(context.Background(), lineup, inputs)
+	channel = channelByID(t, draft, "one")
+	if contains(channel.Aliases, decision.StreamName) || contains(channel.EPGIDs, decision.TVGID) {
+		t.Fatalf("cleared decision still enriched channel: %+v", channel)
+	}
+}
+
+func TestDispatcharrExactThresholdControlsAliasesAndExclusions(t *testing.T) {
+	service := newTestService(t, "", "")
+	lineup := testContext("source-one")
+	decisions := []MatchDecision{
+		{Key: "confirmed-high", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-1", StreamKey: "3:1", StreamID: 1, M3UAccountID: 3, ChannelID: "confirmed-high", StreamName: "US| REELZ HD", NormalizedAlias: "reelz", Score: 95, NameScore: 95, Reason: "Fuzzy name 95%"},
+		{Key: "confirmed-low", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-2", StreamKey: "3:2", StreamID: 2, M3UAccountID: 3, ChannelID: "confirmed-low", StreamName: "Provider Movie Network", NormalizedAlias: "providermovienetwork", Score: 92, NameScore: 92, Reason: "Fuzzy name 92%"},
+		{Key: "confirmed-epg", Decision: "confirmed", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-3", StreamKey: "3:3", StreamID: 3, M3UAccountID: 3, ChannelID: "confirmed-epg", StreamName: "Unhelpful provider label", NormalizedAlias: "unhelpfulproviderlabel", Score: 100, NameScore: 31, Reason: "Exact EPG ID"},
+		{Key: "denied-high-a", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-4", StreamKey: "3:4", StreamID: 4, M3UAccountID: 3, ChannelID: "denied-high", StreamName: "US-ReelzChannel", NormalizedAlias: "reelzchannel", Score: 95, NameScore: 95, Reason: "Fuzzy name 95%"},
+		{Key: "denied-high-b", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-5", StreamKey: "7:5", StreamID: 5, M3UAccountID: 7, ChannelID: "denied-high", StreamName: "GO| Reelz Channel HD", NormalizedAlias: "reelzchannel", Score: 94, NameScore: 94, Reason: "Fuzzy name 94%"},
+		{Key: "denied-low", Decision: "denied", DispatcharrFingerprint: "dispatcharr-source", StreamFingerprint: "stream-6", StreamKey: "3:6", StreamID: 6, M3UAccountID: 3, ChannelID: "denied-low", StreamName: "Similar but safe", NormalizedAlias: "similarbutsafe", Score: 94, NameScore: 94, Reason: "Fuzzy name 94%"},
+	}
+	if err := service.SetMatchDecisions(lineup.SourceFingerprint, decisions); err != nil {
+		t.Fatal(err)
+	}
+	inputs := []InputChannel{
+		{Key: "confirmed-high", StationID: "1", Number: "1", CallSign: "REELZ"},
+		{Key: "confirmed-low", StationID: "2", Number: "2", CallSign: "MOVIES"},
+		{Key: "confirmed-epg", StationID: "3", Number: "3", CallSign: "EPGONLY"},
+		{Key: "denied-high", StationID: "4", Number: "4", CallSign: "REELZALT"},
+		{Key: "denied-low", StationID: "5", Number: "5", CallSign: "SAFE"},
+	}
+	draft, err := service.Build(context.Background(), lineup, inputs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if channel := channelByID(t, draft, "confirmed-high"); contains(channel.Aliases, "US| REELZ HD") {
+		t.Fatalf("95%%+ confirmation was exported as an alias: %+v", channel)
+	}
+	if channel := channelByID(t, draft, "confirmed-low"); !contains(channel.Aliases, "Provider Movie Network") {
+		t.Fatalf("sub-95%% confirmation was not exported as an alias: %+v", channel)
+	}
+	if channel := channelByID(t, draft, "confirmed-epg"); !contains(channel.Aliases, "Unhelpful provider label") {
+		t.Fatalf("EPG-only confirmation lost its required name alias: %+v", channel)
+	}
+	deniedHigh := channelByID(t, draft, "denied-high")
+	if len(deniedHigh.ExcludedAliases) != 1 || deniedHigh.ExcludedAliases[0] != "US-ReelzChannel" {
+		t.Fatalf("high-score denial exclusions = %+v", deniedHigh.ExcludedAliases)
+	}
+	if channel := channelByID(t, draft, "denied-low"); len(channel.ExcludedAliases) != 0 {
+		t.Fatalf("sub-95%% denial was exported: %+v", channel.ExcludedAliases)
+	}
+
+	export := ExportFromDraft(draft)
+	var exported ExportChannel
+	for _, channels := range export.Categories {
+		for _, channel := range channels {
+			if channel.Name == deniedHigh.Name {
+				exported = channel
+			}
+		}
+	}
+	if len(exported.ExcludedAliases) != 1 || exported.ExcludedAliases[0] != "US-ReelzChannel" || !strings.Contains(export.Notes, "Exact match sensitivity") {
+		t.Fatalf("threshold export = %+v notes=%q", exported, export.Notes)
+	}
+	encoded, err := json.Marshal(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(encoded), `"excluded_aliases":["US-ReelzChannel"]`) || strings.Contains(string(encoded), "excludedAliases") {
+		t.Fatalf("excluded alias JSON contract = %s", encoded)
+	}
+}
+
+func TestLegacyDecisionNameScoreIsConservative(t *testing.T) {
+	if got := decisionNameScore(MatchDecision{Score: 100, Reason: "Exact EPG ID"}); got != 0 {
+		t.Fatalf("EPG-only legacy name score = %d", got)
+	}
+	if got := decisionNameScore(MatchDecision{Score: 96, Reason: "Fuzzy name 92% + channel number"}); got != 92 {
+		t.Fatalf("channel-number legacy name score = %d", got)
+	}
+	if got := decisionNameScore(MatchDecision{Score: 98, Reason: "Exact normalized name or alias"}); got != 98 {
+		t.Fatalf("name-based legacy score = %d", got)
 	}
 }
 
@@ -392,6 +762,13 @@ func TestExportIsLineuparrCompatibleAndExcludesRemovedChannels(t *testing.T) {
 	encoded, err := json.Marshal(export)
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
+	}
+	entryJSON, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("json.Marshal(entry) error = %v", err)
+	}
+	if strings.Contains(string(entryJSON), "excluded_aliases") {
+		t.Fatalf("empty excluded_aliases should be omitted: %s", entryJSON)
 	}
 	var shape map[string]any
 	if err := json.Unmarshal(encoded, &shape); err != nil {
