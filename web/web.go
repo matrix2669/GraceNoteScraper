@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
-	"github.com/daniel-widrick/GraceNoteScraper/util"
 )
 
 const (
