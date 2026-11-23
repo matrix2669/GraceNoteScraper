@@ -684,6 +684,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			}
 			inputs[index].ExternalAliases = append(inputs[index].ExternalAliases, lineuparrbuilder.AttributedAlias{
 				Value: candidate.Value, Source: sourceID, Method: method,
+				Identity: &lineuparrbuilder.ServiceIdentityEvidence{Value: candidate.Value, SourceID: sourceID, SourceRowID: candidate.SourceRowID, PeerStationID: candidate.PeerStationID, RootStationID: candidate.RootSourceStationID, RootLineupKey: candidate.RootSourceLineupKey, Policy: candidate.EvidencePolicy},
 			})
 			if providerMatched[sourceID] == nil {
 				providerMatched[sourceID] = make(map[int]bool)

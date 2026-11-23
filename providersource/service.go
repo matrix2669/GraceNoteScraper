@@ -63,6 +63,7 @@ type catalogSource struct {
 	Message        string         `json:"message,omitempty"`
 	StationBound   bool           `json:"-"`
 	SourceRevision string         `json:"-"`
+	IdentityOnly   bool           `json:"-"` // No verified headend binding for number recovery.
 	Entries        []catalogEntry `json:"entries"`
 }
 
@@ -132,7 +133,7 @@ func OfficialSourceID(providerName string) string {
 	switch {
 	case strings.Contains(providerName, "broadstar") || strings.Contains(providerName, "broadstream"):
 		return "broadstar-official-lineup"
-	case strings.Contains(providerName, "verizon") || strings.Contains(providerName, "fios"):
+	case isVerizonProvider(providerName):
 		return "verizon-fios-official-lineup"
 	case strings.Contains(providerName, "optimum") || strings.Contains(providerName, "cablevision"):
 		return "optimum-official-lineup"
@@ -169,7 +170,7 @@ func (s *Service) FetchProviderEvidence(ctx context.Context, request lineupindex
 	switch {
 	case strings.Contains(providerName, "broadstar") || strings.Contains(providerName, "broadstream"):
 		live = s.fetchBroadStar(ctx)
-	case strings.Contains(providerName, "verizon") || strings.Contains(providerName, "fios"):
+	case isVerizonProvider(providerName):
 		live = s.fetchVerizon(ctx)
 	case strings.Contains(providerName, "optimum") || strings.Contains(providerName, "cablevision"):
 		live = s.fetchOptimum(ctx, request)
@@ -389,7 +390,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 	matchedStations := make(map[string]bool)
 	ambiguousNumbers := ambiguousCatalogNumbers(source.Entries)
 	alignment := catalogNumberAlignment(source.Entries, byNumber, ambiguousNumbers)
-	allowNumberAliases := request.AllowChannelNumbers && alignment.allowsAliasRecovery()
+	allowNumberAliases := request.AllowChannelNumbers && !source.IdentityOnly && alignment.allowsAliasRecovery()
 	type matchedEntry struct {
 		channel web.JSONChannel
 		entry   catalogEntry
@@ -409,6 +410,9 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 				continue
 			}
 			matchedStations[channel.ChannelID] = true
+			if (kind == entryMatchAliasOnly || kind == entryMatchEPGCandidate) && catalogContradicts(entry, channel, source.Entries) {
+				continue
+			}
 			matches = append(matches, matchedEntry{channel: channel, entry: entry, method: method, kind: kind})
 			aliases := append([]string{entry.Name}, entry.Aliases...)
 			aliases = append(aliases, entry.CallSigns...)
@@ -468,7 +472,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 					if !seenIdentityFacts[identityFactKey] {
 						seenIdentityFacts[identityFactKey] = true
 						result.IdentityFacts = append(result.IdentityFacts, lineupindex.ProviderFact{
-							StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
+							EvidencePolicy: lineupindex.ProviderIdentityPolicy, StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 							SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 							Method:         factMethod + "; shared exact official provider identity; EPG confirmation required",
 							SourceRevision: source.SourceRevision, SourceRowID: sourceRowIdentity(source, entry),
@@ -487,7 +491,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			}
 			seenFacts[factKey] = true
 			result.Facts = append(result.Facts, lineupindex.ProviderFact{
-				StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
+				EvidencePolicy: lineupindex.ProviderIdentityPolicy, StationID: channel.ChannelID, Kind: lineupindex.FactAlias, Value: strings.TrimSpace(alias),
 				SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL, Method: factMethod, StationBound: source.StationBound, SourceRevision: source.SourceRevision,
 				SourceRowID: sourceRowIdentity(source, entry), RootSourceLineupKey: request.LineupKey, RootSourceStationID: channel.ChannelID,
 			})
@@ -514,7 +518,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 			if match.kind == entryMatchIdentity && !seenFacts[categoryKey] {
 				seenFacts[categoryKey] = true
 				result.Facts = append(result.Facts, lineupindex.ProviderFact{
-					StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
+					EvidencePolicy: lineupindex.ProviderIdentityPolicy, StationID: channel.ChannelID, Kind: lineupindex.FactCategory, Value: category.Category,
 					RawValue: rawCategory, MatchMethod: category.Method, MatchConfidence: category.Confidence,
 					SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 					Method: categoryMethodText, StationBound: source.StationBound, SourceRevision: source.SourceRevision,
@@ -530,7 +534,7 @@ func matchCatalog(request lineupindex.ProviderEvidenceRequest, source catalogSou
 					continue
 				}
 				result.CategoryRelations = append(result.CategoryRelations, lineupindex.ProviderCategoryRelation{
-					StationID: channel.ChannelID, AliasValue: alias, AliasNormalized: aliasKey,
+					EvidencePolicy: lineupindex.ProviderIdentityPolicy, StationID: channel.ChannelID, AliasValue: alias, AliasNormalized: aliasKey,
 					Category: category.Category, RawCategory: rawCategory,
 					SourceID: source.ID, SourceLabel: source.Label, SourceURL: source.URL,
 					SourceRevision: source.SourceRevision, SourceRowID: sourceRowIdentity(source, entry),
@@ -619,10 +623,10 @@ func matchEntry(entry catalogEntry, byStationID map[string][]web.JSONChannel, by
 				sort.Slice(result, func(i, j int) bool { return result[i].ChannelID < result[j].ChannelID })
 				return result, "exact provider channel number plus exact identity across same-number variants", entryMatchIdentity
 			}
-			if allowNumberAliases && len(matches) == 1 {
+			if allowNumberAliases && len(matches) == 1 && !identityExistsElsewhere(entry, matches, byIdentity) {
 				return matches, "unique provider-local channel number; number-policy-provider-alias-v3", entryMatchAliasOnly
 			}
-			if allowNumberAliases && len(matches) > 1 {
+			if allowNumberAliases && len(matches) > 1 && !identityExistsElsewhere(entry, matches, byIdentity) {
 				return matches, "one official provider row shared by same-position station variants; number-policy-provider-alias-v3; EPG confirmation required", entryMatchEPGCandidate
 			}
 		}
@@ -785,4 +789,48 @@ func sourceRevision(source catalogSource) string {
 	sort.Strings(rows)
 	digest := sha256.Sum256([]byte(source.ID + "\x00" + strings.Join(rows, "\x00")))
 	return "catalog-" + hex.EncodeToString(digest[:12])
+}
+
+// Frontier uses separate lineups; a product-family substring is not provider scope.
+func isVerizonProvider(name string) bool {
+	name = strings.ToLower(name)
+	return strings.Contains(name, "verizon") && !strings.Contains(name, "frontier")
+}
+
+// A number cannot override a row's identity located elsewhere, even when the
+// alternate service has several SD/HD positions and is not a unique match.
+func identityExistsElsewhere(entry catalogEntry, targets []web.JSONChannel, identities map[string][]web.JSONChannel) bool {
+	ids := map[string]bool{}
+	for _, c := range targets {
+		ids[c.ChannelID] = true
+	}
+	for _, v := range append(append([]string{entry.Name}, entry.Aliases...), entry.CallSigns...) {
+		for _, c := range identities[identityKey(v)] {
+			if !ids[c.ChannelID] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// An explicit service identity in this very catalog contradicts recovery onto
+// another row. This is independent of quality, categories or fuzzy similarity.
+func catalogContradicts(entry catalogEntry, target web.JSONChannel, entries []catalogEntry) bool {
+	for _, other := range entries {
+		if identityKey(other.Name) == identityKey(entry.Name) {
+			continue
+		}
+		for _, v := range channelIdentityValues(target) {
+			if identityKey(v) == "" {
+				continue
+			}
+			for _, name := range append(append([]string{other.Name}, other.Aliases...), other.CallSigns...) {
+				if identityKey(v) == identityKey(name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

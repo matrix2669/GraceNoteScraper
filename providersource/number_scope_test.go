@@ -24,6 +24,7 @@ func TestProviderOwnGridUsesUniqueNumberForAliasesOnly(t *testing.T) {
 		t.Fatal("provider cannot use corroborated number against its own grid")
 	}
 	request.Grid.Channels[0].CallSign = "UNRELATED"
+	request.Grid.Channels[1].CallSign = "DIFFERENT"
 	got := factsForStation(matchCatalog(request, source).Facts, "ONE")
 	if len(got) != 1 || got[0].Kind != lineupindex.FactAlias || got[0].Value != "MUSIC" || !strings.Contains(got[0].Method, lineupindex.ProviderSourceAlignmentV1) {
 		t.Fatal("unique provider-local number did not recover only the aligned alias", got)
