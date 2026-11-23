@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
@@ -976,7 +977,7 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 	for _, channel := range channels {
 		input := lineupInput(channel)
 		input.CategoryHint = categoryHints[channel.ID]
-		if hint, ok := tmdbCategories[channel.ID]; ok && input.CategoryHint == nil {
+		if hint, ok := tmdbCategories[channel.ID]; ok && preferTMDBCategoryHint(input.CategoryHint, hint) {
 			copy := hint
 			input.CategoryHint = &copy
 		}
@@ -988,6 +989,16 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 		inputs = append(inputs, input)
 	}
 	return config, inputs, true
+}
+
+func preferTMDBCategoryHint(existing *lineuparrbuilder.AttributedCategory, candidate lineuparrbuilder.AttributedCategory) bool {
+	if existing == nil {
+		return true
+	}
+	if candidate.Priority > 0 && (existing.Priority == 0 || candidate.Priority < existing.Priority) {
+		return true
+	}
+	return candidate.Priority == existing.Priority && candidate.Source == "tmdb-language-schedule" && candidate.Value == channelcategory.International
 }
 
 const (

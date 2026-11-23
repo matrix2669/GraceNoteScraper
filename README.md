@@ -2,11 +2,14 @@
 
 ### Experimental category evidence and review
 
-Category evidence uses ordinal priorities: manual choices (1), clear official
-evidence (2), supported weekday schedule inference (3), and weak provider or
-optional TMDB genre inference (4). Priority is not an accuracy percentage.
-Provisional categories are marked for review and may be confirmed or changed;
-the original proposal is retained separately from the manual choice.
+Category evidence uses ordinal priorities: manual choices and maintained exact
+channel identities (1), clear official evidence (2), supported weekday schedule
+or TMDB original-language inference (3), and weak provider or optional TMDB
+genre inference (4). Priority
+is not an accuracy percentage. A manual choice is an unconditional override even
+when an automatic exact identity is also priority 1. Provisional categories are
+marked for review and may be confirmed or changed; the original proposal is
+retained separately from the manual choice.
 
 The schedule experiment uses fourteen calendar days in the selected lineup's
 known timezone, Monday-Friday only. It requires at least eight usable weekdays,
@@ -17,12 +20,32 @@ sports require a 15-point separation. Missing tags do not imply Entertainment,
 Faith or Music. These provisional thresholds need continued reviewed-sample
 validation, not claims of calibrated accuracy.
 
+Sports airtime describes programming, not whether the service is a permanent
+network. An exact retained identity naming MLB Extra Innings, NBA League Pass,
+NHL Center Ice, NFL RedZone, or another explicit event product classifies that
+channel as priority-1 `PPV & Events` before the schedule profile is considered.
+The rule uses the full attributable package/feed identity; team names, league
+abbreviations, and sports airtime alone do not qualify. A maintained permanent
+network identity such as MLB Network remains `Sports` even if an event-like
+alias is present.
+
+TMDB original-language evidence may provisionally identify an unknown service
+as `International` when, across the same fourteen-day weekday window, usable
+language data covers at least 50% of airtime on at least eight weekdays and at
+least eight distinct matched titles, and more than 60% of that covered airtime
+is from non-English original-language titles. The title-diversity guard prevents
+single-title shopping and infomercial schedules from qualifying. This remains
+priority 3 and requires review because a title's production language does not
+prove the channel's audio language.
+
 TMDB remains optional. Add `TMDB_TOKEN` to the container environment and restart
-to enable enrichment. New lookups retain genre IDs separately from Gracenote
-categories. Existing cache entries without genres remain valid metadata but
-cannot supply genre evidence until refreshed. The Lineuparr TMDB panel can scan
-the retained programme data without additional TMDB requests. Such results are
-priority 4 and need review; title-search matches are not exact station evidence.
+to enable enrichment. New lookups retain genre IDs and original language
+separately from Gracenote categories. Existing cache entries without those
+fields remain valid metadata but cannot supply that evidence until refreshed.
+The Lineuparr TMDB panel can scan
+the retained programme data without additional TMDB requests. Genre results are
+priority 4 and qualifying original-language profiles are priority 3; both need
+review. Title-search matches are not exact station evidence.
 
 Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Plex, Emby, TVHeadend, and other DVR/IPTV software.
 
@@ -176,7 +199,13 @@ The experimental **Major-market enrichment** section scans exactly one market pe
 
 Per-lineup/device reports distinguish successful enrichment, no matches, unsupported sources, address requirements, and source/grid failures. All-provider and new-family-only candidate yields are compared using the same downloaded data, with the selected-lineup comparison reference retained in both. These count new identity/category facts and current station IDs reached, not guaranteed category changes after conflict resolution. Repeat-provider skipping remains disabled. Market-specific lineup keys prevent repeated national lineup IDs from overwriting another market's records. Stop uses the shared scan stop control; interrupted markets are retried on the next click. Keep `MARKET_INDEX_PATH` on persistent storage. Legacy ranked actions remain rejected; the new endpoint runs one curated market only.
 
-Channel-number evidence is permitted only for the selected local provider's own official lookup, with identity corroboration. Other local providers and all market providers require unique channel identities. EPG comparisons never use channel numbers, including within the same provider family. Older number-assisted facts without the new local-scope provenance are retained on disk but withheld until refreshed.
+In both local-ZIP and major-market scans, each provider's official source may use channel numbers against that provider's own Gracenote grid, with matching channel identity required. The selected provider is not a special case. Numbers never bridge providers or different market lineups; EPG comparisons never use channel numbers. Source adapters must resolve the appropriate regional/address-qualified source where required. Older unverified number-assisted facts remain quarantined. Run a fresh scan to obtain corrected evidence; saved exports change only when explicitly exported again.
+
+Alias discovery displays progress and the last refresh time only for local-ZIP scans. Major-market and scheduled guide work do not overwrite that progress; a separate busy/queue notice explains when another job prevents starting. Major-market enrichment uses the same collapsible panel and progress/action layout, displays only its own progress and errors, and retains the provider audit reports. Its expanded state is remembered. Both workflows retain the shared scan lock and explicit start/stop behavior.
+
+To repeat a market, expand its saved report and click **Rescan ZIP** (for example, **Rescan ZIP 10001**). This reruns only that catalog market's provider and EPG enrichment, replaces its latest report, and does not advance the next-market selection. Existing guide and published exports are unchanged. Source/grid caches retain their normal freshness rules; this is not a cache purge. Rescan controls are disabled while another scan runs, and the same guide-readiness and address restrictions apply. The market endpoint accepts an optional catalog `rank`; omitting it retains Scan next market behavior. Failed or interrupted attempts can also be retried from their report.
+
+After a completed local-ZIP scan, its button reads **Rescan providers in this ZIP**. Before completion it reads **Scan providers in this ZIP**; queued/cancel and guide-busy labels still take precedence.
 
 The Alias discovery section on `/lineuparr` builds a local station-name index only when you ask it to. It does not run at startup or on the guide-refresh schedule.
 
@@ -197,7 +226,7 @@ Provider coverage is intentionally explicit about source limitations:
 | Provider | Runtime public source | Current limitation |
 | --- | --- | --- |
 | Verizon FiOS | Official national PDF | National channels and provider-published channel-range categories; local positions still come from Gracenote |
-| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Eastern PDFs contribute explicit section categories via verified identity; the selected local provider may also use corroborated channel numbers; western service areas require a user-selected address for an exact local lineup |
+| Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Eastern PDFs contribute explicit section categories via verified identity and corroborated numbers within their own provider grid; western service areas require a user-selected address for an exact local lineup |
 | DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
 | DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
 | AT&T U-verse | Official public PDF | AT&T's current download URL serves a document marked effective February 2023 and is reported as limited |
@@ -210,11 +239,12 @@ Source matched counts represent selected-lineup channels with attributable alias
 
 ## Lineuparr JSON Builder
 
-Category review also supports row checkboxes, **Select all pending**, and **Approve selected**. A batch accepts each selected channel's own proposed category in one save; it does not assign a shared category. Save individual corrections first. Excluded or already-reviewed channels are not eligible, and stale selections are rejected without partially approving the batch.
+Category review also supports row checkboxes, **Select all shown**, and **Approve selected**. Filter the pending rows by proposed category, then sort each priority group by channel number, channel name, or category. **Select all shown** applies only to the current filtered result so hidden rows are not approved accidentally. A batch accepts each selected channel's own proposed category in one save; it does not assign a shared category. Save individual corrections first. Excluded or already-reviewed channels are not eligible, and stale selections are rejected without partially approving the batch.
 
-Use the separate collapsible **Category review** section for included channels with provisional assignments. Each row displays its proposed category and expandable source evidence. Choose **Confirm** to accept it, or select another category and choose **Save correction**. Successful saves remove the row and reduce the remaining count; manual choices and review history persist. The Channels section retains ordinary channel editing without inline confirmation buttons.
+Use the separate collapsible **Category review** section for included channels with provisional assignments. Pending rows are separated into priority 3 and priority 4 groups for quality evaluation. Each row leads with channel number and callsign, adds the best available descriptive name, links to the selected guide's upcoming-programme popup when the LineupARR builder feature is composed, and displays its proposed category and expandable source evidence. Choose **Confirm** to accept it, or select another category and choose **Save correction**. Successful saves remove the row and reduce the remaining count; manual choices and review history persist. The Channels section retains ordinary channel editing without inline confirmation buttons.
 
-TMDB category evidence is inside **Enrichment sources**. **Scan TMDB enrichment data** reuses retained programme genre IDs or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. Programme matches without usable genre evidence await normal enrichment. Proposals remain priority 4 and require review.
+TMDB category evidence is a separate collapsible section before **Category review**. **Scan TMDB enrichment data** reuses retained programme genre IDs, original-language values, or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. For older provider scans that did not retain Gracenote's response-level timezone, the first category scan performs one lightweight provider-discovery lookup and repairs the saved timezone without downloading guide grids. Programme matches without usable evidence await normal enrichment. Genre proposals remain priority 4. A predominantly non-English profile may propose priority-3 `International` only with more than 60% non-English covered weekday airtime, at least 50% coverage, eight covered weekdays and eight distinct matched titles. All TMDB proposals require review.
+
 The workflow places Enrichment sources, Alias discovery, Major market enrichment,
 TMDB category evidence, Category review, Channels, Dispatcharr matching, and
 Export JSON in that order when those features are available. Enrichment sources
@@ -243,12 +273,14 @@ Both detailed and compact channel rows lead with the callsign and append the bes
 
 The same GN brand mark shown in the page header is served as the SVG favicon for the guide, setup, and Lineuparr pages.
 
-- Supported public official sources for provider lineups returned for the configured ZIP. Device variants that share one Gracenote lineup ID remain distinct because their channel membership and station IDs can differ. Each source is first joined to its own Gracenote grid by unique exact identity; only the selected local provider may additionally use corroborated channel numbers; aliases and categories cross into the selected lineup through an identical Gracenote station ID or the separately confirmed weekday-EPG bridge. Providers without a runtime adapter still receive a Gracenote identity snapshot and remain visibly unresolved rather than borrowing another provider's channel numbers.
+- Supported public official sources for provider lineups returned for the configured ZIP. Device variants that share one Gracenote lineup ID remain distinct because their channel membership and station IDs can differ. Each source is first joined to its own Gracenote grid by unique exact identity or corroborated channel numbers within that grid; aliases and categories cross into the selected lineup through an identical Gracenote station ID or the separately confirmed weekday-EPG bridge. Providers without a runtime adapter still receive a Gracenote identity snapshot and remain visibly unresolved rather than borrowing another provider's channel numbers.
 - Optional matching provider/country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin), enabled with `LINEUPARR_CATALOG_URLS`.
 - The optional public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records, enabled with `LINEUPARR_IPTV_ORG_URL`.
 - Optional reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), enabled with `LINEUPARR_REFERENCE_CATALOGS=on`.
 
-The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves; explicit PEG/public-access identities and broadcast callsigns with affiliate evidence resolve to `Local & Public`, while ordinary network rows wait for a more specific source. One unambiguous category from the selected provider's exact official source takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
+The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view, league-package, seasonal, team-event, and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves. Explicit PEG/public-access identities resolve to `Local & Public`; an FCC-style station callsign needs a recognized affiliate or a broadcast suffix such as `DT`, `TV`, `LP`, or a numbered digital subchannel. A callsign-like network brand alone is not local evidence.
+
+A separate maintained exact-identity catalog supplies priority-1 categories for reviewed major networks and callsigns. It includes national entertainment services such as USA, TNT, TBS, Syfy, E!, Freeform, BBC America, COZI, ION, Antenna TV and Rewind TV; major news, sports, kids, music and faith services; broadcast-network identities such as ABC, CBS, NBC, Fox, CW and PBS; premium movie brands such as HBO, Cinemax, Showtime, The Movie Channel, Starz and MGM+; and reviewed adult, international and local identities. Matching is exact after punctuation/whitespace normalization and an optional terminal HD or SD marker—never a substring or fuzzy channel-name match. Language/market identity outranks local distribution: reviewed Spanish-language station identities such as WLTV and WAMI are `International` even though they are terrestrial local stations. This lets stable network identity outrank misleading programme-format evidence, such as a movie-heavy Freeform schedule or an international movie service, while preventing a similar-looking unknown name from being assigned automatically. One unambiguous category from the selected provider's exact official source otherwise takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
 
 User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 

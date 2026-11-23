@@ -1,11 +1,36 @@
 package main
 
 import (
-	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
+	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
+
+type tmdbTimezoneProviders struct{}
+
+func (tmdbTimezoneProviders) FindProviders(_ context.Context, _, postalCode, _ string) (*web.ProviderResponse, error) {
+	return &web.ProviderResponse{
+		StdUTCOffset: "-300", DSTUTCOffset: "-240",
+		Providers: []web.Provider{{LineupID: "USA-TEST", Device: "X", PostalCode: postalCode}},
+	}, nil
+}
+
+type tmdbUnusedGrid struct{}
+
+func (tmdbUnusedGrid) FetchGrid(context.Context, web.Preferences, int64) (*web.GridResponse, error) {
+	return nil, nil
+}
 
 func TestTMDBCategoryStatusStates(t *testing.T) {
 	s := newLineuparrTestServer(t, true)
@@ -19,13 +44,40 @@ func TestTMDBCategoryStatusStates(t *testing.T) {
 	}
 	check("TMDB_TOKEN")
 	s.tmdbConfigured = true
-	check("waiting-for-genres")
+	check("waiting-for-evidence")
 	s.tmdbEnriching = func() bool { return true }
 	check("enriching")
 	s.tmdbEnriching = func() bool { return false }
 	c, _, _ := s.store.Get()
 	s.state.UpdateForSource(&guide.TVGuide{Programs: []guide.Program{{Channel: "1", Start: "20260905000000 +0000", Stop: "20260905010000 +0000", TMDBGenresCaptured: true, TMDBMediaType: "tv", TMDBGenreIDs: []int{35}}}}, c.Fingerprint())
 	check("ready")
+}
+
+func TestTMDBGuideRevisionIncludesOriginalLanguageEvidence(t *testing.T) {
+	first := &guide.TVGuide{Programs: []guide.Program{{Channel: "1", Start: "20260907000000 +0000", Stop: "20260907010000 +0000", Title: "Example", OrigLanguage: "es"}}}
+	revision, count := tmdbGuideRevision(first)
+	if count != 1 || revision == "" {
+		t.Fatalf("language-only revision = %q, %d", revision, count)
+	}
+	second := &guide.TVGuide{Programs: append([]guide.Program(nil), first.Programs...)}
+	second.Programs[0].OrigLanguage = "en"
+	secondRevision, _ := tmdbGuideRevision(second)
+	if revision == secondRevision {
+		t.Fatal("original-language change did not invalidate the category scan")
+	}
+}
+
+func TestPreferTMDBLanguageHintAtEqualPriority(t *testing.T) {
+	language := lineuparrbuilder.AttributedCategory{Priority: 3, Value: "International", Source: "tmdb-language-schedule"}
+	genre := lineuparrbuilder.AttributedCategory{Priority: 4, Value: "Entertainment", Source: "tmdb-schedule"}
+	schedule := &lineuparrbuilder.AttributedCategory{Priority: 3, Value: "Movies", Source: "gracenote-schedule"}
+	provider := &lineuparrbuilder.AttributedCategory{Priority: 2, Value: "Movies", Source: "provider"}
+	if !preferTMDBCategoryHint(nil, language) || !preferTMDBCategoryHint(schedule, language) {
+		t.Fatal("validated language evidence was not accepted over an equal-priority content profile")
+	}
+	if preferTMDBCategoryHint(provider, language) || preferTMDBCategoryHint(schedule, genre) {
+		t.Fatal("weaker TMDB evidence replaced stronger category evidence")
+	}
 }
 
 func TestTMDBGenreEvidenceIsOptional(t *testing.T) {
@@ -66,5 +118,125 @@ func TestLegacyGuideGenresReusedWithoutMutatingGuide(t *testing.T) {
 	_, count := tmdbGuideRevision(adapted)
 	if count != 1 {
 		t.Fatal(count)
+	}
+}
+
+func TestTMDBCategoryScanRepairsLegacyTimezoneAndSavesProposals(t *testing.T) {
+	s := newLineuparrTestServer(t, true)
+	s.tmdbConfigured = true
+	marketIndex, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path: filepath.Join(t.TempDir(), "market_index.json"), Providers: tmdbTimezoneProviders{}, Grids: tmdbUnusedGrid{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.marketIndex = marketIndex
+	c, _, _ := s.store.Get()
+	programs := make([]guide.Program, 0, 14*24)
+	start := time.Date(2026, time.September, 7, 0, 0, 0, 0, time.UTC)
+	for hour := 0; hour < 14*24; hour++ {
+		a := start.Add(time.Duration(hour) * time.Hour)
+		programs = append(programs, guide.Program{
+			Channel: "100", Start: a.Format("20060102150405 -0700"), Stop: a.Add(time.Hour).Format("20060102150405 -0700"), Title: "Entertainment programme",
+			TMDBGenresCaptured: true, TMDBMediaType: "tv", TMDBGenreIDs: []int{35}, TMDBGenreNames: []string{"Comedy"},
+		})
+	}
+	s.state.UpdateForSource(&guide.TVGuide{Programs: programs, LineupChannels: []guide.Channel{{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TEST"}}}, c.Fingerprint())
+
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/tmdb-categories", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	s.handleTMDBCategories(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("scan response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	var response struct {
+		State         string `json:"state"`
+		CategoryCount int    `json:"categoryCount"`
+		Message       string `json:"message"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.State != "current" || response.CategoryCount != 1 || !strings.Contains(response.Message, "1 provisional channel categories") {
+		t.Fatalf("scan response = %+v", response)
+	}
+	if category := s.builder.TMDBCategoryScan(c.Fingerprint()).Categories["100"]; category.Value != "Entertainment" || category.Priority != 4 {
+		t.Fatalf("saved category = %+v", category)
+	}
+	draftRecorder := httptest.NewRecorder()
+	s.handleDraft(draftRecorder, httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil))
+	if draftRecorder.Code != http.StatusOK {
+		t.Fatalf("draft response = %d %s", draftRecorder.Code, draftRecorder.Body.String())
+	}
+	var draft struct {
+		Categorized   int `json:"categorized"`
+		Uncategorized int `json:"uncategorized"`
+		Channels      []struct {
+			Category            string `json:"category"`
+			NeedsCategoryReview bool   `json:"needsCategoryReview"`
+		} `json:"channels"`
+	}
+	if err := json.Unmarshal(draftRecorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.Categorized != 1 || draft.Uncategorized != 0 || len(draft.Channels) != 1 || draft.Channels[0].Category != "Entertainment" || !draft.Channels[0].NeedsCategoryReview {
+		t.Fatalf("refreshed draft = %+v", draft)
+	}
+}
+
+func TestTMDBCategoryScanProposesInternationalFromLanguageEvidence(t *testing.T) {
+	s := newLineuparrTestServer(t, true)
+	s.tmdbConfigured = true
+	marketIndex, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path: filepath.Join(t.TempDir(), "market_index.json"), Providers: tmdbTimezoneProviders{}, Grids: tmdbUnusedGrid{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.marketIndex = marketIndex
+	c, _, _ := s.store.Get()
+	programs := make([]guide.Program, 0, 14*24)
+	start := time.Date(2026, time.September, 7, 4, 0, 0, 0, time.UTC)
+	for hour := 0; hour < 14*24; hour++ {
+		a := start.Add(time.Duration(hour) * time.Hour)
+		language := "en"
+		if hour%10 < 7 {
+			language = "es"
+		}
+		programs = append(programs, guide.Program{
+			Channel: "200", Start: a.Format("20060102150405 -0700"), Stop: a.Add(time.Hour).Format("20060102150405 -0700"),
+			Title: fmt.Sprintf("Programme %d", hour%10), OrigLanguage: language,
+		})
+	}
+	s.state.UpdateForSource(&guide.TVGuide{Programs: programs, LineupChannels: []guide.Channel{{ID: "200", PlacementID: "2001", ChannelNo: "20", CallSign: "UNKNOWN"}}}, c.Fingerprint())
+
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/tmdb-categories", strings.NewReader("{}"))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	s.handleTMDBCategories(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("scan response = %d %s", recorder.Code, recorder.Body.String())
+	}
+	category := s.builder.TMDBCategoryScan(c.Fingerprint()).Categories["200"]
+	if category.Value != "International" || category.Priority != 3 || category.Source != "tmdb-language-schedule" {
+		t.Fatalf("saved language category = %+v", category)
+	}
+	draftRecorder := httptest.NewRecorder()
+	s.handleDraft(draftRecorder, httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil))
+	var draft struct {
+		Channels []struct {
+			Category            string `json:"category"`
+			NeedsCategoryReview bool   `json:"needsCategoryReview"`
+		} `json:"channels"`
+	}
+	if draftRecorder.Code != http.StatusOK {
+		t.Fatalf("draft response = %d %s", draftRecorder.Code, draftRecorder.Body.String())
+	}
+	if err := json.Unmarshal(draftRecorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.Channels) != 1 || draft.Channels[0].Category != "International" || !draft.Channels[0].NeedsCategoryReview {
+		t.Fatalf("language proposal draft = %+v", draft)
 	}
 }

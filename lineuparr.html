@@ -340,12 +340,29 @@
     .badge.unresolved { color: var(--warning); background: rgba(246,210,116,.09); }
     .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
     .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
-    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 18px 0; border-top: 1px solid var(--line); }
+    .category-review-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 18px; padding: 16px 0; border-top: 1px solid var(--line); align-items: center; }
+    .category-review-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; padding-bottom: 14px; }
+    .category-review-toolbar label { flex: 1 1 220px; min-width: 0; color: var(--muted); font-size: 11px; }
+    .category-review-toolbar select { display: block; width: 100%; height: 38px; margin-top: 6px; font-size: 13px; }
+    .category-review-visible { flex: 1 0 100%; margin: 0; }
+    .category-review-group { margin-top: 18px; }
+    .category-review-group:first-of-type { margin-top: 12px; }
+    .category-review-group-title { margin: 0; padding: 0 0 9px; color: var(--accent); font-size: 14px; }
+    #category-review-panel .category-review-selection { display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; }
+    #category-review-panel input[type="checkbox"] { width: 18px; height: 18px; min-height: 0; flex: 0 0 18px; padding: 0; margin: 0; accent-color: var(--accent); }
+    .category-review-channel-link { display: inline-flex; min-height: 0; min-width: 0; max-width: 100%; align-items: baseline; justify-content: flex-start; gap: 5px; padding: 0; border: 0; background: transparent; color: var(--text); text-align: left; }
+    .category-review-channel-link:hover { color: var(--accent); text-decoration: underline; text-underline-offset: 3px; }
+    .category-review-channel-detail { color: var(--muted); font-weight: 600; }
+    .category-review-row p { margin: 8px 0; }
     .category-review-row > div { min-width: 0; overflow-wrap: anywhere; }
     .category-review-controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
     .category-review-controls label { flex: 1 1 200px; min-width: 0; }
     .category-review-controls select { display: block; width: 100%; min-width: 0; margin-top: 6px; }
     .category-review-controls button { flex: 0 0 auto; white-space: nowrap; }
+    #category-review-panel .category-review-controls { font-size: 13px; }
+    #category-review-panel .category-review-controls select { height: 38px; font-size: 13px; }
+    #category-review-panel .category-review-controls button { min-height: 38px; font-size: 13px; }
+    .category-review-row .category-review-controls label { color: var(--muted); font-size: 11px; }
     @media (max-width: 720px) { .category-review-row { grid-template-columns: minmax(0, 1fr); } }
     .category-input { height: 38px; font-size: 13px; }
     .channel-card > details { margin: 11px 0 0 103px; }
@@ -471,15 +488,25 @@
       </div>
     </details>
 
-    <details class="panel" id="major-market-panel" style="padding:20px;margin-bottom:20px">
-      <summary>Major-market enrichment (experimental)</summary>
+    <details class="panel alias-panel collapsible-panel" id="major-market-panel" data-section-key="major-market">
+      <summary class="panel-summary alias-header">
+        <span class="panel-summary-copy"><span class="eyebrow">Major-market enrichment</span><h2>Expand your station-name index</h2><span class="panel-help">Scan one ranked market at a time (experimental).</span></span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
       <p>Scan one ranked market at a time using provider sources and weekday EPG comparison. Your selected guide stays unchanged. Address-required sources are skipped; your saved address is never reused.</p>
       <p id="major-market-next">Loading market status…</p>
-      <button type="button" id="major-market-start" disabled>Scan next market</button>
-      <button type="button" id="major-market-stop" style="display:none">Stop market scan</button>
-      <p id="major-market-status" role="status"></p>
+      <div class="scan-progress">
+        <div class="progress-copy"><strong id="major-market-status" role="status"></strong><span id="major-market-progress-count"></span></div>
+        <div class="progress-track"><div class="progress-bar" id="major-market-progress-bar"></div></div>
+        <div class="action-row">
+          <button type="button" id="major-market-start" disabled>Scan next market</button>
+          <button class="secondary" type="button" id="major-market-stop" style="display:none">Stop market scan</button>
+        </div>
+      </div>
       <div id="major-market-reports"></div>
       <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new candidate facts, not guaranteed applied categories. The selected lineup remains available as an EPG comparison reference.</p>
+      </div>
     </details>
     <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
       <summary class="panel-summary alias-header">
@@ -955,7 +982,8 @@
     }
 
     function renderAliasIndex(data) {
-      const summary = data.summary || {}, job = data.job || {}, postalScan = data.postalScan;
+      const summary = data.summary || {}, sharedJob = data.job || {}, postalScan = data.postalScan;
+      const job = sharedJob.action === 'postal' ? sharedJob : {};
       const queue = data.queue || {};
       aliasQueue = queue;
       els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
@@ -965,18 +993,20 @@
       els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
       els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
       els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
-      els.postalScan.disabled = !!job.running || scanStarting;
-      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
+      els.postalScan.disabled = !!sharedJob.running || scanStarting;
+      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : postalScan?.status === 'complete' ? 'Rescan providers in this ZIP' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
-      const refreshed = postalScan?.completedAt || job.completedAt;
+      const refreshed = postalScan?.completedAt;
       const refreshLabel = document.getElementById('alias-last-refresh');
       if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
       if (scanRequestError) setMarketMessage(scanRequestError, 'error');
       else if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
       else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
-      else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
+      else if (queue.guideBusy) setMarketMessage('Guide preparation is busy. A local ZIP scan request will be queued.');
+      else if (sharedJob.running && !job.running) setMarketMessage('Another scan is running. Local ZIP progress is unchanged.');
       else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
-      const polling = job.running || queue.queued || queue.guideBusy;
+      else setMarketMessage(job.running ? 'Local ZIP scan in progress. Completed checkpoints remain saved.' : '');
+      const polling = sharedJob.running || queue.queued || queue.guideBusy;
       if (polling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
       if (!polling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) reloadDraft().catch(error => showMessage(error.message, true));
@@ -1555,42 +1585,120 @@
     const categoryReviewSelection = new Set();
     let categoryReviewSelectionSource = '';
     let categoryReviewApproving = false;
+    let categoryReviewFilter = '';
+    let categoryReviewSort = 'number';
+
+    function categoryReviewNaturalCompare(left, right) {
+      return String(left || '').localeCompare(String(right || ''), undefined, {numeric:true, sensitivity:'base'});
+    }
+
+    function categoryReviewDetailedName(channel) {
+      if (typeof window.lineuparrDescriptiveChannelName === 'function') return window.lineuparrDescriptiveChannelName(channel);
+      const callSign = String(channel.callSign || '').trim();
+      const name = String(channel.name || '').trim();
+      const normalize = value => value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return name && normalize(name) !== normalize(callSign) ? name : '';
+    }
+
+    function categoryReviewCompare(left, right) {
+      const leftName = categoryReviewDetailedName(left) || left.callSign || left.name;
+      const rightName = categoryReviewDetailedName(right) || right.callSign || right.name;
+      if (categoryReviewSort === 'name') return categoryReviewNaturalCompare(leftName, rightName) || categoryReviewNaturalCompare(left.number, right.number);
+      if (categoryReviewSort === 'category') return categoryReviewNaturalCompare(left.category, right.category) || categoryReviewNaturalCompare(left.number, right.number);
+      return categoryReviewNaturalCompare(left.number, right.number) || categoryReviewNaturalCompare(leftName, rightName);
+    }
+
+    function openCategoryReviewPrograms(channel) {
+      if (typeof window.lineuparrOpenChannelPrograms === 'function') {
+        window.lineuparrOpenChannelPrograms(channel);
+        return;
+      }
+      showMessage('Programme preview is unavailable in this build.', true);
+    }
+
     function renderCategoryReview() {
       if (categoryReviewSelectionSource !== draft.sourceFingerprint) { categoryReviewSelection.clear(); categoryReviewSelectionSource = draft.sourceFingerprint; }
       const list = document.getElementById('category-review-list');
-      const channels = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
-      document.getElementById('category-review-count').textContent = `(${channels.length.toLocaleString()} remaining)`;
+      const pending = draft.channels.filter(channel => channel.included && channel.needsCategoryReview);
+      document.getElementById('category-review-count').textContent = `(${pending.length.toLocaleString()} remaining)`;
       list.replaceChildren();
-      const eligible = new Set(channels.map(channel => channel.id));
+      const eligible = new Set(pending.map(channel => channel.id));
       for (const id of categoryReviewSelection) if (!eligible.has(id)) categoryReviewSelection.delete(id);
-      if (!channels.length) { list.textContent = 'No included channels need category review.'; return; }
+      if (!pending.length) { list.textContent = 'No included channels need category review.'; return; }
+
+      const filterCategories = [...new Set(categories().filter(Boolean))].sort(categoryReviewNaturalCompare);
+      if (categoryReviewFilter && !filterCategories.includes(categoryReviewFilter)) categoryReviewFilter = '';
+      const channels = pending.filter(channel => !categoryReviewFilter || channel.category === categoryReviewFilter).sort(categoryReviewCompare);
+
+      const toolbar = document.createElement('div'); toolbar.className = 'category-review-toolbar';
+      const filterLabel = document.createElement('label'); filterLabel.textContent = 'Filter by category';
+      const filter = document.createElement('select'); filter.setAttribute('aria-label', 'Filter category reviews by category');
+      filter.add(new Option('All pending categories', ''));
+      for (const category of filterCategories) filter.add(new Option(category, category));
+      filter.value = categoryReviewFilter; filter.disabled = categoryReviewApproving;
+      filter.addEventListener('change', () => { categoryReviewFilter = filter.value; categoryReviewSelection.clear(); renderCategoryReview(); });
+      filterLabel.append(filter);
+      const sortLabel = document.createElement('label'); sortLabel.textContent = 'Sort by';
+      const sort = document.createElement('select'); sort.setAttribute('aria-label', 'Sort category reviews');
+      sort.add(new Option('Channel number', 'number')); sort.add(new Option('Channel name', 'name')); sort.add(new Option('Category', 'category'));
+      sort.value = categoryReviewSort; sort.disabled = categoryReviewApproving;
+      sort.addEventListener('change', () => { categoryReviewSort = sort.value; renderCategoryReview(); });
+      sortLabel.append(sort);
+      const visible = document.createElement('p'); visible.className = 'channel-meta category-review-visible'; visible.textContent = `Showing ${channels.length.toLocaleString()} of ${pending.length.toLocaleString()} pending reviews.`;
+      toolbar.append(filterLabel, sortLabel, visible); list.append(toolbar);
+
       const batch = document.createElement('div'); batch.className = 'category-review-controls';
-      const allLabel = document.createElement('label');
-      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving;
-      all.checked = categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
-      allLabel.append(all, document.createTextNode(' Select all pending'));
+      const allLabel = document.createElement('label'); allLabel.className = 'category-review-selection';
+      const all = document.createElement('input'); all.type = 'checkbox'; all.disabled = categoryReviewApproving || !channels.length;
+      all.checked = channels.length > 0 && categoryReviewSelection.size === channels.length; all.indeterminate = categoryReviewSelection.size > 0 && !all.checked;
+      allLabel.append(all, document.createTextNode(' Select all shown'));
       all.addEventListener('change', () => { categoryReviewSelection.clear(); if (all.checked) for (const channel of channels) categoryReviewSelection.add(channel.id); renderCategoryReview(); });
       const approve = document.createElement('button'); approve.type = 'button'; approve.textContent = categoryReviewApproving ? 'Approving…' : `Approve selected (${categoryReviewSelection.size})`; approve.disabled = categoryReviewApproving || !categoryReviewSelection.size;
       approve.addEventListener('click', async () => {
-        const selected = channels.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
+        const selected = pending.filter(channel => categoryReviewSelection.has(channel.id)).map(channel => ({id:channel.id, category:channel.category}));
         categoryReviewApproving = true; renderCategoryReview();
         try { await api('/api/lineuparr/approve-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sourceFingerprint:draft.sourceFingerprint,channels:selected})}); categoryReviewSelection.clear(); await reloadDraft(); }
         catch(error) { showMessage(error.message,true); }
         finally { categoryReviewApproving = false; renderCategoryReview(); }
       });
-      const help = document.createElement('p'); help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
+      const help = document.createElement('p'); help.className = 'channel-meta'; help.textContent = 'Batch approval accepts the proposed categories shown below. Save individual corrections before selecting the batch.';
       batch.append(allLabel,approve); list.append(help,batch);
+
+      if (!channels.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No pending category reviews match this filter.'; list.append(empty); return;
+      }
+
+      const groups = new Map();
       for (const channel of channels) {
+        const priority = Number(channel.categoryPriority) || 0;
+        if (!groups.has(priority)) groups.set(priority, []);
+        groups.get(priority).push(channel);
+      }
+      const priorities = [...groups.keys()].sort((left, right) => {
+        const rank = priority => priority === 3 ? 0 : priority === 4 ? 1 : 2 + priority;
+        return rank(left) - rank(right);
+      });
+      for (const priority of priorities) {
+        const group = document.createElement('section'); group.className = 'category-review-group'; group.dataset.priority = String(priority);
+        const heading = document.createElement('h3'); heading.className = 'category-review-group-title'; heading.textContent = `Priority ${priority || 'unranked'} (${groups.get(priority).length.toLocaleString()})`;
+        group.append(heading);
+        for (const channel of groups.get(priority)) {
         const row = document.createElement('div'); row.className = 'category-review-row';
         const identity = document.createElement('div');
         const check = document.createElement('input'); check.type = 'checkbox'; check.checked = categoryReviewSelection.has(channel.id); check.disabled = categoryReviewApproving; check.setAttribute('aria-label', `Select ${channel.number} ${channel.name} for approval`);
         check.addEventListener('change', () => { if (check.checked) categoryReviewSelection.add(channel.id); else categoryReviewSelection.delete(channel.id); renderCategoryReview(); });
-        const title = document.createElement('strong'); title.textContent = `${channel.number} · ${channel.callSign || channel.name}`;
-        const proposed = document.createElement('p'); proposed.textContent = `Proposed category: ${channel.category}`;
-        const evidence = document.createElement('details');
+        const title = document.createElement('button'); title.type = 'button'; title.className = 'channel-name category-review-channel-link'; title.title = 'Show upcoming programmes';
+        const callSign = String(channel.callSign || channel.name || 'Unnamed channel').trim();
+        const primary = document.createElement('span'); primary.textContent = `${channel.number || '—'} · ${callSign}`; title.append(primary);
+        const detailedName = categoryReviewDetailedName(channel);
+        if (detailedName) { const detail = document.createElement('span'); detail.className = 'category-review-channel-detail'; detail.textContent = `· ${detailedName}`; title.append(detail); }
+        title.addEventListener('click', event => { event.preventDefault(); openCategoryReviewPrograms(channel); });
+        const proposed = document.createElement('p'); proposed.className = 'channel-meta'; proposed.textContent = `Proposed category: ${channel.category}`;
+        const evidence = document.createElement('details'); evidence.className = 'channel-meta';
         const summary = document.createElement('summary'); summary.textContent = `${sourceLabel(channel.categorySource)} · priority ${channel.categoryPriority}`;
         const method = document.createElement('p'); method.textContent = channel.categoryMethod || 'Provisional category evidence';
-        evidence.append(summary, method); identity.append(check, title, proposed, evidence);
+        const selection = document.createElement('div'); selection.className = 'category-review-selection'; selection.append(check, title);
+        evidence.append(summary, method); identity.append(selection, proposed, evidence);
         const controls = document.createElement('div'); controls.className = 'category-review-controls';
         const label = document.createElement('label'); label.textContent = 'Category';
         const select = document.createElement('select'); select.setAttribute('aria-label', `Category for ${channel.number} ${channel.name}`);
@@ -1603,7 +1711,9 @@
           try { await saveChannel(channel, {category:select.value}, confirm); }
           finally { select.disabled = false; renderCategoryReview(); }
         });
-        controls.append(label, confirm); row.append(identity, controls); list.append(row);
+        controls.append(label, confirm); row.append(identity, controls); group.append(row);
+        }
+        list.append(group);
       }
     }
 
@@ -2168,29 +2278,46 @@
         await loadAliasIndex();
       } catch (error) { setMarketMessage(error.message, 'error'); }
     });
-    const tmdbPanel = document.createElement('section'); tmdbPanel.className = 'tmdb-category-evidence';
-    const tmdbTitle = document.createElement('h2'); tmdbTitle.textContent = 'TMDB category evidence';
+    const tmdbPanel = document.createElement('details'); tmdbPanel.className = 'panel collapsible-panel'; tmdbPanel.id = 'tmdb-category-panel'; tmdbPanel.dataset.sectionKey = 'tmdb-category';
+    const tmdbTitle = document.createElement('summary'); tmdbTitle.className = 'panel-summary'; tmdbTitle.textContent = 'TMDB category evidence';
     const tmdbMessage = document.createElement('p'); tmdbMessage.setAttribute('role','status');
     const tmdbScan = document.createElement('button'); tmdbScan.type = 'button'; tmdbScan.textContent = 'Scan TMDB enrichment data'; tmdbScan.disabled = true;
-    tmdbPanel.append(tmdbTitle, tmdbMessage, tmdbScan); document.querySelector('#source-panel > .panel-body').prepend(tmdbPanel);
+    const tmdbBody = document.createElement('div'); tmdbBody.className = 'panel-body'; tmdbBody.append(tmdbMessage, tmdbScan);
+    const tmdbChevron = document.createElement('span'); tmdbChevron.className = 'panel-chevron'; tmdbChevron.textContent = '›'; tmdbChevron.setAttribute('aria-hidden', 'true'); tmdbTitle.append(tmdbChevron);
+    tmdbPanel.append(tmdbTitle, tmdbBody); document.getElementById('category-review-panel').before(tmdbPanel);
     let tmdbCategoryTimer;
+    let tmdbCategoryState = '';
+    function renderTMDBCategoryState(state) {
+      clearTimeout(tmdbCategoryTimer);
+      tmdbCategoryState = state.state || tmdbCategoryState;
+      tmdbMessage.textContent = state.message;
+      tmdbScan.disabled = !['ready','current'].includes(tmdbCategoryState);
+      tmdbScan.hidden = tmdbCategoryState === 'not-configured' || tmdbCategoryState === 'no-provider';
+      if (!['not-configured','no-provider'].includes(tmdbCategoryState)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+    }
     async function loadTMDBCategoryState() {
       clearTimeout(tmdbCategoryTimer);
       try {
         const state = await api('/api/lineuparr/tmdb-categories');
-        tmdbMessage.textContent = state.message;
-        tmdbScan.disabled = !['ready','current'].includes(state.state);
-        tmdbScan.hidden = state.state === 'not-configured' || state.state === 'no-provider';
-        if (!['not-configured','no-provider'].includes(state.state)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+        renderTMDBCategoryState(state);
       } catch(error) { tmdbMessage.textContent = error.message; tmdbScan.disabled = true; }
     }
     tmdbScan.addEventListener('click', async () => {
+      clearTimeout(tmdbCategoryTimer);
       tmdbScan.disabled = true;
+      tmdbScan.setAttribute('aria-busy', 'true');
+      tmdbMessage.textContent = 'Scanning cached TMDB programme evidence…';
       try {
         const result = await api('/api/lineuparr/tmdb-categories', {method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
-        tmdbMessage.textContent = result.message; await loadDraft();
-      } catch(error) { tmdbMessage.textContent = error.message; }
-      finally { await loadTMDBCategoryState(); }
+        renderTMDBCategoryState(result);
+        await loadDraft();
+      } catch(error) {
+        tmdbMessage.textContent = error.message;
+        tmdbScan.disabled = !['ready','current'].includes(tmdbCategoryState);
+        if (!['not-configured','no-provider'].includes(tmdbCategoryState)) tmdbCategoryTimer = setTimeout(loadTMDBCategoryState, 15000);
+      } finally {
+        tmdbScan.removeAttribute('aria-busy');
+      }
     });
     loadTMDBCategoryState();
     initCollapsibleSections();
@@ -2207,6 +2334,7 @@
     const marketStart = document.getElementById('major-market-start');
     const marketStatus = document.getElementById('major-market-status');
     let majorMarketPoll;
+    let majorMarketWasRunning = false;
     async function loadMajorMarkets() {
       clearTimeout(majorMarketPoll);
       try {
@@ -2214,7 +2342,13 @@
         marketStart.disabled = !!view.job.running || !view.next;
         document.getElementById('major-market-stop').style.display = view.job.running && view.job.action === 'market' ? '' : 'none';
         document.getElementById('major-market-next').textContent = view.next ? `Next: #${view.next.rank} ${view.next.name}, ZIP ${view.next.postalCode} — ranked list ${view.catalog.asOf}` : 'All ranked markets completed.';
-        marketStatus.textContent = view.job.running ? `${view.job.action === 'market' ? 'Market scan' : 'Local scan'}: ${view.job.currentProvider || 'preparing'}, ${view.job.completedCount} / ${view.job.totalCount}` : (view.job.lastError || 'Ready. One click starts one market only.');
+        const ownJob = view.job.action === 'market' ? view.job : {};
+        if (majorMarketWasRunning && !ownJob.running) reloadDraft().catch(error => showMessage(error.message, true));
+        majorMarketWasRunning = !!ownJob.running;
+        const progress = ownJob.running && ownJob.totalCount ? Math.max(0, Math.min(100, Math.round(ownJob.completedCount * 100 / ownJob.totalCount))) : 0;
+        document.getElementById('major-market-progress-count').textContent = ownJob.running ? `${ownJob.completedCount} / ${ownJob.totalCount} in this scan` : '';
+        document.getElementById('major-market-progress-bar').style.width = `${progress}%`;
+        marketStatus.textContent = ownJob.running ? `Scanning ${ownJob.currentProvider || 'market provider lineups'}` : view.job.running ? 'Another scan is running. Market scan is waiting.' : (ownJob.lastError || 'Ready. One click starts one market only.');
         const reports = document.getElementById('major-market-reports'); reports.replaceChildren();
         for (const scan of view.scans) {
           const section = document.createElement('details');
@@ -2223,6 +2357,17 @@
           const count = status => rows.filter(row => row.access === status).length;
           summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${count('error')} source failures, ${count('empty')} no source matches`;
           section.append(summary);
+          const rescan = document.createElement('button');
+          rescan.type = 'button'; rescan.className = 'secondary';
+          rescan.textContent = `Rescan ZIP ${scan.postalCode}`; rescan.disabled = !!view.job.running;
+          rescan.addEventListener('click', async () => {
+            rescan.disabled = true; marketStart.disabled = true;
+            try {
+              await api('/api/lineuparr/markets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rank:scan.marketRank})});
+              await loadAliasIndex(); await loadMajorMarkets();
+            } catch (error) { marketStatus.textContent = error.message; rescan.disabled = false; marketStart.disabled = false; }
+          });
+          section.append(rescan);
           const yieldText = value => `${value.aliases} aliases, ${value.categories} categories, ${value.currentStations} current station IDs`;
           const totals = document.createElement('p');totals.textContent = `All providers: ${yieldText(scan.allProviderYield)}. New families only: ${yieldText(scan.newFamilyYield)}.`;section.append(totals);
           for (const row of rows) {
