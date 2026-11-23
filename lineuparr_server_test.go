@@ -94,7 +94,7 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 		`<option value="included" selected>Included only</option>`, `channelSortComparator`, `document.createElement('select')`, `cursor: not-allowed`,
 		"const includedChannels = draft.channels.filter(channel => channel.included)",
 		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
-		"includedChannels.length - categorized", `id="duplicate-review"`, `Review ${count} suggested SD duplicate`,
+		"includedChannels.length - categorized", `id="duplicate-review"`, `Review ${count} duplicate group`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("page is missing editor behavior %q", expected)

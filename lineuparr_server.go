@@ -492,7 +492,12 @@ func (s *lineuparrServer) handleRemoveDuplicates(w http.ResponseWriter, r *http.
 	if !ok {
 		return
 	}
-	removed := len(draft.DuplicateSuggestions)
+	removed := 0
+	for _, suggestion := range draft.DuplicateSuggestions {
+		if !suggestion.Exact {
+			removed++
+		}
+	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
 		if body.ChannelIDs != nil {
 			requested := make([]string, 0, len(*body.ChannelIDs))
