@@ -267,6 +267,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 		resultChannels = append(resultChannels, channel.draft)
 	}
+	resolveCanonicalNames(resultChannels, channels)
 	sort.SliceStable(resultChannels, func(i, j int) bool {
 		if resultChannels[i].Number != resultChannels[j].Number {
 			return numberLess(resultChannels[i].Number, resultChannels[j].Number)

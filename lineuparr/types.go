@@ -22,6 +22,7 @@ type LineupContext struct {
 type InputChannel struct {
 	AmbiguousLegacyPlacement bool
 	SupplementalEvidence     []ServiceIdentityEvidence
+	CanonicalNameCandidates  []AttributedAlias
 	Key                      string
 	StationID                string
 	PlacementID              string
@@ -119,6 +120,7 @@ type DraftChannel struct {
 	EPGIDEvidence            []IdentifierEvidence `json:"epgIdEvidence,omitempty"`
 	NameSource               string               `json:"nameSource"`
 	NameMethod               string               `json:"nameMethod"`
+	NameDiagnostic           string               `json:"nameDiagnostic,omitempty"`
 	CategorySource           string               `json:"categorySource"`
 	CategoryMethod           string               `json:"categoryMethod,omitempty"`
 	MatchedSources           []string             `json:"matchedSources,omitempty"`
