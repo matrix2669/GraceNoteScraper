@@ -175,8 +175,12 @@ type ProviderAddress struct {
 }
 
 type ProviderEvidenceResult struct {
-	Facts   []ProviderFact
-	Sources []EvidenceSourceRecord
+	Facts []ProviderFact
+	// IdentityFacts are exact provider identities that may be shared by more
+	// than one Gracenote station ID. They are used only to form pair-level EPG
+	// candidates and are never persisted or applied to a lineup on their own.
+	IdentityFacts []ProviderFact
+	Sources       []EvidenceSourceRecord
 }
 
 type ProviderFact struct {
