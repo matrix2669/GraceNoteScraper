@@ -76,6 +76,13 @@ func (s *Service) ResetBuilder(fingerprint, token, restore string, withdrawPubli
 		next.Workflow.CustomizationSignature = ""
 		next.Workflow.CustomizationCompletedAt = time.Time{}
 	}
+	// Reset/restore cannot erase or rewind lifecycle audit, and old pending
+	// evidence cannot act after a reset generation change.
+	if previous.Lifecycle != nil {
+		next.Lifecycle = &LifecycleState{Audit: append([]LifecycleAudit(nil), previous.Lifecycle.Audit...), Continuity: append([]LifecycleContinuityArchive(nil), previous.Lifecycle.Continuity...)}
+	} else {
+		next.Lifecycle = nil
+	}
 	next.SourceFingerprint = fingerprint
 	next.ResetGeneration = previous.ResetGeneration + 1
 	// Restoring choices never rolls back a publication revocation. "Keep" keeps

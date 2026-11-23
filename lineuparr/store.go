@@ -12,10 +12,11 @@ import (
 )
 
 type StateStore struct {
-	mu         sync.RWMutex
-	path       string
-	state      State
-	beforeSave func(string) error // isolated persistence fault injection; nil in production
+	mu                    sync.RWMutex
+	path                  string
+	state                 State
+	beforeSave            func(string) error // isolated persistence fault injection; nil in production
+	beforeLifecycleBackup func(string) error // isolated lifecycle backup fault injection
 }
 
 var ErrMatchChannelExcluded = errors.New("match target is excluded")
@@ -314,6 +315,12 @@ func (s *StateStore) setMatchDecisions(fingerprint, inputToken string, decisions
 // the state lock and only see the new state after the atomic rename succeeds.
 func cloneReviewState(state State) State {
 	next := state
+	if state.Lifecycle != nil {
+		data, _ := json.Marshal(state.Lifecycle)
+		var copy LifecycleState
+		_ = json.Unmarshal(data, &copy)
+		next.Lifecycle = &copy
+	}
 	next.Channels = make(map[string]ChannelOverride, len(state.Channels))
 	for k, v := range state.Channels {
 		v.SuppressedAliases = append([]string(nil), v.SuppressedAliases...)
@@ -391,8 +398,13 @@ func (s *StateStore) ensureSourceLocked(fingerprint string) {
 	if s.state.SourceFingerprint == fingerprint {
 		return
 	}
+	var lifecycle *LifecycleState
+	if s.state.Lifecycle != nil {
+		lifecycle = &LifecycleState{Audit: append([]LifecycleAudit(nil), s.state.Lifecycle.Audit...), Continuity: append([]LifecycleContinuityArchive(nil), s.state.Lifecycle.Continuity...)}
+	}
 	s.state = State{
 		PlacementCollisions:   s.state.PlacementCollisions,
+		Lifecycle:             lifecycle,
 		ResetGeneration:       s.state.ResetGeneration,
 		PublicationGeneration: s.state.PublicationGeneration,
 		Version:               CurrentStateVersion,
