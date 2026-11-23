@@ -61,3 +61,35 @@ func TestCategoryBatchRetainsReviewAcrossReopen(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestApproveMixedCategoriesAtomically(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := LoadStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{store: store}
+	rows := []DraftChannel{{ID: "a", Category: "Movies", Included: true, NeedsCategoryReview: true, CategoryPriority: 4}, {ID: "b", Category: "Sports", Included: true, NeedsCategoryReview: true, CategoryPriority: 3}}
+	bad := append([]DraftChannel(nil), rows...)
+	bad[1].Included = false
+	if err := service.ApproveReviewedCategories("test", bad); err == nil {
+		t.Fatal("invalid batch accepted")
+	}
+	if len(store.Snapshot("test")) != 0 {
+		t.Fatal("partial batch persisted")
+	}
+	if err := service.ApproveReviewedCategories("test", rows); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := LoadStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := reopened.Snapshot("test")
+	if got["a"].Category != "Movies" || got["b"].Category != "Sports" || got["b"].CategoryReview.Proposed != "Sports" {
+		t.Fatal(got)
+	}
+	if err := service.ApproveReviewedCategories("test", rows); err == nil {
+		t.Fatal("stale batch overwrote manual choices")
+	}
+}
