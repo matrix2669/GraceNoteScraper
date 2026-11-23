@@ -105,6 +105,33 @@ func TestPublishedLineuparrSnapshotSurvivesEditsAndRestart(t *testing.T) {
 	}
 }
 
+func TestExportSummaryReadsSavedSnapshotWithoutGuide(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	server.exportDir = t.TempDir()
+	read := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		server.handleExportSummary(w, httptest.NewRequest("GET", "/api/lineuparr/export-summary", nil))
+		return w
+	}
+	if got := read(); got.Code != 200 || !strings.Contains(got.Body.String(), `"exists":false`) {
+		t.Fatal(got.Body.String())
+	}
+	path := publishLineuparrForTest(t, server)
+	first := read()
+	if first.Code != 200 || !strings.Contains(first.Body.String(), path) || !strings.Contains(first.Body.String(), "publishedAt") {
+		t.Fatal(first.Code, first.Body.String())
+	}
+	server.state = nil
+	server.builder = nil
+	second := read()
+	if second.Body.String() != first.Body.String() {
+		t.Fatal("summary changed or required guide")
+	}
+	if second.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("summary may be stale")
+	}
+}
+
 func TestPublishedLineuparrRejectsStaleSourceAndMissingGuide(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	server.exportDir = t.TempDir()
