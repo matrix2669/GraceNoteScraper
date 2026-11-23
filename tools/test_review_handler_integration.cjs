@@ -48,10 +48,28 @@ if(!process.env.REVIEW_HANDLER_URL){
      window.undoKey=review.decisions[0].key;matchReview={...review,candidates:[],decisions:[]};renderMatchReview();
      if(!document.querySelector('#match-save-recovery button'))throw Error('off-page recovery disappeared');
     },fixture.recoveryKey);
+    // Hold the first recovery draft response after the saved receipt. A saved
+    // action and idle controls alone do not mean the recovery task has finished.
+    await page.evaluate(()=>{
+     const real=window.fetch;window.holdRecoveryDraft=true;window.recoveryDraftHeld=false;
+     window.fetch=async(path,options)=>{
+      const response=await real(path,options);
+      if(holdRecoveryDraft&&String(path).includes('/lineuparr/draft')){
+       holdRecoveryDraft=false;window.recoveryDraftHeld=true;
+       await new Promise(resolve=>window.releaseRecoveryDraft=resolve);
+      }
+      if(options?.method==='DELETE'&&String(path).includes('/dispatcharr/decision'))window.undoResponseStatus=response.status;
+      return response;
+     };
+    });
     await page.locator('#match-save-recovery button').click();
-    await page.waitForFunction(()=>matchActionState(originalKey).state==='saved'&&!dispatchBusy);
+    await page.waitForFunction(()=>recoveryDraftHeld&&matchActionState(originalKey).state==='saved'&&!dispatchBusy);
+    assert.equal(await page.evaluate(()=>recoverMatchActions.pending),true,'intermediate receipt incorrectly treated as completed recovery');
+    await page.evaluate(()=>releaseRecoveryDraft());
+    await page.waitForFunction(()=>!recoverMatchActions.pending&&matchActionState(originalKey).state==='saved'&&!dispatchBusy);
     await page.evaluate(async()=>{
      await clearDecision(undoKey);
+     if(window.undoResponseStatus!==200)throw Error('Undo did not send a successful DELETE');
      if(matchReview.decisions.some(d=>d.key===undoKey))throw Error('Undo retained group');
      const response=await fetch('/api/lineuparr/dispatcharr/decision',{method:'POST',headers:{'Content-Type':'application/json','X-Builder-Generation':String(draft.resetGeneration||0)},body:JSON.stringify({key:originalKey,operation:originalOperation,decision:'confirmed',tvgIds:[]})});
      if(response.status!==409)throw Error('old token reversed Undo after GET');

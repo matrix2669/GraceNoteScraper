@@ -228,7 +228,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			if !ok || miscellaneousCategoryBucket(match.Category, relation.RawCategory) {
 				continue
 			}
-			fact := StationFact{Kind: FactCategory, Value: match.Category, RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel, SourceURL: relation.SourceURL, Method: relation.Method + "; provider-category-relation", LineupKeys: append([]string(nil), relation.LineupKeys...), SourceRowID: relation.SourceRowID, RootSourceID: relation.SourceID, RootSourceLabel: relation.SourceLabel, RootSourceURL: relation.SourceURL}
+			fact := StationFact{Kind: FactCategory, Value: match.Category, RawValue: relation.RawCategory, SourceID: relation.SourceID, SourceLabel: relation.SourceLabel, SourceURL: relation.SourceURL, Method: relation.Method + "; provider-category-relation", LineupKeys: append([]string(nil), relation.LineupKeys...), SourceRowID: relation.SourceRowID, RootSourceLineupKey: assignmentForRelation(relation).RootLineupKey, RootSourceStationID: assignmentForRelation(relation).RootStationID, RootSourceID: assignmentForRelation(relation).SourceID, RootSourceLabel: relation.SourceLabel, RootSourceURL: relation.SourceURL}
 			priority := categoryFactPriority(fact)
 			if strings.Contains(strings.ToLower(fact.Method), "priority-4") || strings.Contains(strings.ToLower(fact.Method), channelcategory.MethodFuzzy) {
 				priority = 4
@@ -443,7 +443,7 @@ func sameStationFact(existing []StationFact, candidate StationFact) bool {
 }
 
 func relationEligible(s *Service, relation ProviderCategoryRelation) bool {
-	if relation.quarantineReason != "" {
+	if relation.quarantineReason != "" || rejectedRelation(relation) != nil {
 		return false
 	}
 	// number-policy-provider-alias-v3 is an alias-admission marker. It is
@@ -501,7 +501,7 @@ func factProviderRoots(s *Service, fact StationFact) []string {
 // Preserve their evidence on disk, but quarantine it from current drafts. Old
 // EPG-carried categories also need a fresh scan through the corrected adapters.
 func usableFact(fact StationFact) bool {
-	if fact.quarantineReason != "" {
+	if fact.quarantineReason != "" || rejectedFact("", fact) != nil {
 		return false
 	}
 	if strings.Contains(fact.Method, "number-policy-provider-alias-v3") {

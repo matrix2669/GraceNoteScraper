@@ -2,7 +2,7 @@
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
 const {chromium}=require('playwright');
 const html=fs.readFileSync(path.join(__dirname,'../lineuparr.html'),'utf8');
-const a=html.indexOf('        <details id="automatic-exclusions">'),b=html.indexOf('        <div class="match-list"',a);
+const a=html.indexOf('        <details id="automatic-exclusions">'),b=html.indexOf('        </details>',a)+'        </details>'.length;
 const c=html.indexOf('    function renderAutomaticExclusions('),d=html.indexOf('    function renderMatchReview()',c);
 assert(a>=0&&b>a&&c>=0&&d>c);
 (async()=>{const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL?{channel:process.env.PLAYWRIGHT_CHANNEL}:{})});try{
@@ -23,7 +23,7 @@ assert(a>=0&&b>a&&c>=0&&d>c);
  assert.equal(await page.locator('input,button').count(),0,'No bulk confirmation burden');
  // Render a real saved confirmation Undo next to its conflict. Rendering
  // never writes; only the explicit user click invokes the existing action.
- const ds=html.indexOf('    function decisionRow('),de=html.indexOf('    async function decideMatch(',ds);
+ const ds=html.indexOf('    function appendMatchAttribution('),de=html.indexOf('    async function decideMatch(',ds);
  await page.addScriptTag({content:`window.pendingDecisions=new Set();window.undoCalls=[];window.clearDecision=key=>undoCalls.push(key);${html.slice(ds,de)}`});
  await page.evaluate(rows=>{matchReview.decisions=[{key:'saved-review',decision:'confirmed',channelId:'west',streamName:'US: HBO East',channelName:'HBOHDP',channelNumber:'901',streamCount:1,score:100}];rows[2].channelId='west';renderAutomaticExclusions({rows});},rows);
  assert.equal(await page.locator('#automatic-rows button').count(),1);

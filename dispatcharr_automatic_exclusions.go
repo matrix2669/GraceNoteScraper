@@ -21,19 +21,22 @@ const automaticMatchPolicy = "current-snapshot-identity-v2"
 var errAutomaticStale = errors.New("automatic matching inputs changed; reload the draft and refresh streams if required")
 
 type automaticMatchRow struct {
-	Key            string `json:"key"`
-	ChannelID      string `json:"channelId"`
-	ChannelNumber  string `json:"channelNumber"`
-	ChannelName    string `json:"channelName"`
-	StreamName     string `json:"streamName"`
-	AccountID      int64  `json:"accountId"`
-	Rule           string `json:"rule"`
-	Reason         string `json:"reason"`
-	PendingReview  bool   `json:"pendingReview,omitempty"`
-	Conflict       bool   `json:"conflict,omitempty"`
-	ManualDecision string `json:"manualDecision,omitempty"`
-	Exported       bool   `json:"exported"`
-	InventoryOnly  bool   `json:"inventoryOnly,omitempty"`
+	reviewIdentity
+	ChannelDisplayName string `json:"channelDisplayName,omitempty"`
+	ChannelCallSign    string `json:"channelCallSign,omitempty"`
+	Key                string `json:"key"`
+	ChannelID          string `json:"channelId"`
+	ChannelNumber      string `json:"channelNumber"`
+	ChannelName        string `json:"channelName"`
+	StreamName         string `json:"streamName"`
+	AccountID          int64  `json:"accountId"`
+	Rule               string `json:"rule"`
+	Reason             string `json:"reason"`
+	PendingReview      bool   `json:"pendingReview,omitempty"`
+	Conflict           bool   `json:"conflict,omitempty"`
+	ManualDecision     string `json:"manualDecision,omitempty"`
+	Exported           bool   `json:"exported"`
+	InventoryOnly      bool   `json:"inventoryOnly,omitempty"`
 }
 type automaticMatchView struct {
 	Status    string              `json:"status"`

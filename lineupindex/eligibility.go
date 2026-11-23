@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const ActiveEvidencePolicy = "station-evidence-eligibility-v1"
+const ActiveEvidencePolicy = "station-evidence-eligibility-v2"
 
 // EvidenceContext identifies the selected source, never a provider family or ZIP
 // alone. Historical observations remain in the retained index, not this view.
@@ -79,10 +79,10 @@ func rawStationIdentity(st *Station, value string) bool {
 func scopedFact(idx *Index, sid string, f StationFact, c EvidenceContext) bool {
 	// Legacy keys are observations, not a trustworthy row binding. Require an
 	// attributable original row and root, even in the selected lineup.
-	return usableFact(f) && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) && f.SourceRowID != "" && f.RootSourceStationID == sid && currentEvidenceScope(idx, f.RootSourceLineupKey, c) && officialOrigin(idx, f.SourceID, f.RootSourceLineupKey) && (f.EvidencePolicy == ProviderIdentityPolicy || strings.Contains(f.Method, ProviderSourceAlignmentV1) || strings.Contains(f.Method, "identity-policy-v2"))
+	return (f.RootSourceID == "" || f.RootSourceID == f.SourceID) && usableFact(f) && !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) && f.SourceRowID != "" && f.RootSourceStationID == sid && currentEvidenceScope(idx, f.RootSourceLineupKey, c) && officialOrigin(idx, f.SourceID, f.RootSourceLineupKey) && (f.EvidencePolicy == ProviderIdentityPolicy || strings.Contains(f.Method, ProviderSourceAlignmentV1) || strings.Contains(f.Method, "identity-policy-v2"))
 }
 func reusableDirectFact(idx *Index, sid string, f StationFact) bool {
-	if !usableFact(f) || strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) || f.SourceRowID == "" {
+	if !usableFact(f) || f.RootSourceID != "" && f.RootSourceID != f.SourceID || strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) || f.SourceRowID == "" {
 		return false
 	}
 	// A typed exact-ID source is station-bound and does not assert availability,
@@ -121,6 +121,9 @@ func (s *Service) EvidenceForLineup(c EvidenceContext) EvidenceView {
 			st.Names = append(st.Names, StationName{Kind: NameCallSign, Value: value, Normalized: normalizeName(value)})
 		}
 		for _, f := range original.Facts {
+			if rejectedFact(sid, f) != nil {
+				continue
+			}
 			proofIndex := s.index
 			proofIndex.Stations = map[string]*Station{sid: &st}
 			proofStation := *original
@@ -133,10 +136,10 @@ func (s *Service) EvidenceForLineup(c EvidenceContext) EvidenceView {
 		idx.Stations[sid] = &st
 	}
 	for _, r := range s.index.CategoryRelations {
-		if r.quarantineReason != "" {
+		if r.quarantineReason != "" || rejectedRelation(r) != nil {
 			continue
 		}
-		f := StationFact{Kind: FactCategory, SourceID: r.SourceID, SourceRowID: r.SourceRowID, SourceRevision: r.SourceRevision, StationBound: r.StationBound, RootSourceStationID: r.StationID, RootSourceLineupKey: r.SourceLineupKey, LineupKeys: r.LineupKeys, Method: strings.ReplaceAll(r.Method, "number-policy-provider-alias-v3", ""), EvidencePolicy: r.EvidencePolicy}
+		f := StationFact{Kind: FactCategory, SourceID: r.SourceID, SourceRowID: r.SourceRowID, SourceRevision: r.SourceRevision, StationBound: r.StationBound, RootSourceID: assignmentForRelation(r).SourceID, RootSourceStationID: assignmentForRelation(r).RootStationID, RootSourceLineupKey: assignmentForRelation(r).RootLineupKey, LineupKeys: r.LineupKeys, Method: strings.ReplaceAll(r.Method, "number-policy-provider-alias-v3", ""), EvidencePolicy: r.EvidencePolicy}
 		proofIndex := s.index
 		proofIndex.Stations = map[string]*Station{}
 		if original := s.index.Stations[r.StationID]; original != nil {
@@ -171,7 +174,7 @@ func (s *Service) EvidenceForLineup(c EvidenceContext) EvidenceView {
 
 func reusablePairFact(sid string, f StationFact, current map[string][]string) bool {
 	p := f.PairProof
-	if !usableFact(f) || f.Kind != FactAlias || p == nil || !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) || f.EvidencePolicy != ProviderIdentityPolicy || p.TargetStationID != sid || p.PeerStationID == "" || p.PeerStationID == sid || p.PeerStationID != f.PeerStationID || p.PeerCallSign != f.Value || len(p.WindowStarts) < 2 {
+	if !usableFact(f) || f.RootSourceID != "" && f.RootSourceID != f.SourceID || f.SourceRowID != "" || f.RootSourceStationID != "" || f.RootSourceLineupKey != "" || f.Kind != FactAlias || p == nil || !strings.HasPrefix(f.SourceID, weekdayEPGSourcePrefix) || f.EvidencePolicy != ProviderIdentityPolicy || p.TargetStationID != sid || p.PeerStationID == "" || p.PeerStationID == sid || p.PeerStationID != f.PeerStationID || p.PeerCallSign != f.Value || len(p.WindowStarts) < 2 {
 		return false
 	}
 	matches := func(values, proof []string) bool {

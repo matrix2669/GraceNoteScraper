@@ -1524,6 +1524,8 @@ func main() {
 	lineuparrHandlers.commitDraft = dispatcharrHandlers.commitAutomaticDraft
 	lineuparrHandlers.derivedRevision = dispatcharrHandlers.derivedRevision
 	lineuparrHandlers.afterBuilderReset = dispatcharrHandlers.clearCandidateCache
+	dispatcharrHandlers.startImpactCoordinator(ctx)
+	defer dispatcharrHandlers.stopImpactCoordinator()
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1588,7 +1590,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: dispatcharrHandlers.observeReviewMutations(mux),
 	}
 
 	// Start server in background

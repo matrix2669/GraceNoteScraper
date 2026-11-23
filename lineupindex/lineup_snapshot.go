@@ -68,19 +68,22 @@ type LineupSnapshotFact struct {
 }
 
 type LineupSnapshotRelation struct {
-	AliasValue      string   `json:"aliasValue"`
-	AliasNormalized string   `json:"aliasNormalized"`
-	Category        string   `json:"category"`
-	RawCategory     string   `json:"rawCategory,omitempty"`
-	SourceID        string   `json:"sourceId"`
-	SourceLabel     string   `json:"sourceLabel"`
-	SourceURL       string   `json:"sourceUrl,omitempty"`
-	SourceRevision  string   `json:"sourceRevision,omitempty"`
-	SourceRowID     string   `json:"sourceRowId"`
-	Method          string   `json:"method"`
-	LineupKeys      []string `json:"lineupKeys"`
-	SourceLineupKey string   `json:"sourceLineupKey,omitempty"`
-	StationBound    bool     `json:"stationBound,omitempty"`
+	RootSourceID        string   `json:"rootSourceId,omitempty"`
+	RootSourceLineupKey string   `json:"rootSourceLineupKey,omitempty"`
+	RootSourceStationID string   `json:"rootSourceStationId,omitempty"`
+	AliasValue          string   `json:"aliasValue"`
+	AliasNormalized     string   `json:"aliasNormalized"`
+	Category            string   `json:"category"`
+	RawCategory         string   `json:"rawCategory,omitempty"`
+	SourceID            string   `json:"sourceId"`
+	SourceLabel         string   `json:"sourceLabel"`
+	SourceURL           string   `json:"sourceUrl,omitempty"`
+	SourceRevision      string   `json:"sourceRevision,omitempty"`
+	SourceRowID         string   `json:"sourceRowId"`
+	Method              string   `json:"method"`
+	LineupKeys          []string `json:"lineupKeys"`
+	SourceLineupKey     string   `json:"sourceLineupKey,omitempty"`
+	StationBound        bool     `json:"stationBound,omitempty"`
 }
 
 func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridResponse, evidence ProviderEvidenceResult) error {
@@ -153,6 +156,7 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 		}
 		for _, relation := range relationsByStation[stationID] {
 			item.CategoryRelations = append(item.CategoryRelations, LineupSnapshotRelation{
+				RootSourceID: relation.RootSourceID, RootSourceLineupKey: relation.RootSourceLineupKey, RootSourceStationID: relation.RootSourceStationID,
 				AliasValue: strings.TrimSpace(relation.AliasValue), AliasNormalized: strings.TrimSpace(relation.AliasNormalized),
 				Category: strings.TrimSpace(relation.Category), RawCategory: strings.TrimSpace(relation.RawCategory),
 				SourceID: strings.TrimSpace(relation.SourceID), SourceLabel: strings.TrimSpace(relation.SourceLabel), SourceURL: strings.TrimSpace(relation.SourceURL),

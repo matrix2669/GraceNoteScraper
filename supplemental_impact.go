@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"sort"
 	"time"
 
+	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
 	builder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	matcher "github.com/daniel-widrick/GraceNoteScraper/lineuparr_matcher"
@@ -31,6 +33,8 @@ type supplementalImpactRow struct {
 	SameNameConflicts  []string                     `json:"sameNameConflicts"`
 }
 type supplementalImpactResponse struct {
+	FindingsStale    bool                    `json:"findingsStale,omitempty"`
+	Unresolved       bool                    `json:"unresolved"`
 	ID               string                  `json:"id"`
 	Fingerprint      string                  `json:"fingerprint"`
 	JSONHash         string                  `json:"jsonHash"`
@@ -49,10 +53,12 @@ type supplementalImpactJob struct {
 	inputs                                 reviewInputsRevision
 	snapshot, inventory, state, connection string
 	cancel                                 context.CancelFunc
+	done                                   chan struct{}
+	reset                                  uint64
 }
 
 func (s *dispatcharrServer) impactCurrent(job *supplementalImpactJob) bool {
-	if job == nil || job.inputs != s.lineup.reviewInputsRevision() || job.state != s.lineup.builder.ReviewStateToken() || job.inventory != s.inventoryObservationToken() {
+	if job == nil || job.reset != s.lineup.builder.ResetGeneration() || job.inputs != s.lineup.reviewInputsRevision() || job.state != s.lineup.builder.ReviewStateToken() || job.inventory != s.inventoryObservationToken() {
 		return false
 	}
 	conn, connected := s.config.Get()
@@ -67,17 +73,27 @@ func (s *dispatcharrServer) impactCurrent(job *supplementalImpactJob) bool {
 func (s *dispatcharrServer) impactResponse() supplementalImpactResponse {
 	s.impactMu.Lock()
 	job := s.impact
+	lifecycle := s.impactLifecycle
 	var response supplementalImpactResponse
 	if job != nil {
 		response = job.response
 	}
-	s.impactMu.Unlock()
-	if job == nil {
-		return supplementalImpactResponse{State: "unchecked", Profile: dispatcharr.ImpactProfile, Message: "No supplemental impact has been checked in this process. Generation remains available."}
+	if (lifecycle != "" || response.State == "running") && s.impactCompleted != nil && job != s.impactCompleted {
+		response.Rows = append([]supplementalImpactRow(nil), s.impactCompleted.response.Rows...)
+		response.FindingsStale = true
 	}
-	if !s.impactCurrent(job) {
+	s.impactMu.Unlock()
+	if lifecycle != "" {
+		response.State = lifecycle
+		response.Message = "Validating saved choices in the background. You can continue reviewing or generate the lineup."
+		return response
+	}
+	if job == nil {
+		return supplementalImpactResponse{State: "idle", Profile: dispatcharr.ImpactProfile, Message: "No saved name effects require validation. Generation remains available."}
+	}
+	if response.State != "idle" && response.State != "refresh-required" && !(response.State == "failed" && response.ID == "") && !s.impactCurrent(job) {
 		response.State = "stale"
-		response.Message = "Inputs or decisions changed. This prior impact is stale; explicitly check again after your batch. Future inventory is not protected."
+		response.Message = "Inputs or decisions changed. This prior impact is stale; validation requires current inputs. Reload review to recover a failed check, or Refresh streams if the inventory changed. Future inventory is not protected."
 	}
 	return response
 }
@@ -119,21 +135,62 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 	if !requireJSONContentType(w, r) {
 		return
 	}
-	inputs := s.lineup.reviewInputsRevision()
-	state := s.lineup.builder.ReviewStateToken()
-	draft, config, _, ok := s.lineup.buildDraft(w, r)
-	if !ok {
+	s.impactMu.Lock()
+	automatic := s.impactSignal != nil
+	s.impactMu.Unlock()
+	if automatic {
+		s.recoverImpact()
+		writeLineuparrJSON(w, 202, s.impactResponse())
 		return
 	}
+	s.startSupplementalImpact(w, r, false)
+}
+
+// Both automatic validation and explicit API recovery share this exact consumer
+// preparation. Ordinary reads never call it.
+func (s *dispatcharrServer) startSupplementalImpact(w http.ResponseWriter, r *http.Request, automatic bool) {
+	s.impactLaunchMu.Lock()
+	defer s.impactLaunchMu.Unlock()
+	s.impactMu.Lock()
+	refreshing := s.impactRefreshes > 0
+	s.impactMu.Unlock()
+	if refreshing {
+		http.Error(w, "Primary refresh has priority", 409)
+		return
+	}
+	inputs := s.lineup.reviewInputsRevision()
+	state := s.lineup.builder.ReviewStateToken()
+	config, configured, _ := s.lineup.store.Get()
 	conn, connected := s.config.Get()
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
 	s.reviewMu.RUnlock()
-	channels, _ := dispatcharrSnapshotChannels(draft)
-	if !supplementalEvidenceCurrent(snapshot, inputs) || !connected || snapshot.warning != "" || snapshot.fetchedAt.IsZero() || snapshot.dispatcharrFingerprint != conn.Fingerprint() || snapshot.lineupFingerprint != config.Fingerprint() || snapshot.guide != s.lineup.state.GetForSource(config.Fingerprint()) || !dispatcharrInputsSubset(channels, snapshot.channels) || s.inventoryDrift(snapshot) {
-		http.Error(w, "Refresh streams before checking supplemental export impact against a current successful inventory", 409)
+	var draft *builder.Draft
+	var ok bool
+	if automatic {
+		if configured && len(s.lineup.builder.SupplementalDecisions(config.Fingerprint())) == 0 {
+			writeLineuparrJSON(w, 200, supplementalImpactResponse{State: "idle", Rows: []supplementalImpactRow{}, Message: "No saved name effects require validation."})
+			return
+		}
+		// Reject missing/stale inventory before any draft work. Automatic validation
+		// never enters the ordinary builder's optional-source acquisition path.
+		if !configured || !connected || !s.automaticImpactSnapshotCurrent(snapshot, inputs, config, conn) || snapshot.reviewSources == nil || snapshot.reviewInputs == nil {
+			http.Error(w, "Refresh streams before validating saved names against current captured inputs", 409)
+			return
+		}
+		draft, ok = s.buildCapturedImpactDraft(w, r, snapshot, config, inputs, state)
+	} else {
+		draft, config, _, ok = s.lineup.buildDraft(w, r)
+	}
+	if !ok {
 		return
 	}
+	channels, _ := dispatcharrSnapshotChannels(draft)
+	if !connected || !s.automaticImpactSnapshotCurrent(snapshot, inputs, config, conn) || !dispatcharrInputsSubset(channels, snapshot.channels) {
+		http.Error(w, "Refresh streams before validating saved names against a current successful inventory", 409)
+		return
+	}
+
 	// Actual JSON serialization is the consumer boundary. Remove only additions
 	// attributed to this origin for the protected baseline; keep prior primary data.
 	bytes, _ := json.Marshal(draft)
@@ -157,8 +214,12 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 		c.Aliases = remove(c.Aliases, c.SupplementalAliases)
 		c.ExcludedAliases = remove(c.ExcludedAliases, c.SupplementalExcludedAliases)
 	}
-	proposed, _ := json.Marshal(builder.ExportFromDraft(draft))
-	before, _ := json.Marshal(builder.ExportFromDraft(&baseline))
+	proposedExport, beforeExport := builder.ExportFromDraft(draft), builder.ExportFromDraft(&baseline)
+	// Capture serialization date once, outside the key's scheduling identity.
+	proposedExport.Date = snapshot.fetchedAt.UTC().Format("2006-01-02")
+	beforeExport.Date = proposedExport.Date
+	proposed, _ := json.Marshal(proposedExport)
+	before, _ := json.Marshal(beforeExport)
 	request := dispatcharr.ImpactRequest{Country: draft.CountryCode, Baseline: string(before), Proposed: string(proposed)}
 	missingGroups := false
 	for _, stream := range snapshot.identityStreams {
@@ -167,8 +228,8 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 			missingGroups = true
 		}
 	}
-	job := &supplementalImpactJob{inputs: inputs, snapshot: snapshotIdentity(snapshot), inventory: s.inventoryObservationToken(), state: state, connection: conn.Fingerprint()}
-	key := supplementalHash([]any{request, job.snapshot, job.inventory, state, configurationToken(config), conn.Fingerprint(), inputs.index, inputs.tmdb, inputs.choices, fmt.Sprintf("%p", inputs.guide), matcher.Revision, dispatcharr.ImpactProfile, dispatcharr.SupplementalRevision})
+	job := &supplementalImpactJob{inputs: inputs, snapshot: snapshotIdentity(snapshot), inventory: s.inventoryObservationToken(), state: state, connection: conn.Fingerprint(), reset: s.lineup.builder.ResetGeneration(), done: make(chan struct{})}
+	key := supplementalHash([]any{request, job.snapshot, job.inventory, state, configurationToken(config), conn.Fingerprint(), inputs.policy, inputs.index, inputs.tmdb, inputs.choices, fmt.Sprintf("%p", inputs.guide), matcher.Revision, dispatcharr.ImpactProfile, dispatcharr.SupplementalRevision})
 	job.response = supplementalImpactResponse{ID: rand.Text(), Fingerprint: key, JSONHash: supplementalHash(json.RawMessage(proposed)), InventoryHash: snapshot.inventoryDigest, ConsumerRevision: matcher.Revision, Profile: dispatcharr.ImpactProfile, State: "running", Rows: []supplementalImpactRow{}, Message: "Checking prospective JSON against the same immutable successful inventory. Ordinary choices remain available."}
 	if !s.impactCurrent(job) {
 		http.Error(w, "Review changed while preparing impact; retry after your batch", 409)
@@ -181,10 +242,31 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 		writeLineuparrJSON(w, 200, response)
 		return
 	}
-	if s.impact != nil && s.impact.response.State == "running" {
-		s.impact.cancel()
+	previous := s.impact
+	if previous != nil && previous.response.State == "running" {
+		previous.cancel()
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	parent := s.impactContext
+	if parent == nil {
+		parent = context.Background()
+	}
+	s.impactMu.Unlock()
+	// A replacement may not overlap its predecessor's consumer process.
+	if previous != nil && previous.done != nil {
+		<-previous.done
+	}
+	if !s.impactCurrent(job) || parent.Err() != nil {
+		http.Error(w, "Review changed while replacing validation", 409)
+		return
+	}
+	ctx, cancel := context.WithTimeout(parent, 5*time.Minute)
+	s.impactMu.Lock()
+	if automatic && s.impactRefreshes > 0 {
+		s.impactMu.Unlock()
+		cancel()
+		http.Error(w, "Primary refresh has priority", 409)
+		return
+	}
 	job.cancel = cancel
 	initialResponse := job.response
 	s.impact = job
@@ -196,7 +278,26 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 		run = dispatcharr.CheckSupplementalImpact
 	}
 	go func() {
+		defer close(job.done)
 		defer cancel()
+		// Token-only observation cancels invalidated work even for non-HTTP guide/
+		// evidence changes. No draft construction or Python runs in this watcher.
+		watcherCtx := ctx
+		go func() {
+			ticker := time.NewTicker(100 * time.Millisecond)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-watcherCtx.Done():
+					return
+				case <-ticker.C:
+					if !s.impactCurrent(job) {
+						cancel()
+						return
+					}
+				}
+			}
+		}()
 		ctx = dispatcharr.WithMatchProgress(ctx, func(done, total int) {
 			s.impactMu.Lock()
 			defer s.impactMu.Unlock()
@@ -211,34 +312,95 @@ func (s *dispatcharrServer) handleSupplementalImpact(w http.ResponseWriter, r *h
 		if err == nil {
 			rows = compareSupplementalImpact(draft, snapshot.identityStreams, decisions, primary, result, conn.Fingerprint())
 		}
+		publish := func() error {
+			s.impactMu.Lock()
+			defer s.impactMu.Unlock()
+			if s.impact != job || job.response.State != "running" {
+				return nil
+			}
+			if ctx.Err() != nil {
+				return builder.ErrStaleReview
+			}
+			job.response.State = "complete"
+			job.response.Rows = rows
+			for _, row := range rows {
+				if len(row.Extra) > 0 || len(row.Missed) > 0 || len(row.ProtectedConflicts) > 0 || len(row.SameNameConflicts) > 0 {
+					job.response.Unresolved = true
+				}
+			}
+			s.impactCompleted = job
+			job.response.CheckedAt = time.Now().UTC()
+			job.response.Message = "Validated this captured inventory and prospective JSON. Extra names require Confirm/Deny. Equal raw names share account outcomes; future inventory and custom consumer settings remain outside this check."
+			if missingGroups {
+				job.response.Message += " Some captured streams lack group-country metadata, limiting country-filter coverage."
+			}
+			return nil
+		}
+		published := false
+		if err == nil && current {
+			// Same configuration → evidence/guide → builder → review/inventory →
+			// impact ordering as durable saves. No stale callback can publish a
+			// successful result between its currentness check and a newer save.
+			published = s.saveWhileCurrent(conn, config, func() error {
+				return s.commitAdmittedDecision(reviewAdmission{inputs: job.inputs}, func() error {
+					return s.lineup.builder.WhileReviewState(job.state, func() error {
+						return s.whileAdmissionSnapshot(reviewAdmission{snapshot: job.snapshot, inventory: job.inventory}, publish)
+					})
+				})
+			}, httptest.NewRecorder())
+		}
+		if published {
+			return
+		}
 		s.impactMu.Lock()
 		defer s.impactMu.Unlock()
 		if s.impact != job || job.response.State != "running" {
 			return
 		}
-		if !current {
-			job.response.State = "stale"
-			job.response.Message = "Inputs changed during the check; result discarded. Check again after your batch."
-			return
-		}
-		if err != nil {
+		job.response.State = "stale"
+		job.response.Message = "Inputs changed during validation; result discarded. Reload review to recover, or Refresh streams when the inventory changed."
+		if current && err != nil {
 			job.response.State = "failed"
 			if ctx.Err() != nil {
 				job.response.State = "cancelled"
 			}
-			job.response.Message = "Impact did not complete: " + err.Error() + ". No decisions or export changed; retry explicitly."
-			return
+			job.response.Message = "Validation did not complete: " + err.Error() + ". Reload review to retry. Saved choices and generation remain available."
 		}
-		job.response.State = "complete"
-		job.response.Rows = rows
-		job.response.CheckedAt = time.Now().UTC()
-		job.response.Message = "Checked only this captured inventory and prospective JSON. Review selected, extra, missed and protected conflicts below. Reload review to Confirm or Deny newly exposed extras; every saved choice makes this impact stale. Full raw aliases remain fuzzy; equal raw names cannot split account outcomes. New future names can leak through and require another check. Profile: pinned Exact95, built-in/country/embedded aliases, specific numbering, quality filtering off; custom consumer settings can differ."
-		if missingGroups {
-			job.response.Message += " Some captured streams lack group-country metadata; country filtering may differ from the installed consumer. This is a profile-limited check, not a complete live-consumer guarantee."
-		}
+
 	}()
 	writeLineuparrJSON(w, 202, initialResponse)
 }
+func (s *dispatcharrServer) automaticImpactSnapshotCurrent(snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, config appconfig.Config, conn dispatcharr.Config) bool {
+	return inputs.config == config && supplementalEvidenceCurrent(snapshot, inputs) && snapshot.warning == "" && !snapshot.fetchedAt.IsZero() && snapshot.dispatcharrFingerprint == conn.Fingerprint() && snapshot.lineupFingerprint == config.Fingerprint() && snapshot.guide == s.lineup.state.GetForSource(config.Fingerprint()) && !s.inventoryDrift(snapshot)
+}
+
+func (s *dispatcharrServer) buildCapturedImpactDraft(w http.ResponseWriter, r *http.Request, snapshot dispatcharrMatchSnapshot, config appconfig.Config, inputs reviewInputsRevision, state string) (*builder.Draft, bool) {
+	s.lineup.draftMu.Lock()
+	defer s.lineup.draftMu.Unlock()
+	draft, err := s.lineup.builder.BuildCaptured(r.Context(), builder.LineupContext{SourceFingerprint: config.Fingerprint(), Country: config.Gracenote.Country, PostalCode: config.Gracenote.PostalCode, ProviderName: config.Gracenote.ProviderName, LineupID: config.Gracenote.LineupID}, copyReviewInputs(snapshot.reviewInputs), snapshot.reviewSources)
+	if err != nil {
+		http.Error(w, "Unable to prepare captured review: "+err.Error(), 500)
+		return nil, false
+	}
+	if inputs != s.lineup.reviewInputsRevision() || state != s.lineup.builder.ReviewStateToken() {
+		http.Error(w, "Review changed while preparing captured inputs", 409)
+		return nil, false
+	}
+	draft.SourceFingerprint = config.Fingerprint()
+	draft.ResetGeneration = s.lineup.builder.ResetGeneration()
+	draft.PublicationGeneration = s.lineup.builder.PublicationGeneration()
+	if s.lineup.automaticProjection != nil {
+		s.lineup.automaticProjection(draft, config)
+		if inputs != s.lineup.reviewInputsRevision() || state != s.lineup.builder.ReviewStateToken() {
+			http.Error(w, "Review changed while projecting captured inputs", 409)
+			return nil, false
+		}
+		draft.AutomaticLease.StateToken = state
+		draft.AutomaticLease.GuideToken = fmt.Sprintf("%p", inputs.guide)
+	}
+	return draft, true
+}
+
 func compareSupplementalImpact(draft *builder.Draft, inventory []dispatcharr.IdentityStream, decisions map[string]builder.SupplementalDecision, primary map[string]builder.MatchDecision, result dispatcharr.ImpactResult, connection string) []supplementalImpactRow {
 	// The export's stable per-category ordering retains target IDs internally.
 	// Names and serialized numbers are not unique identifiers (005.10 and 5.1

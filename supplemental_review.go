@@ -16,6 +16,7 @@ import (
 )
 
 type supplementalGroup struct {
+	reviewIdentity
 	ChannelDisplayName   string                         `json:"channelDisplayName,omitempty"`
 	ChannelCallSign      string                         `json:"channelCallSign,omitempty"`
 	RetrievalDescriptors []string                       `json:"retrievalDescriptors,omitempty"`
@@ -128,7 +129,7 @@ func supplementalGroups(rows []builder.SupplementalDecision, history bool) []sup
 			byKey[key] = g
 		}
 		g.StreamCount++
-		g.StreamNames = appendUniqueReviewString(g.StreamNames, d.StreamName)
+		g.StreamNames = appendExactReviewName(g.StreamNames, d.StreamName)
 		g.M3UAccountIDs = appendUniqueReviewInt64(g.M3UAccountIDs, d.M3UAccountID)
 		g.Reasons = appendUniqueReviewString(g.Reasons, d.RetrievalReason)
 		g.Constituents = append(g.Constituents, d)
@@ -202,7 +203,7 @@ func filterSupplementalAutomatic(candidates []dispatcharr.SupplementalCandidate,
 }
 
 func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int) (supplementalReview, []supplementalGroup) {
-	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, then explicitly check export impact. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
+	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, validation runs automatically in the background. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
 	stored := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
 	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
 	history := []builder.SupplementalDecision{}
@@ -370,6 +371,7 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 			}
 		}
 		s.reviewMu.Unlock()
+		s.signalImpact()
 		writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 		return
 	}
@@ -430,6 +432,7 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 	}, w) {
 		return
 	}
+	s.signalImpact()
 	writeLineuparrJSON(w, 200, map[string]bool{"saved": true})
 }
 
@@ -437,14 +440,17 @@ func (s *dispatcharrServer) handleSupplementalDecision(w http.ResponseWriter, r 
 // in a batch, but a new catalog/guide/source generation requires another refresh.
 func supplementalEvidenceCurrent(snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision) bool {
 	old := snapshot.supplementalInputs
-	return snapshot.supplementalBound && old.config == inputs.config && old.guide == inputs.guide && old.index == inputs.index && old.tmdb == inputs.tmdb
+	return snapshot.supplementalBound && old.policy == inputs.policy && old.config == inputs.config && old.guide == inputs.guide && old.index == inputs.index && old.tmdb == inputs.tmdb
 }
 
 // Impact extras are proposals, never denials. Keep them available while the user
 // reviews that batch even after its impact becomes stale from saved choices.
 func (s *dispatcharrServer) impactExtraCandidates(draft *builder.Draft, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision) []dispatcharr.SupplementalCandidate {
 	s.impactMu.Lock()
-	job := s.impact
+	job := s.impactCompleted
+	if job == nil {
+		job = s.impact
+	}
 	if job == nil || job.response.State != "complete" || job.snapshot != snapshotIdentity(snapshot) || job.connection != snapshot.dispatcharrFingerprint || job.inputs != inputs {
 		s.impactMu.Unlock()
 		return nil
@@ -467,7 +473,7 @@ func (s *dispatcharrServer) impactExtraCandidates(draft *builder.Draft, snapshot
 		for _, extra := range row.Extra {
 			for _, stream := range snapshot.identityStreams {
 				if stream.ID == extra.StreamID && stream.AccountID == extra.AccountID && stream.Name == extra.Name {
-					out = append(out, dispatcharr.SupplementalCandidate{Target: dispatcharr.SupplementalTarget{ID: c.ID, StationID: c.StationID, PlacementID: c.PlacementID, Number: c.Number, Name: c.Name, CallSign: c.CallSign}, Stream: stream, Rank: 4, Reason: "Extra result from explicit prior Exact95 impact; review its literal name before choosing", Evidence: "explicit-impact:" + fingerprint})
+					out = append(out, dispatcharr.SupplementalCandidate{Target: dispatcharr.SupplementalTarget{ID: c.ID, StationID: c.StationID, PlacementID: c.PlacementID, Number: c.Number, Name: c.Name, CallSign: c.CallSign}, Stream: stream, Rank: 4, Reason: "Extra result from prior Exact95 validation; review its literal name before choosing", Evidence: "consumer-impact:" + fingerprint})
 				}
 			}
 		}
