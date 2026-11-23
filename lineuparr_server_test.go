@@ -100,6 +100,22 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 			t.Fatalf("page is missing editor behavior %q", expected)
 		}
 	}
+	for _, expected := range []string{`id="match-alternative-dialog"`, `const hasMore = matchReview.candidateCount > candidates.length`, `Current review page is complete. Load more to continue.`, `Load ${amount} more`, `openMatchAlternatives(candidate)`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("page is missing stable review control %q", expected)
+		}
+	}
+	for _, removed := range []string{"appendTVGOptions(", "match-tvg-option", "provider-reported TVG ID will be added"} {
+		if strings.Contains(body, removed) {
+			t.Fatalf("page still exposes removed TVG-ID selector %q", removed)
+		}
+	}
+	if got := strings.Count(body, "tvgIds:[]"); got != 2 {
+		t.Fatalf("browser decisions do not explicitly suppress provider TVG IDs: found %d requests", got)
+	}
+	if strings.Contains(body, "scheduleMatchReconcile") {
+		t.Fatal("page still schedules automatic match-review reloads")
+	}
 
 	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
 	recorder = httptest.NewRecorder()
@@ -497,4 +513,43 @@ func TestLineuparrBulkChangesRequireJSON(t *testing.T) {
 	if recorder.Code != http.StatusUnsupportedMediaType {
 		t.Fatalf("restore without JSON response = %d", recorder.Code)
 	}
+}
+
+func TestLineuparrAliasCanBeRemovedAndRestored(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias", strings.NewReader(`{"channelId":"1001","alias":"TWO","suppressed":true}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleAlias(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("remove alias response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+	request = httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	recorder = httptest.NewRecorder()
+	server.handleDraft(recorder, request)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(recorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	channel := draft.Channels[0]
+	if containsString(channel.Aliases, "TWO") || len(channel.SuppressedAliasEvidence) != 1 {
+		t.Fatalf("suppressed alias draft = %+v", channel)
+	}
+
+	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias", strings.NewReader(`{"channelId":"1001","alias":"TWO","suppressed":false}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	server.handleAlias(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("restore alias response = %d body %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func containsString(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

@@ -974,3 +974,61 @@ func writeLineuparrJSON(w http.ResponseWriter, status int, value any) {
 	encoder.SetEscapeHTML(true)
 	_ = encoder.Encode(value)
 }
+
+func (s *lineuparrServer) handleAlias(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Allow", "POST")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	var body struct {
+		ChannelID  string `json:"channelId"`
+		Alias      string `json:"alias"`
+		Suppressed bool   `json:"suppressed"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
+		return
+	}
+	body.ChannelID = strings.TrimSpace(body.ChannelID)
+	body.Alias = strings.TrimSpace(body.Alias)
+	draft, config, _, ok := s.buildDraft(w, r)
+	if !ok {
+		return
+	}
+	known := false
+	for _, channel := range draft.Channels {
+		if channel.ID != body.ChannelID {
+			continue
+		}
+		evidence := channel.AliasEvidence
+		if !body.Suppressed {
+			evidence = channel.SuppressedAliasEvidence
+		}
+		for _, item := range evidence {
+			if strings.EqualFold(item.Value, body.Alias) {
+				known = true
+				break
+			}
+		}
+		break
+	}
+	if !known {
+		http.Error(w, "alias does not belong to the active channel state", http.StatusNotFound)
+		return
+	}
+	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
+		return s.builder.SetAliasSuppressed(config.Fingerprint(), body.ChannelID, body.Alias, body.Suppressed)
+	})
+	if err != nil {
+		http.Error(w, "Unable to save alias choice: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if !current {
+		http.Error(w, "The active provider changed; reload the builder before saving", http.StatusConflict)
+		return
+	}
+	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
+}

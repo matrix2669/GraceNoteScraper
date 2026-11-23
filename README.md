@@ -12,6 +12,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - On-demand alias and category discovery across every provider and Gracenote device variant in the configured ZIP, plus resumable ranked-market coverage
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
 - No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
+- Optional Dispatcharr M3U matching with explicit confirm/deny review and reversible alias cleanup
 - Guide data cached on disk — fast restarts without re-scraping
 - Automatic XMLTV file rotation with 7-day retention
 - Optional Jellyfin Live TV integration with in-browser streaming
@@ -108,6 +109,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
 | `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
 | `NOMINATIM_URL` | OpenStreetMap/Nominatim search service. Set to a hosted/self-managed endpoint, or `off` to disable provider-address search. | `https://nominatim.openstreetmap.org` |
+| `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
 | `GN_COUNTRY` | Country code | `USA` |
@@ -166,6 +168,8 @@ Use a scraper hostname and port that the Lineuparr host can reach. A compatible 
 
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
 
+Generated files are designed for Lineuparr's **Exact** match sensitivity (95%). Set the Lineuparr plugin to **Exact** before previewing or applying stream matches. The generated file intentionally relies on that threshold to keep reviewed M3U evidence compact.
+
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`. Runtime evidence is primary; configured optional sources may add attributable aliases and EPG identifiers. The builder applies only unique identity matches from:
 
 Both detailed and compact channel rows lead with the callsign and append the best distinct name from attributable affiliate, official-provider, or catalog evidence; punctuation-only, identifier, and channel-number duplicates are suppressed. The channel list opens with only included positions visible and can be sorted by channel number or name; excluded positions remain available through the visibility filter. Clicking the name opens the next 24 current or upcoming programmes from the selected guide to help identify an unfamiliar channel. **Batch categorize** can select every currently visible filtered row and apply one category atomically.
@@ -188,6 +192,22 @@ Provider-source failures do not interrupt guide generation, invalidate successfu
 The enrichment-source panel consolidates registration, capture, and derived-category reports for the same provider into one row. Direct PDF sources open the captured lineup document; other source names and every available matched count open a searchable evidence view of the exact selected-lineup channels, identities, categories, aliases, IDs, and methods contributed by that source. Alias discovery also shows the local date and time of the last configured-ZIP provider refresh.
 
 Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. The selected structured address is passed in memory only to the active provider's adapter and is not persisted in scraper configuration, Lineuparr state, source caches, logs, snapshots, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
+
+### Dispatcharr match review
+
+The optional Dispatcharr panel compares the active lineup with every non-stale stream from active M3U accounts. Choose either a normal Dispatcharr username/password or an API key; only the fields for the selected method are shown and enabled. Password authentication uses Dispatcharr's JWT API and keeps access and refresh tokens in memory only. The saved connection settings live in the separate `DISPATCHARR_CONFIG_PATH` file, created with owner-only (`0600`) permissions on POSIX systems. The default file is excluded from Git and Docker build context. Use HTTPS unless both applications communicate only over a trusted private network.
+
+Matching prioritizes exact EPG IDs, direct channel names, and attributable aliases before offering bounded fuzzy-name candidates. Delimited `US`, `GO`, `Prime`, `Tubi`, and `ROKU` provider prefixes, common HD/UHD markers, punctuation, and spacing are normalized. A leading HDHomeRun-style number is removed only when it exactly equals Dispatcharr's channel-number metadata, so event years and unrelated numeric names remain intact. A score is never accepted automatically:
+
+- **Confirm** adds one representative reviewed stream-name alias only when the independent name score is below 95%. Names at or above 95% are already eligible under Lineuparr's required **Exact** sensitivity and are not duplicated in the JSON. Provider-reported `tvg_id` values remain internal matching evidence and are not added by the browser.
+- **Deny** records that stream/channel pairing as rejected. When the independent name score is 95% or higher, one representative name is also exported in that channel's `excluded_aliases` list so a compatible Lineuparr plugin rejects the reviewed false positive before positive alias or fuzzy matching. Lower-scoring denials are not exported because Exact mode would not accept them. When a fuzzy proposal had other qualifying targets, the already-scored alternatives open immediately for separate confirmation or denial.
+- **Undo** reverses either decision. Confirmed aliases can also be removed from or restored to the export with the same alias controls used for other sources.
+
+Confirm and deny actions remove their row immediately without locking or re-sorting the remaining review page. The initial page contains 100 groups; **Load more** explicitly requests the next 100. Decisions retain the safe normalized stream identity as well as the active lineup, stream fingerprint, and target channel, so equivalent account variants, authentication changes, and container restarts do not restore reviewed rows. The confirmed counter opens reviewed matches.
+
+The threshold decision uses an independent name score rather than the overall proposal score. An exact provider TVG/EPG ID can make the overall proposal 100% even when the names are unrelated; because Lineuparr does not consume lineup JSON `epg_ids`, that confirmation still exports a name alias when its name score is below 95%. This prevents non-name evidence from being mistaken for a match that Lineuparr can reproduce.
+
+Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/group IDs, and provider channel number—is retained. Dispatcharr stream URLs, logos, tokens, and statistics are discarded as the API response is decoded and are never returned to the browser, saved in Lineuparr state, or exported. Stream lists are cached in memory for five minutes; if a refresh fails, a visible warning identifies the older list being used.
 
 ## HTTP Endpoints
 
@@ -212,6 +232,10 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
 | `GET, HEAD /lineuparr/exports/{filename}` | Read the last explicitly exported JSON by its descriptive download filename, without rebuilding; `?download=1` requests an attachment |
+| `POST /api/lineuparr/alias` | Remove or restore one attributable alias for the active lineup |
+| `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |
+| `GET /api/lineuparr/dispatcharr/review` | Fetch the current safe M3U match-review queue; `limit` controls the visible page and `refresh=true` refreshes streams |
+| `POST, DELETE /api/lineuparr/dispatcharr/decision` | Confirm/deny a current candidate, or undo one reviewed decision |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |
@@ -232,6 +256,7 @@ The server includes a built-in retro-styled TV guide web UI at the root URL. If 
 ```
 appconfig/       Persisted non-secret provider configuration
 lineuparr/        Source-aware Lineuparr draft, state, duplicate review, and export
+dispatcharr/      Private connection store, safe stream client, and manual-review matcher
 main.go          Entry point, HTTP server, scraper, image proxy
 guide/           GraceNote data types and XMLTV conversion
 web/             HTTP client for GraceNote API

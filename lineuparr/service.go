@@ -15,7 +15,10 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
-const uncategorized = "Uncategorized"
+const (
+	uncategorized              = "Uncategorized"
+	lineuparrExactMatchMinimum = 95
+)
 
 type Service struct {
 	store   *StateStore
@@ -43,6 +46,7 @@ type channelWork struct {
 	draft            DraftChannel
 	input            InputChannel
 	aliases          map[string]*aliasWork
+	excludedAliases  map[string]string
 	epgIDs           map[string]*aliasWork
 	matchedSourceSet map[string]bool
 }
@@ -55,6 +59,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	defer s.buildMu.Unlock()
 
 	overrides := s.store.Snapshot(lineup.SourceFingerprint)
+	matchDecisions := s.store.MatchDecisionSnapshot(lineup.SourceFingerprint)
 	channels := make([]*channelWork, 0, len(inputs))
 	seenKeys := make(map[string]int)
 	for _, input := range inputs {
@@ -146,6 +151,49 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
 		})
 	}
+	channelByID := make(map[string]*channelWork, len(channels))
+	for _, channel := range channels {
+		channelByID[channel.draft.ID] = channel
+	}
+	confirmedMatches := 0
+	confirmedAliases := 0
+	excludedMatches := 0
+	for _, group := range groupMatchDecisions(matchDecisions) {
+		channel := channelByID[group.ChannelID]
+		if channel == nil {
+			continue
+		}
+		switch group.Decision {
+		case "confirmed":
+			if group.NameScore < lineuparrExactMatchMinimum {
+				channel.addAlias(group.Alias, "dispatcharr-confirmed", "user-confirmed M3U stream match below Lineuparr Exact threshold")
+				confirmedAliases++
+			}
+			for _, tvgID := range group.TVGIDs {
+				channel.addEPGID(tvgID, "dispatcharr-confirmed", "user-confirmed M3U tvg-id")
+			}
+			channel.matchedSourceSet["dispatcharr-confirmed"] = true
+			confirmedMatches++
+		case "denied":
+			if group.NameScore >= lineuparrExactMatchMinimum {
+				channel.addExcludedAlias(group.Alias)
+				channel.matchedSourceSet["dispatcharr-denied"] = true
+				excludedMatches++
+			}
+		}
+	}
+	if confirmedMatches > 0 {
+		statuses = append(statuses, SourceStatus{
+			ID: "dispatcharr-confirmed", Label: "Confirmed Dispatcharr M3U matches", Status: "saved", Matched: confirmedMatches,
+			Message: fmt.Sprintf("%d reviewed groups; %d names below 95%% were retained as aliases, while higher-scoring names rely on Lineuparr Exact matching", confirmedMatches, confirmedAliases),
+		})
+	}
+	if excludedMatches > 0 {
+		statuses = append(statuses, SourceStatus{
+			ID: "dispatcharr-denied", Label: "Denied Dispatcharr M3U matches", Status: "saved", Matched: excludedMatches,
+			Message: fmt.Sprintf("%d denied names at or above 95%% were retained as channel-scoped excluded_aliases", excludedMatches),
+		})
+	}
 
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
@@ -159,6 +207,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 				channel.draft.CategorySource = "user"
 				channel.draft.CategoryMethod = "user edit"
 			}
+			applyAliasSuppressions(&channel.draft, override.SuppressedAliases)
 		}
 		resultChannels = append(resultChannels, channel.draft)
 	}
@@ -458,6 +507,186 @@ func (s *Service) RestoreAll(fingerprint string) error {
 	return s.store.RestoreAll(fingerprint)
 }
 
+func (s *Service) SetAliasSuppressed(fingerprint, channelID, alias string, suppressed bool) error {
+	alias = cleanText(alias)
+	if len(alias) > 512 {
+		return errors.New("alias must be 512 characters or fewer")
+	}
+	return s.store.SetAliasSuppressed(fingerprint, channelID, alias, suppressed)
+}
+
+func (s *Service) MatchDecisions(fingerprint string) map[string]MatchDecision {
+	return s.store.MatchDecisionSnapshot(fingerprint)
+}
+
+func (s *Service) SetMatchDecision(fingerprint string, decision MatchDecision) error {
+	return s.SetMatchDecisions(fingerprint, []MatchDecision{decision})
+}
+
+func (s *Service) SetMatchDecisions(fingerprint string, decisions []MatchDecision) error {
+	if len(decisions) == 0 {
+		return errors.New("at least one match decision is required")
+	}
+	now := time.Now().UTC()
+	normalized := make([]MatchDecision, 0, len(decisions))
+	for _, decision := range decisions {
+		cleaned, err := normalizeMatchDecision(decision, now)
+		if err != nil {
+			return err
+		}
+		normalized = append(normalized, cleaned)
+	}
+	return s.store.SetMatchDecisions(fingerprint, normalized)
+}
+
+func normalizeMatchDecision(decision MatchDecision, updatedAt time.Time) (MatchDecision, error) {
+	decision.Key = strings.TrimSpace(decision.Key)
+	decision.Decision = strings.ToLower(strings.TrimSpace(decision.Decision))
+	decision.DispatcharrFingerprint = strings.TrimSpace(decision.DispatcharrFingerprint)
+	decision.StreamFingerprint = strings.TrimSpace(decision.StreamFingerprint)
+	decision.StreamKey = strings.TrimSpace(decision.StreamKey)
+	decision.ChannelID = strings.TrimSpace(decision.ChannelID)
+	decision.StreamName = cleanText(decision.StreamName)
+	decision.NormalizedAlias = cleanText(decision.NormalizedAlias)
+	decision.TVGID = cleanText(decision.TVGID)
+	decision.ChannelName = cleanText(decision.ChannelName)
+	decision.ChannelNumber = cleanText(decision.ChannelNumber)
+	decision.Reason = cleanText(decision.Reason)
+	if decision.Decision != "confirmed" && decision.Decision != "denied" {
+		return MatchDecision{}, errors.New("match decision must be confirmed or denied")
+	}
+	if decision.Key == "" || decision.DispatcharrFingerprint == "" || decision.StreamFingerprint == "" || decision.StreamKey == "" || decision.ChannelID == "" || decision.StreamName == "" {
+		return MatchDecision{}, errors.New("match decision is incomplete")
+	}
+	if len(decision.StreamName) > 512 || len(decision.NormalizedAlias) > 512 || len(decision.TVGID) > 255 || len(decision.Reason) > 200 {
+		return MatchDecision{}, errors.New("match decision metadata is too long")
+	}
+	if decision.NameScore < 0 || decision.NameScore > 100 {
+		return MatchDecision{}, errors.New("match decision name score must be between 0 and 100")
+	}
+	decision.UpdatedAt = updatedAt
+	return decision, nil
+}
+
+type matchDecisionGroup struct {
+	Decision  string
+	ChannelID string
+	Alias     string
+	NameScore int
+	TVGIDs    []string
+}
+
+func groupMatchDecisions(decisions map[string]MatchDecision) []matchDecisionGroup {
+	grouped := make(map[string]*matchDecisionGroup)
+	for _, decision := range decisions {
+		alias := cleanText(decision.StreamName)
+		if alias == "" {
+			continue
+		}
+		normalized := strings.ToLower(cleanText(decision.NormalizedAlias))
+		if normalized == "" {
+			normalized = strings.ToLower(alias)
+		}
+		key := decision.Decision + "\x00" + decision.ChannelID + "\x00" + normalized
+		group := grouped[key]
+		if group == nil {
+			group = &matchDecisionGroup{Decision: decision.Decision, ChannelID: decision.ChannelID, Alias: alias}
+			grouped[key] = group
+		}
+		if preferredMatchAlias(alias, group.Alias) {
+			group.Alias = alias
+		}
+		group.NameScore = max(group.NameScore, decisionNameScore(decision))
+		if decision.Decision == "confirmed" {
+			group.TVGIDs = appendUniqueFold(group.TVGIDs, cleanText(decision.TVGID))
+		}
+	}
+
+	keys := make([]string, 0, len(grouped))
+	for key := range grouped {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]matchDecisionGroup, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, *grouped[key])
+	}
+	return result
+}
+
+func decisionNameScore(decision MatchDecision) int {
+	if decision.NameScore > 0 {
+		return min(100, decision.NameScore)
+	}
+	if strings.EqualFold(strings.TrimSpace(decision.Reason), "Exact EPG ID") {
+		return 0
+	}
+	score := decision.Score
+	if strings.Contains(strings.ToLower(decision.Reason), "+ channel number") {
+		score -= 4
+	}
+	return max(0, min(100, score))
+}
+
+func preferredMatchAlias(candidate, current string) bool {
+	candidate = strings.TrimSpace(candidate)
+	current = strings.TrimSpace(current)
+	if current == "" || len([]rune(candidate)) != len([]rune(current)) {
+		return current == "" || len([]rune(candidate)) < len([]rune(current))
+	}
+	return strings.ToLower(candidate) < strings.ToLower(current)
+}
+
+func appendUniqueFold(values []string, value string) []string {
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func (s *Service) ClearMatchDecision(fingerprint, key string) error {
+	return s.store.ClearMatchDecision(fingerprint, strings.TrimSpace(key))
+}
+
+func (s *Service) ClearMatchDecisions(fingerprint string, keys []string) error {
+	cleaned := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if key = strings.TrimSpace(key); key != "" {
+			cleaned = append(cleaned, key)
+		}
+	}
+	return s.store.ClearMatchDecisions(fingerprint, cleaned)
+}
+
+func applyAliasSuppressions(channel *DraftChannel, suppressed []string) {
+	if len(suppressed) == 0 || len(channel.AliasEvidence) == 0 {
+		return
+	}
+	suppressedSet := make(map[string]bool, len(suppressed))
+	for _, alias := range suppressed {
+		suppressedSet[strings.ToLower(cleanText(alias))] = true
+	}
+	aliases := make([]string, 0, len(channel.Aliases))
+	evidence := make([]AliasEvidence, 0, len(channel.AliasEvidence))
+	removed := make([]AliasEvidence, 0)
+	for _, item := range channel.AliasEvidence {
+		if suppressedSet[strings.ToLower(item.Value)] {
+			removed = append(removed, item)
+			continue
+		}
+		evidence = append(evidence, item)
+		aliases = append(aliases, item.Value)
+	}
+	channel.Aliases = aliases
+	channel.AliasEvidence = evidence
+	channel.SuppressedAliasEvidence = removed
+}
+
 func normalizeInput(input InputChannel) InputChannel {
 	input.StationID = strings.TrimSpace(input.StationID)
 	input.PlacementID = strings.TrimSpace(input.PlacementID)
@@ -549,6 +778,7 @@ func newChannelWork(input InputChannel) *channelWork {
 			CategorySource: "unresolved",
 		},
 		aliases:          make(map[string]*aliasWork),
+		excludedAliases:  make(map[string]string),
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
@@ -604,6 +834,17 @@ func (c *channelWork) addAlias(value, source, method string) {
 	}
 }
 
+func (c *channelWork) addExcludedAlias(value string) {
+	value = cleanText(value)
+	if value == "" || strings.EqualFold(value, "null") {
+		return
+	}
+	key := strings.ToLower(value)
+	if _, exists := c.excludedAliases[key]; !exists {
+		c.excludedAliases[key] = value
+	}
+}
+
 func (c *channelWork) addEPGID(value, source, method string) {
 	value = cleanText(value)
 	if value == "" || strings.EqualFold(value, "null") {
@@ -636,6 +877,12 @@ func finalizeChannel(channel *channelWork) {
 	sort.SliceStable(evidence, func(i, j int) bool { return aliasLess(evidence[i].Value, evidence[j].Value) })
 	channel.draft.Aliases = aliases
 	channel.draft.AliasEvidence = evidence
+	excludedAliases := make([]string, 0, len(channel.excludedAliases))
+	for _, alias := range channel.excludedAliases {
+		excludedAliases = append(excludedAliases, alias)
+	}
+	sort.SliceStable(excludedAliases, func(i, j int) bool { return aliasLess(excludedAliases[i], excludedAliases[j]) })
+	channel.draft.ExcludedAliases = excludedAliases
 	epgIDs := make([]string, 0, len(channel.epgIDs))
 	epgEvidence := make([]IdentifierEvidence, 0, len(channel.epgIDs))
 	for _, identifier := range channel.epgIDs {
