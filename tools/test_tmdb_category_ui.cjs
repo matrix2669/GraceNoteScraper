@@ -9,6 +9,7 @@ const context=vm.createContext({document:{createElement:make,querySelector:make,
 vm.runInContext(script.slice(script.indexOf('    const tmdbPanel ='),script.indexOf('    initCollapsibleSections();',script.indexOf('    const tmdbPanel ='))),context);
 (async()=>{
  await context.loadTMDBCategoryState(); const button=nodes[3];
+ assert.ok(nodes.some(n=>n.className==='panel-chevron' && n.textContent==='›'),'TMDB header must use the shared disclosure chevron');
  assert.equal(button.hidden,true); assert.equal(button.disabled,true);assert.equal(posts,0);
  state='enriching';await context.loadTMDBCategoryState();assert.equal(button.disabled,true);
  state='ready';await context.loadTMDBCategoryState();assert.equal(button.disabled,false);
