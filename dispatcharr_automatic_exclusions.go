@@ -69,7 +69,7 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 			if config.Gracenote.Device != "" {
 				currentKey += "@device=" + config.Gracenote.Device
 			}
-			bound := fact.BindingKind == "station-id-catalog-v1" || (fact.SourceID == providersource.OfficialSourceID(config.Gracenote.ProviderName) && fact.RootLineupKey == currentKey)
+			bound := fact.BindingKind == "station-id-catalog-v1" || fact.BindingKind == "user-attested-station-v1" || (fact.SourceID == providersource.OfficialSourceID(config.Gracenote.ProviderName) && fact.RootLineupKey == currentKey)
 			if !bound || fact.RootStationID != channel.StationID || fact.SourceID == "" || fact.SourceRowID == "" || fact.SourceRevision == "" {
 				continue
 			}
@@ -87,6 +87,9 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 				continue
 			}
 			feed := dispatcharr.ParseStationFeedLabel(fact.Value)
+			if fact.BindingKind == "user-attested-station-v1" && fact.Policy == "user-attested-rename-v1" && (fact.Feed == "east" || fact.Feed == "west") {
+				feed = dispatcharr.FeedIdentity{Family: strings.ToLower(fact.ServiceFamily), Region: fact.Feed, Evidence: "USER-ATTESTED exact station/feed: " + fact.SourceRowID}
+			}
 			if feed.Region == "" {
 				continue
 			}
@@ -113,7 +116,7 @@ func stationFeedCatalog(draft *builder.Draft, config appconfig.Config) (map[stri
 					continue
 				}
 				family := dispatcharr.StreamFeed(related.Value, nil)
-				if family.Region == "" && family.Family != "" {
+				if (family.Region == "" || family.Region == feed.Region) && family.Family != "" {
 					feed.FamilyAliases = append(feed.FamilyAliases, family.Family)
 				}
 			}
@@ -179,6 +182,19 @@ func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config a
 	for _, d := range stored {
 		decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: d.DispatcharrFingerprint, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, NormalizedAlias: d.NormalizedAlias, Decision: d.Decision})
 	}
+	for _, d := range s.lineup.builder.SupplementalDecisions(config.Fingerprint()) {
+		target := builderChannelIdentity(draft, d.ChannelID)
+		protected := false
+		for _, old := range stored {
+			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
+				protected = true
+				break
+			}
+		}
+		if !protected && d.DispatcharrFingerprint == conn.Fingerprint() && target.StationID == d.StationID && target.PlacementID == d.PlacementID && target.CallSign == d.RawCallSign {
+			decisions = append(decisions, dispatcharr.Decision{ChannelID: d.ChannelID, Source: d.DispatcharrFingerprint, StreamHash: d.StreamFingerprint, StreamName: d.StreamName, Decision: d.Decision})
+		}
+	}
 	result := dispatcharr.DeriveAutomaticExclusions(candidates, targets, feeds, codes, decisions)
 	feedTargets := []dispatcharr.FeedTarget{}
 	for _, c := range draft.Channels {
@@ -203,6 +219,8 @@ func (s *dispatcharrServer) automaticViewUncached(draft *builder.Draft, config a
 }
 
 func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, config appconfig.Config) {
+	connection, _ := s.config.Get()
+	s.lineup.builder.ProjectSupplementalDecisions(draft, config.Fingerprint(), connection.Fingerprint())
 	evidence := s.lineup.reviewInputsRevision()
 	stateToken := s.lineup.builder.ReviewStateToken()
 	inventoryToken := s.inventoryObservationToken()
@@ -330,4 +348,13 @@ func (s *dispatcharrServer) handleAutomaticExclusions(w http.ResponseWriter, r *
 		return
 	}
 	writeLineuparrJSON(w, 200, build.response.Automatic)
+}
+
+func builderChannelIdentity(draft *builder.Draft, id string) builder.DraftChannel {
+	for _, c := range draft.Channels {
+		if c.ID == id {
+			return c
+		}
+	}
+	return builder.DraftChannel{}
 }

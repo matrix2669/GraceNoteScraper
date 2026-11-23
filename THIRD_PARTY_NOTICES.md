@@ -100,3 +100,12 @@ names, numbers, and provider-defined sections from the public official sources
 identified in that file. It does not include the source documents themselves.
 Use `tools/generate_official_provider_catalog.py` to rebuild the reviewed
 snapshot after downloading fresh copies from those recorded URLs.
+
+## LineupARR matcher and alias tables
+
+`lineuparr_matcher/fuzzy_matcher.py`, `matching_core.py` and `aliases.py` are
+unmodified modules from PiratesIRC/Dispatcharr-Lineuparr-Plugin revision
+`c766a6bb582ca8ef28ae9548d83af1e61f6cde5d`. Their MIT license is retained in
+`lineuparr_matcher/LICENSE`; exact hashes and adapter boundaries are documented
+in `lineuparr_matcher/README.md`. The user-attested historical station names in
+GraceNote's registry are separately labelled assertions, not upstream proof.

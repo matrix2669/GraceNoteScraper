@@ -11,6 +11,8 @@ import (
 // IdentityStream is an immutable value projection of one successfully fetched
 // stream. It contains no URLs, credentials, mutable pointers or positive score.
 type IdentityStream struct {
+	GroupName   string
+	ID          int64
 	Name        string
 	AccountID   int64
 	Fingerprint string
@@ -19,7 +21,7 @@ type IdentityStream struct {
 func ProjectIdentityInventory(streams []Stream) []IdentityStream {
 	result := make([]IdentityStream, len(streams))
 	for i, stream := range streams {
-		result[i] = IdentityStream{stream.Name, stream.M3UAccountID, stream.Fingerprint()}
+		result[i] = IdentityStream{GroupName: stream.GroupName, ID: stream.ID, Name: stream.Name, AccountID: stream.M3UAccountID, Fingerprint: stream.Fingerprint()}
 	}
 	return result
 }

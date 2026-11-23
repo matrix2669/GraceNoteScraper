@@ -75,6 +75,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 		seenKeys[baseKey]++
 		work := newChannelWork(input)
+		work.draft.SupplementalEvidence = append([]ServiceIdentityEvidence(nil), input.SupplementalEvidence...)
 		if input.CategoryConflict && strings.TrimSpace(input.CategoryEvidenceMethod) != "" {
 			work.draft.CategoryMethod = appendCategoryMethod(work.draft.CategoryMethod, "provider review evidence: "+input.CategoryEvidenceMethod)
 		}

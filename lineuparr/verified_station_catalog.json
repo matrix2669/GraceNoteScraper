@@ -12,6 +12,18 @@
       "url": "https://github.com/babsonnexus/stream-link-manager-for-channels",
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "license": "MIT"
+    },
+    {
+      "id": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "attestation": "USER-ATTESTED",
+      "description": "Operator-authorized historical HBO/Cinemax names, both feeds; exact GNID and current raw callsign binding. Not independently verified primary proof."
+    },
+    {
+      "id": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "attestation": "USER-ATTESTED",
+      "description": "Supplemental retrieval descriptors from operator identity feedback. Review only: never a base/export alias, primary input, confirmation or denial."
     }
   ],
   "inputs": {
@@ -16858,6 +16870,444 @@
       "revision": "b651b3e14fb0f8d9b01610cd221b60285b4c2812",
       "rowId": "PBS_KMOS_kids_main:gracenote_id_natural",
       "path": "executables/pbs_gracenote_map.csv"
+    },
+    {
+      "stationId": "59368",
+      "name": "HBO Hits",
+      "aliases": [
+        "HBO Hits - East",
+        "HBO Hits East",
+        "HBO2 East",
+        "HBO2",
+        "HBO 2 East",
+        "HBO 2"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59368:east",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "east",
+      "callSigns": [
+        "HBOHTHD"
+      ],
+      "serviceFamily": "HBO Hits"
+    },
+    {
+      "stationId": "59355",
+      "name": "HBO Hits",
+      "aliases": [
+        "HBO Hits - West",
+        "HBO Hits West",
+        "HBO2 West",
+        "HBO 2 West"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59355:west",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "west",
+      "callSigns": [
+        "HBOHHDP"
+      ],
+      "serviceFamily": "HBO Hits"
+    },
+    {
+      "stationId": "59363",
+      "name": "HBO Drama",
+      "aliases": [
+        "HBO Drama - East",
+        "HBO Drama East",
+        "HBO Signature East",
+        "HBO Signature"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59363:east",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "east",
+      "callSigns": [
+        "HBODRHD"
+      ],
+      "serviceFamily": "HBO Drama"
+    },
+    {
+      "stationId": "59366",
+      "name": "HBO Drama",
+      "aliases": [
+        "HBO Drama - West",
+        "HBO Drama West",
+        "HBO Signature West"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59366:west",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "west",
+      "callSigns": [
+        "HBODHDP"
+      ],
+      "serviceFamily": "HBO Drama"
+    },
+    {
+      "stationId": "59845",
+      "name": "HBO Movies",
+      "aliases": [
+        "HBO Movies - East",
+        "HBO Movies East",
+        "HBO Zone East",
+        "HBO Zone"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59845:east",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "east",
+      "callSigns": [
+        "HBOMVHD"
+      ],
+      "serviceFamily": "HBO Movies"
+    },
+    {
+      "stationId": "59847",
+      "name": "HBO Movies",
+      "aliases": [
+        "HBO Movies - West",
+        "HBO Movies West",
+        "HBO Zone West"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59847:west",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "west",
+      "callSigns": [
+        "HBOMHDP"
+      ],
+      "serviceFamily": "HBO Movies"
+    },
+    {
+      "stationId": "59373",
+      "name": "Cinemax Hits",
+      "aliases": [
+        "Cinemax Hits - East",
+        "Cinemax Hits East",
+        "MoreMAX East",
+        "MoreMAX",
+        "More Max East",
+        "More Max"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59373:east",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "east",
+      "callSigns": [
+        "CINEHHD"
+      ],
+      "serviceFamily": "Cinemax Hits"
+    },
+    {
+      "stationId": "59375",
+      "name": "Cinemax Hits",
+      "aliases": [
+        "Cinemax Hits - West",
+        "Cinemax Hits West",
+        "MoreMAX West",
+        "More Max West"
+      ],
+      "sourceId": "user-attested-renames",
+      "revision": "user-attested-2026-10-22-v1",
+      "rowId": "59375:west",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "feed": "west",
+      "callSigns": [
+        "CINHHDP"
+      ],
+      "serviceFamily": "Cinemax Hits"
+    },
+    {
+      "stationId": "58698",
+      "name": "Mega TV",
+      "aliases": [],
+      "reviewAliases": [
+        "Mega TV"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "58698:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "MEGAUS"
+      ]
+    },
+    {
+      "stationId": "97965",
+      "name": "Roar TV",
+      "aliases": [],
+      "reviewAliases": [
+        "Roar TV",
+        "ROARTV"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "97965:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "WNYWDT4"
+      ]
+    },
+    {
+      "stationId": "90858",
+      "name": "Great American Faith & Living",
+      "aliases": [],
+      "reviewAliases": [
+        "Great American Faith & Living",
+        "Great American Living"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "90858:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "GLIVHD"
+      ]
+    },
+    {
+      "stationId": "37551",
+      "name": "Nickelodeon West",
+      "aliases": [],
+      "reviewAliases": [
+        "Nickelodeon West"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "37551:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "NICKTOO"
+      ]
+    },
+    {
+      "stationId": "58533",
+      "name": "Showtime 2",
+      "aliases": [],
+      "reviewAliases": [
+        "Showtime 2"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "58533:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "SHO2HD"
+      ]
+    },
+    {
+      "stationId": "60953",
+      "name": "Showtime 2",
+      "aliases": [],
+      "reviewAliases": [
+        "Showtime 2"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "60953:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "SHO2PHD"
+      ]
+    },
+    {
+      "stationId": "60947",
+      "name": "Showtime Extreme",
+      "aliases": [],
+      "reviewAliases": [
+        "Showtime Extreme"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "60947:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "SHOWXHD"
+      ]
+    },
+    {
+      "stationId": "60945",
+      "name": "Showtime Extreme",
+      "aliases": [],
+      "reviewAliases": [
+        "Showtime Extreme"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "60945:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "SHWXPHD"
+      ]
+    },
+    {
+      "stationId": "59965",
+      "name": "Cinemáx",
+      "aliases": [],
+      "reviewAliases": [
+        "Cinemáx"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "59965:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "CMAXHD"
+      ]
+    },
+    {
+      "stationId": "66077",
+      "name": "News 12",
+      "aliases": [],
+      "reviewAliases": [
+        "News 12"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "66077:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "N12HD"
+      ]
+    },
+    {
+      "stationId": "77772",
+      "name": "News 12 Plus",
+      "aliases": [],
+      "reviewAliases": [
+        "News 12 Plus"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "77772:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "N12TWHD"
+      ]
+    },
+    {
+      "stationId": "102910",
+      "name": "AccuWeather",
+      "aliases": [],
+      "reviewAliases": [
+        "AccuWeather"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "102910:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "AWNYHD"
+      ]
+    },
+    {
+      "stationId": "70285",
+      "name": "MSG Sportsnet 2",
+      "aliases": [],
+      "reviewAliases": [
+        "MSG Sportsnet 2",
+        "MSG 2 Plus"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "70285:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "MSG2SNH"
+      ]
+    },
+    {
+      "stationId": "96885",
+      "name": "BTN",
+      "aliases": [],
+      "reviewAliases": [
+        "BTN",
+        "Big Ten Network"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "96885:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "BIG10VH"
+      ]
+    },
+    {
+      "stationId": "73115",
+      "name": "Big Ten Network Overflow 2",
+      "aliases": [],
+      "reviewAliases": [
+        "Big Ten Network Overflow 2"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "73115:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "BG10O2H"
+      ]
+    },
+    {
+      "stationId": "82572",
+      "name": "Big Ten Network Overflow 3",
+      "aliases": [],
+      "reviewAliases": [
+        "Big Ten Network Overflow 3"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "82572:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "BGTN3HD"
+      ]
+    },
+    {
+      "stationId": "66880",
+      "name": "Fox Soccer Plus",
+      "aliases": [],
+      "reviewAliases": [
+        "Fox Soccer Plus"
+      ],
+      "sourceId": "user-attested-review-identities",
+      "revision": "user-attested-review-2026-10-22-v1",
+      "rowId": "66880:review",
+      "path": "user-attested/2026-10-22",
+      "attestation": "USER-ATTESTED",
+      "callSigns": [
+        "FSCPLHD"
+      ]
     }
   ],
   "inputGitBlobSHA256": {

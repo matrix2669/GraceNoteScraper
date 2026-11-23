@@ -33,23 +33,29 @@ type dispatcharrAPI interface {
 }
 
 type dispatcharrServer struct {
-	lineup         *lineuparrServer
-	config         *dispatcharr.ConfigStore
-	client         dispatcharrAPI
-	configMu       sync.Mutex
-	cache          dispatcharrStreamCache
-	reviewMu       sync.RWMutex
-	automaticMu    sync.Mutex
-	automaticCache cachedAutomaticView
-	admission      reviewAdmission
-	operationScope string
-	operations     map[string]reviewOperation
-	review         dispatcharrCandidateCache
-	refreshMu      sync.Mutex
-	progressMu     sync.Mutex
-	progress       dispatcharrMatchProgress
-	snapshot       dispatcharrMatchSnapshot
-	matcher        func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
+	impactMu                sync.Mutex
+	impact                  *supplementalImpactJob
+	impactRunner            func(context.Context, dispatcharr.ImpactRequest) (dispatcharr.ImpactResult, error)
+	supplementalMu          sync.Mutex
+	supplementalPreparation supplementalPreparation
+	supplementalAdmission   supplementalAdmission
+	lineup                  *lineuparrServer
+	config                  *dispatcharr.ConfigStore
+	client                  dispatcharrAPI
+	configMu                sync.Mutex
+	cache                   dispatcharrStreamCache
+	reviewMu                sync.RWMutex
+	automaticMu             sync.Mutex
+	automaticCache          cachedAutomaticView
+	admission               reviewAdmission
+	operationScope          string
+	operations              map[string]reviewOperation
+	review                  dispatcharrCandidateCache
+	refreshMu               sync.Mutex
+	progressMu              sync.Mutex
+	progress                dispatcharrMatchProgress
+	snapshot                dispatcharrMatchSnapshot
+	matcher                 func(context.Context, string, string, []dispatcharr.MatchChannel, []dispatcharr.Stream, map[string]dispatcharr.Decision) (dispatcharr.CandidateSet, string, error)
 }
 
 type dispatcharrMatchProgress struct {
@@ -78,6 +84,8 @@ func (s *dispatcharrServer) handleProgress(w http.ResponseWriter, r *http.Reques
 }
 
 type dispatcharrMatchSnapshot struct {
+	supplementalInputs     reviewInputsRevision
+	supplementalBound      bool
 	guide                  *guide.TVGuide
 	channels               []dispatcharr.MatchChannel
 	dispatcharrFingerprint string
@@ -136,6 +144,8 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	SupplementalImpact   supplementalImpactResponse   `json:"supplementalImpact"`
+	Supplemental         supplementalReview           `json:"supplemental"`
 	OperationScope       string                       `json:"operationScope"`
 	DecisionTokens       map[string]string            `json:"decisionTokens"`
 	Coverage             dispatcharrCoverage          `json:"coverage"`
@@ -300,6 +310,10 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	defer s.refreshMu.Unlock()
+	if strings.HasPrefix(body.Key, "supp:") {
+		s.handleSupplementalDecision(w, r, body.Key, body.Operation, strings.ToLower(strings.TrimSpace(body.Decision)))
+		return
+	}
 
 	if r.Method == http.MethodDelete {
 		dispatchConfig, configured := s.config.Get()
@@ -524,7 +538,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			}
 			snapshot = dispatcharrMatchSnapshot{
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
-				channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
+				supplementalInputs: admissionInputs, supplementalBound: true, channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
 			snapshot.channels = currentChannels
@@ -647,7 +661,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		status = "refreshing"
 	}
 	admitCurrent := validSnapshot && !s.inventoryDrift(snapshot)
+	supplemental, supplementalGroups := s.buildSupplementalReview(draft, lineupConfig, snapshot, admissionInputs, admitCurrent, visibleLimit)
 	response := dispatcharrReviewResponse{
+		Supplemental: supplemental, SupplementalImpact: s.impactResponse(),
 		Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 		StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 		FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
@@ -669,6 +685,11 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 				response.OperationScope = scope
 				if admitCurrent {
 					response.DecisionTokens = s.publishAdmissionLocked(admissionInputs, capturedSnapshot, capturedInventory, scope, matches.All)
+					if supplemental.Status == "current" || supplemental.Status == "incomplete" {
+						for k, t := range s.publishSupplementalLocked(admissionInputs, capturedSnapshot, capturedInventory, scope, supplementalGroups) {
+							response.DecisionTokens[k] = t
+						}
+					}
 				}
 				return nil
 			})
@@ -951,7 +972,7 @@ func dispatcharrSnapshotChannels(draft *lineuparrbuilder.Draft) ([]dispatcharr.M
 		aliases := make([]string, 0)
 		for _, evidence := range c.AliasEvidence {
 			for _, source := range evidence.Sources {
-				if source != "dispatcharr-confirmed" && source != "dispatcharr-denied" {
+				if source != "dispatcharr-confirmed" && source != "dispatcharr-denied" && source != "dispatcharr-supplemental" {
 					aliases = append(aliases, evidence.Value)
 					break
 				}

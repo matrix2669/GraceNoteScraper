@@ -319,6 +319,7 @@ func cloneReviewState(state State) State {
 		v.SuppressedAliases = append([]string(nil), v.SuppressedAliases...)
 		next.Channels[k] = v
 	}
+	next.SupplementalDecisions = cloneSupplementalDecisions(state.SupplementalDecisions)
 	next.MatchDecisions = make(map[string]MatchDecision, len(state.MatchDecisions))
 	for k, v := range state.MatchDecisions {
 		next.MatchDecisions[k] = v
