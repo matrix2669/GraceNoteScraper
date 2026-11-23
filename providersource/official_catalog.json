@@ -1,0 +1,2586 @@
+{
+  "asOf": "2026-08-28",
+  "sources": [
+    {
+      "id": "optimum-islip-woodbury-official",
+      "label": "Optimum Islip/Woodbury official lineup",
+      "url": "https://static.tvlistings.optimum.net/ool/static/prod/documents/channel-listings/channel-lineup-IslipWoodbury.pdf",
+      "providers": [
+        "optimum",
+        "cablevision"
+      ],
+      "postalCodes": [
+        "11743"
+      ],
+      "method": "exact market-specific Optimum PDF channel number",
+      "entries": [
+        {
+          "numbers": [
+            "31"
+          ],
+          "name": "Disney Channel",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "32"
+          ],
+          "name": "Cartoon Network",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "35"
+          ],
+          "name": "ESPN2",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "36"
+          ],
+          "name": "ESPN",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "60"
+          ],
+          "name": "SportsNet New York",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "69"
+          ],
+          "name": "FOX Sports 1",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "70"
+          ],
+          "name": "YES Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "71"
+          ],
+          "name": "MSG",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "72"
+          ],
+          "name": "MSG Sportsnet",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "120"
+          ],
+          "name": "Discovery Family Channel",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "121"
+          ],
+          "name": "Nickelodeon",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "122"
+          ],
+          "name": "Nicktoons TV",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "123"
+          ],
+          "name": "Nick Jr.",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "124"
+          ],
+          "name": "Teen Nick",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "125"
+          ],
+          "name": "Disney Channel",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "126"
+          ],
+          "name": "Disney Junior",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "127"
+          ],
+          "name": "Disney XD",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "128"
+          ],
+          "name": "Cartoon Network",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "129"
+          ],
+          "name": "Boomerang",
+          "category": "Kids"
+        },
+        {
+          "numbers": [
+            "201"
+          ],
+          "name": "YES Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "202"
+          ],
+          "name": "SportsNet New York",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "203"
+          ],
+          "name": "MSG",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "204"
+          ],
+          "name": "MSG Sportsnet",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "205"
+          ],
+          "name": "Sports Overflow 1",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "206"
+          ],
+          "name": "Sports Overflow 2",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "210"
+          ],
+          "name": "ESPN",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "211"
+          ],
+          "name": "ESPN2",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "213"
+          ],
+          "name": "FOX Sports 1",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "214"
+          ],
+          "name": "FOX Sports 2",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "215"
+          ],
+          "name": "CBS Sports Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "216"
+          ],
+          "name": "ESPNEWS",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "217"
+          ],
+          "name": "ESPNU",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "219"
+          ],
+          "name": "NFL Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "220"
+          ],
+          "name": "NFL RedZone",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "223"
+          ],
+          "name": "NHL Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "224"
+          ],
+          "name": "The Golf Channel",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "226"
+          ],
+          "name": "Tennis Channel (HD only)",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "227"
+          ],
+          "name": "ESPN Deportes",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "228"
+          ],
+          "name": "FOX Deportes",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "229"
+          ],
+          "name": "TUDN",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "231"
+          ],
+          "name": "beIN Sports",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "232"
+          ],
+          "name": "FOX Soccer Plus",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "238"
+          ],
+          "name": "Game+",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "239"
+          ],
+          "name": "Willow",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "241"
+          ],
+          "name": "World Fishing Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "242"
+          ],
+          "name": "Sportsman Channel",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "268"
+          ],
+          "name": "NHL Network",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "300"
+          ],
+          "name": "HBO On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "301"
+          ],
+          "name": "HBO",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "302"
+          ],
+          "name": "HBO Hits",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "303"
+          ],
+          "name": "HBO Comedy",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "304"
+          ],
+          "name": "HBO Movies",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "305"
+          ],
+          "name": "HBO Latino",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "306"
+          ],
+          "name": "HBO West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "307"
+          ],
+          "name": "HBO Hits West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "308"
+          ],
+          "name": "HBO Drama West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "310"
+          ],
+          "name": "HBO Drama",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "320"
+          ],
+          "name": "Showtime On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "321"
+          ],
+          "name": "Paramount+ with Showtime",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "322"
+          ],
+          "name": "Showtime 2",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "323"
+          ],
+          "name": "SHOxBET",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "324"
+          ],
+          "name": "Showtime Next",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "325"
+          ],
+          "name": "Showtime Family Zone",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "326"
+          ],
+          "name": "Showtime Women",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "328"
+          ],
+          "name": "Showtime 2 West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "329"
+          ],
+          "name": "Showtime Showcase West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "330"
+          ],
+          "name": "Showtime Showcase",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "331"
+          ],
+          "name": "Showtime Extreme",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "340"
+          ],
+          "name": "Starz On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "341"
+          ],
+          "name": "Starz",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "342"
+          ],
+          "name": "Starz Kids & Family",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "343"
+          ],
+          "name": "Starz Edge",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "344"
+          ],
+          "name": "Starz in Black",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "345"
+          ],
+          "name": "Starz West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "346"
+          ],
+          "name": "Starz Comedy",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "347"
+          ],
+          "name": "Starz Cinema",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "350"
+          ],
+          "name": "Starz Encore On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "351"
+          ],
+          "name": "Starz Encore",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "352"
+          ],
+          "name": "Starz Encore Suspense",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "353"
+          ],
+          "name": "Starz Encore Westerns",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "354"
+          ],
+          "name": "Starz Encore Classic",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "355"
+          ],
+          "name": "Starz Encore Black",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "356"
+          ],
+          "name": "Starz Encore Family",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "357"
+          ],
+          "name": "Starz Encore West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "358"
+          ],
+          "name": "Starz Encore Action",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "359"
+          ],
+          "name": "Starz Encore Espanol",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "370"
+          ],
+          "name": "Cinemax On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "371"
+          ],
+          "name": "Cinemax",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "372"
+          ],
+          "name": "Cinemax Hits",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "375"
+          ],
+          "name": "Cinemáx",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "376"
+          ],
+          "name": "Cinemax Classics",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "378"
+          ],
+          "name": "Cinemax West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "379"
+          ],
+          "name": "Cinemax Action",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "390"
+          ],
+          "name": "TMC On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "391"
+          ],
+          "name": "TMC",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "392"
+          ],
+          "name": "TMC West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "393"
+          ],
+          "name": "TMC Xtra",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "394"
+          ],
+          "name": "TMC Xtra West",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "397"
+          ],
+          "name": "Flix",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "500"
+          ],
+          "name": "On Demand",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "520"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "521"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "522"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "523"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "524"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "525"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "526"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "527"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "528"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "529"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "530"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "531"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "532"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "533"
+          ],
+          "name": "Adult Programming",
+          "category": "Adult & PPV"
+        },
+        {
+          "numbers": [
+            "850"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "851"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "852"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "853"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "854"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "855"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "856"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "857"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "858"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "859"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "860"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "861"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "862"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "863"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "864"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "865"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "866"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "867"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "868"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "869"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "870"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "871"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "872"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "873"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "874"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "875"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "876"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "877"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "878"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "879"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "880"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "881"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "882"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "883"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "884"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "885"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "886"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "887"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "888"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "889"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "890"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "891"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "892"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "893"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "894"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "895"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "896"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "897"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "898"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "899"
+          ],
+          "name": "Stingray Music",
+          "category": "Music"
+        },
+        {
+          "numbers": [
+            "1010"
+          ],
+          "name": "Estrella TV",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1011"
+          ],
+          "name": "HITN",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1012"
+          ],
+          "name": "CNN en Español",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1013"
+          ],
+          "name": "Discovery en Español",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1014"
+          ],
+          "name": "Canal America",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1016"
+          ],
+          "name": "Nat Geo Mundo",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1017"
+          ],
+          "name": "History en Español",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1018"
+          ],
+          "name": "Discovery Familia",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1019"
+          ],
+          "name": "Tarima",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1020"
+          ],
+          "name": "Ve Plus",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1021"
+          ],
+          "name": "NTN24",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1022"
+          ],
+          "name": "FOROtv",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1023"
+          ],
+          "name": "Supercanal Caribe",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1024"
+          ],
+          "name": "FOLD Telemicro Internacional",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1025"
+          ],
+          "name": "Dominican View",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1026"
+          ],
+          "name": "WAPA America",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1027"
+          ],
+          "name": "TV Quisqueya",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1028"
+          ],
+          "name": "Cuba Play",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1029"
+          ],
+          "name": "Televisión Dominicana",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1030"
+          ],
+          "name": "centroaméricatv",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1031"
+          ],
+          "name": "Ecuavisa Internacional",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1032"
+          ],
+          "name": "TV Chile",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1033"
+          ],
+          "name": "Nuestra Tele",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1034"
+          ],
+          "name": "Caracol TV Internacional",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1039"
+          ],
+          "name": "SUR Perú",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1041"
+          ],
+          "name": "Teleformula",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1042"
+          ],
+          "name": "Canal Sur",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1043"
+          ],
+          "name": "TVE Internacional",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1044"
+          ],
+          "name": "Antena 3",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1048"
+          ],
+          "name": "TeleXitos",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1056"
+          ],
+          "name": "Starz Encore Espanol",
+          "category": "Movies"
+        },
+        {
+          "numbers": [
+            "1057"
+          ],
+          "name": "Cine Mexicano",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1058"
+          ],
+          "name": "Cine Latino",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1059"
+          ],
+          "name": "ViendoMovies",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1065"
+          ],
+          "name": "TUDN",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "1066"
+          ],
+          "name": "ESPN Deportes",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "1067"
+          ],
+          "name": "FOX Deportes",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "1081"
+          ],
+          "name": "HOLA TV",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1082"
+          ],
+          "name": "Cartoon Network (SAP)",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1084"
+          ],
+          "name": "Disney XD (SAP)",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1085"
+          ],
+          "name": "RCN Novelas",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1086"
+          ],
+          "name": "Videorola",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1090"
+          ],
+          "name": "-------- Pasiones",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1091"
+          ],
+          "name": "Univisión tlnovelas",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1092"
+          ],
+          "name": "Atres Series",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1093"
+          ],
+          "name": "El Gourmet",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1094"
+          ],
+          "name": "INTI Network",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1097"
+          ],
+          "name": "EWTN Español",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1099"
+          ],
+          "name": "En Español On Demand",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1100"
+          ],
+          "name": "Noire Africa",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1104"
+          ],
+          "name": "CaribVision",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1105"
+          ],
+          "name": "Tempo",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1108"
+          ],
+          "name": "i24NEWS (in French)",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1109"
+          ],
+          "name": "TV5MONDE",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1115"
+          ],
+          "name": "iTVN",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1117"
+          ],
+          "name": "TVN24",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1118"
+          ],
+          "name": "The Israeli Network",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1122"
+          ],
+          "name": "Antenna Satellite",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1123"
+          ],
+          "name": "Alpha",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1127"
+          ],
+          "name": "RTPi",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1128"
+          ],
+          "name": "SPT",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1129"
+          ],
+          "name": "TV Globo",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1130"
+          ],
+          "name": "TV Record",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1135"
+          ],
+          "name": "ART",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1165"
+          ],
+          "name": "Eros Now On Demand",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1167"
+          ],
+          "name": "TV Asia",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1168"
+          ],
+          "name": "ITV Gold",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1169"
+          ],
+          "name": "Zee TV",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1171"
+          ],
+          "name": "Willow",
+          "category": "Sports"
+        },
+        {
+          "numbers": [
+            "1173"
+          ],
+          "name": "SET Asia",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1182"
+          ],
+          "name": "RTVi",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1183"
+          ],
+          "name": "RTN",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1188"
+          ],
+          "name": "Shanson TV",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1194"
+          ],
+          "name": "RAI Italia",
+          "category": "International"
+        },
+        {
+          "numbers": [
+            "1195"
+          ],
+          "name": "Mediaset Italia",
+          "category": "International"
+        }
+      ]
+    },
+    {
+      "id": "glorystar-official-lineup",
+      "label": "Glorystar official lineup",
+      "url": "https://www.glorystar.tv/channels/",
+      "providers": [
+        "glorystar"
+      ],
+      "method": "exact public Glorystar channel number or unique official channel name",
+      "entries": [
+        {
+          "numbers": [
+            "1"
+          ],
+          "name": "Believer's VoiceOf Victory",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "2"
+          ],
+          "name": "Daystar Television",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "3"
+          ],
+          "name": "Gospel Truth Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "5"
+          ],
+          "name": "GOD TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "6"
+          ],
+          "name": "NRB TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "7"
+          ],
+          "name": "Trinity Broadcasting Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "8"
+          ],
+          "name": "TBN Inspire",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "9"
+          ],
+          "name": "JCTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "10"
+          ],
+          "name": "Mass + HopeCatholic Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "11"
+          ],
+          "name": "GEB",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "12"
+          ],
+          "name": "LoveWorld Canada",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "14"
+          ],
+          "name": "SonLife Broadcasting Jimmy Swaggart",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "15"
+          ],
+          "name": "Beacon TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "16"
+          ],
+          "name": "Hope Channel",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "17"
+          ],
+          "name": "LLBN His Word",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "18"
+          ],
+          "name": "3ABN English",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "20"
+          ],
+          "name": "SafeTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "21"
+          ],
+          "name": "Angel TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "22"
+          ],
+          "name": "The Dove TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "23"
+          ],
+          "name": "Christian Television Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "24"
+          ],
+          "name": "CBN TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "25"
+          ],
+          "name": "CBN News",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "26"
+          ],
+          "name": "Sid RothIt's Supernatural",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "27"
+          ],
+          "name": "Amazing Facts TV Canada",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "28"
+          ],
+          "name": "The Power Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "29"
+          ],
+          "name": "Living Faith TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "30"
+          ],
+          "name": "Watchmen Broadcasting",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "31"
+          ],
+          "name": "Gods Learning Channel",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "32"
+          ],
+          "name": "Pastor Scott",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "35"
+          ],
+          "name": "Emmanuel TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "39"
+          ],
+          "name": "Kingdom Impact Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "40"
+          ],
+          "name": "True Word Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "49"
+          ],
+          "name": "STGN 49",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "51"
+          ],
+          "name": "Preach The Word Worldwide Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "100"
+          ],
+          "name": "Daystar Television",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "101"
+          ],
+          "name": "Trinity Broadcasting Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "102"
+          ],
+          "name": "Greater Love TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "104"
+          ],
+          "name": "Hope Channel",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "105"
+          ],
+          "name": "LLBN His Word",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "106"
+          ],
+          "name": "3ABN English",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "107"
+          ],
+          "name": "Word Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "108"
+          ],
+          "name": "Gods Learning Channel",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "109"
+          ],
+          "name": "Amazing Facts TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "111"
+          ],
+          "name": "Amazing Discoveries",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "112"
+          ],
+          "name": "Apostolic OnenessInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "115"
+          ],
+          "name": "TBN Inspire",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "116"
+          ],
+          "name": "QVTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "117"
+          ],
+          "name": "Christian Television Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "118"
+          ],
+          "name": "GCN TVInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "119"
+          ],
+          "name": "Pastor Scott",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "120"
+          ],
+          "name": "Christian YouthChannel",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "122"
+          ],
+          "name": "Smart Lifestyle",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "124"
+          ],
+          "name": "Hope Church ChannelDiscontinued",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "125"
+          ],
+          "name": "SonLife Broadcasting Network - Jimmy Swaggart",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "126"
+          ],
+          "name": "Bible ExplorationsBETVInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "128"
+          ],
+          "name": "OCN",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "129"
+          ],
+          "name": "Eternal Life TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "130"
+          ],
+          "name": "Angel TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "134"
+          ],
+          "name": "Celebration TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "170"
+          ],
+          "name": "JCTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "200"
+          ],
+          "name": "Esperanza TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "201"
+          ],
+          "name": "TBN Enlace",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "202"
+          ],
+          "name": "3ABN LatinoInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "203"
+          ],
+          "name": "Bethel TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "204"
+          ],
+          "name": "EEE TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "205"
+          ],
+          "name": "SonLife Broadcasting Network - Spanish",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "206"
+          ],
+          "name": "LLBN LatinoInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "300"
+          ],
+          "name": "Impact TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "301"
+          ],
+          "name": "ТБН РоссияInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "316"
+          ],
+          "name": "BogBlagTV - GodIsGoodTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "350"
+          ],
+          "name": "TRWAM",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "360"
+          ],
+          "name": "TelepaceInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "400"
+          ],
+          "name": "Al Karma 1",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "401"
+          ],
+          "name": "Al Karma 2",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "402"
+          ],
+          "name": "Christ TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "403"
+          ],
+          "name": "Coptic TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "404"
+          ],
+          "name": "Aramaic Broadcasting Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "405"
+          ],
+          "name": "The Way TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "406"
+          ],
+          "name": "Al Kalema TV Network",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "407"
+          ],
+          "name": "Logos TV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "408"
+          ],
+          "name": "TBN Al Horreya",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "409"
+          ],
+          "name": "Al Hayat - قناة الحياة",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "411"
+          ],
+          "name": "Alfady - قناة الفادي",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "502"
+          ],
+          "name": "VBS",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "550"
+          ],
+          "name": "Divine TVInternet Only",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "901"
+          ],
+          "name": "RT News",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "903"
+          ],
+          "name": "CNC World",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "905"
+          ],
+          "name": "PressTV",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1000"
+          ],
+          "name": "Truth to Ponder",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1001"
+          ],
+          "name": "Overcomer Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1002"
+          ],
+          "name": "3ABN Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1003"
+          ],
+          "name": "Radio 74",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1004"
+          ],
+          "name": "LifeTalk Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1005"
+          ],
+          "name": "KNLB Celebration Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1007"
+          ],
+          "name": "3ABN Music Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1008"
+          ],
+          "name": "CJTL Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1010"
+          ],
+          "name": "Boston Praise Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1011"
+          ],
+          "name": "Light To Guide Our Feet",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1100"
+          ],
+          "name": "Nacion Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1101"
+          ],
+          "name": "Fiebre Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1103"
+          ],
+          "name": "Radio Libertad",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1104"
+          ],
+          "name": "3ABN Radio Latino",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1110"
+          ],
+          "name": "City Life Radio",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1115"
+          ],
+          "name": "Radio Maria",
+          "category": "Faith"
+        },
+        {
+          "numbers": [
+            "1550"
+          ],
+          "name": "Amen FMInternet Only",
+          "category": "Faith"
+        }
+      ]
+    },
+    {
+      "id": "afn-official-channel-guide",
+      "label": "AFN official channel guide",
+      "url": "https://media.myafn.dodmedia.osd.mil/bulletins/AFNProgramGuide.pdf",
+      "providers": [
+        "afn",
+        "armed forces network"
+      ],
+      "method": "unique exact AFN network name from the official channel guide",
+      "entries": [
+        {
+          "name": "AFN prime Atlantic",
+          "aliases": [
+            "AFN|prime Atlantic"
+          ],
+          "category": "Entertainment"
+        },
+        {
+          "name": "AFN prime Pacific",
+          "aliases": [
+            "AFN|prime Pacific"
+          ],
+          "category": "Entertainment"
+        },
+        {
+          "name": "AFN news",
+          "aliases": [
+            "AFN|news"
+          ],
+          "category": "News"
+        },
+        {
+          "name": "AFN sports",
+          "aliases": [
+            "AFN|sports"
+          ],
+          "category": "Sports"
+        },
+        {
+          "name": "AFN sports 2",
+          "aliases": [
+            "AFN|sports 2"
+          ],
+          "category": "Sports"
+        },
+        {
+          "name": "AFN spectrum",
+          "aliases": [
+            "AFN|spectrum"
+          ],
+          "category": "Entertainment"
+        },
+        {
+          "name": "AFN movie",
+          "aliases": [
+            "AFN|movie"
+          ],
+          "category": "Movies"
+        },
+        {
+          "name": "AFN family",
+          "aliases": [
+            "AFN|family"
+          ],
+          "category": "Kids"
+        }
+      ]
+    },
+    {
+      "id": "directv-official-lineup",
+      "label": "DIRECTV official lineup",
+      "url": "https://www.directv.com/channel-lineup/?tvType=dtv",
+      "providers": [
+        "directv"
+      ],
+      "method": "official DIRECTV ZIP/county lineup; normalized adapter pending",
+      "status": "registered",
+      "message": "The public ZIP/county lineup is registered; a stable structured adapter is still needed.",
+      "entries": []
+    },
+    {
+      "id": "verizon-fios-official-lineup",
+      "label": "Verizon FiOS official lineup",
+      "url": "https://www.verizon.com/home/fios-tv/channel-lineup/",
+      "providers": [
+        "verizon",
+        "fios"
+      ],
+      "method": "official Verizon location lineup; normalized adapter pending",
+      "status": "registered",
+      "message": "The recovered FiOS enrichment remains available through exact catalogs; a reusable public-site adapter is still needed.",
+      "entries": []
+    },
+    {
+      "id": "att-uverse-official-lineup",
+      "label": "AT&T U-verse official lineup",
+      "url": "https://www.att.com/idpassets/pdfs/channel_lineups/Uverse_Channel_Lineup.pdf",
+      "providers": [
+        "u-verse",
+        "uverse",
+        "at&t"
+      ],
+      "method": "official AT&T PDF; normalized adapter pending",
+      "status": "registered",
+      "message": "The official PDF is registered; a reviewed normalized snapshot is still needed.",
+      "entries": []
+    },
+    {
+      "id": "xfinity-official-lineup",
+      "label": "Xfinity official lineup",
+      "url": "https://www.xfinity.com/learn/channel-lineup",
+      "providers": [
+        "xfinity",
+        "comcast"
+      ],
+      "method": "official address-based Xfinity lineup; adapter requires ephemeral selected address",
+      "status": "address-required",
+      "message": "The public source needs a selected service address; no subscriber login will be automated.",
+      "entries": []
+    },
+    {
+      "id": "spectrum-official-lineup",
+      "label": "Spectrum official lineup",
+      "url": "https://www.spectrum.com/cable-tv/channel-lineup",
+      "providers": [
+        "spectrum",
+        "charter",
+        "time warner cable"
+      ],
+      "method": "official address-based Spectrum lineup; adapter requires ephemeral selected address",
+      "status": "address-required",
+      "message": "The public source needs a selected service address; no subscriber login will be automated.",
+      "entries": []
+    },
+    {
+      "id": "broadstar-official-lineup",
+      "label": "BroadStar official lineup",
+      "url": "https://www.broadstar.com/wp-content/uploads/2026/04/BDYWN_AmFav.pdf",
+      "providers": [
+        "broadstar",
+        "broadstream"
+      ],
+      "method": "official BroadStar PDF; normalized adapter pending",
+      "status": "registered",
+      "message": "The official PDF and its explicit rename evidence are registered; a complete normalized snapshot is still needed.",
+      "entries": []
+    }
+  ]
+}

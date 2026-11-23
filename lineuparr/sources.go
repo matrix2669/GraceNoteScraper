@@ -23,11 +23,12 @@ const (
 )
 
 type ServiceOptions struct {
-	CacheDir           string
-	HTTPClient         *http.Client
-	CatalogURLs        []string
-	UseDefaultCatalogs bool
-	IPTVOrgURL         string
+	CacheDir            string
+	HTTPClient          *http.Client
+	CatalogURLs         []string
+	UseDefaultCatalogs  bool
+	UseEmbeddedCatalogs bool
+	IPTVOrgURL          string
 }
 
 type remoteSource struct {

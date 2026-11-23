@@ -19,16 +19,17 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key             string
-	StationID       string
-	PlacementID     string
-	Number          string
-	CallSign        string
-	Affiliate       string
-	EventCallSigns  []string
-	PreferredName   *AttributedAlias
-	CategoryHint    *AttributedCategory
-	ExternalAliases []AttributedAlias
+	Key              string
+	StationID        string
+	PlacementID      string
+	Number           string
+	CallSign         string
+	Affiliate        string
+	EventCallSigns   []string
+	PreferredName    *AttributedAlias
+	CategoryHint     *AttributedCategory
+	CategoryConflict bool
+	ExternalAliases  []AttributedAlias
 }
 
 type AttributedAlias struct {
@@ -91,15 +92,28 @@ type DuplicateSuggestion struct {
 }
 
 type SourceStatus struct {
-	ID           string `json:"id"`
-	Label        string `json:"label"`
-	URL          string `json:"url,omitempty"`
-	Status       string `json:"status"`
-	Access       string `json:"access,omitempty"`
-	LocationMode string `json:"locationMode,omitempty"`
-	Matched      int    `json:"matched"`
-	Ambiguous    int    `json:"ambiguous,omitempty"`
-	Message      string `json:"message,omitempty"`
+	ID           string        `json:"id"`
+	Label        string        `json:"label"`
+	URL          string        `json:"url,omitempty"`
+	Status       string        `json:"status"`
+	Access       string        `json:"access,omitempty"`
+	LocationMode string        `json:"locationMode,omitempty"`
+	Matched      int           `json:"matched"`
+	Ambiguous    int           `json:"ambiguous,omitempty"`
+	Message      string        `json:"message,omitempty"`
+	RelatedIDs   []string      `json:"relatedIds,omitempty"`
+	Matches      []SourceMatch `json:"matches,omitempty"`
+}
+
+type SourceMatch struct {
+	ChannelID string   `json:"channelId"`
+	Number    string   `json:"number"`
+	CallSign  string   `json:"callSign,omitempty"`
+	Name      string   `json:"name"`
+	Category  string   `json:"category,omitempty"`
+	Aliases   []string `json:"aliases,omitempty"`
+	EPGIDs    []string `json:"epgIds,omitempty"`
+	Methods   []string `json:"methods,omitempty"`
 }
 
 type Draft struct {
@@ -112,6 +126,7 @@ type Draft struct {
 	Channels             []DraftChannel        `json:"channels"`
 	DuplicateSuggestions []DuplicateSuggestion `json:"duplicateSuggestions"`
 	Sources              []SourceStatus        `json:"sources"`
+	Categories           []string              `json:"categories"`
 	Total                int                   `json:"total"`
 	Included             int                   `json:"included"`
 	Excluded             int                   `json:"excluded"`

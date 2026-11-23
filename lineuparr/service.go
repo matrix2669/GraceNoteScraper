@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 )
 
 const uncategorized = "Uncategorized"
@@ -178,6 +180,8 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			resultChannels[index].DuplicateReason = suggestion.Reason
 		}
 	}
+	statuses = consolidateSourceStatuses(statuses)
+	populateSourceMatches(statuses, resultChannels)
 
 	draft := &Draft{
 		GeneratedAt:          time.Now().UTC(),
@@ -189,6 +193,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		Channels:             resultChannels,
 		DuplicateSuggestions: duplicates,
 		Sources:              statuses,
+		Categories:           append(channelcategory.Categories(), uncategorized),
 		Total:                len(resultChannels),
 	}
 	for _, channel := range resultChannels {
@@ -207,6 +212,191 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	return draft, nil
 }
 
+func consolidateSourceStatuses(statuses []SourceStatus) []SourceStatus {
+	result := make([]SourceStatus, 0, len(statuses))
+	byKey := make(map[string]int)
+	for _, status := range statuses {
+		status.ID = strings.TrimSpace(status.ID)
+		if status.ID == "" {
+			continue
+		}
+		status.RelatedIDs = appendUniqueStringFold(status.RelatedIDs, status.ID)
+		key := sourceStatusFamily(status.ID)
+		index, exists := byKey[key]
+		if !exists {
+			byKey[key] = len(result)
+			result = append(result, status)
+			continue
+		}
+		current := &result[index]
+		current.RelatedIDs = appendUniqueStringFold(current.RelatedIDs, status.ID)
+		for _, id := range status.RelatedIDs {
+			current.RelatedIDs = appendUniqueStringFold(current.RelatedIDs, id)
+		}
+		replacingRegistration := strings.HasPrefix(current.ID, "provider-guide-") && !strings.HasPrefix(status.ID, "provider-guide-")
+		if replacingRegistration {
+			current.ID = status.ID
+			current.Label = status.Label
+			current.Status = status.Status
+		}
+		if sourceURLIsDocument(status.URL) || current.URL == "" {
+			current.URL = status.URL
+		}
+		if !replacingRegistration && sourceStatusRank(status.Status) > sourceStatusRank(current.Status) {
+			current.Status = status.Status
+		}
+		current.Matched = max(current.Matched, status.Matched)
+		current.Ambiguous = max(current.Ambiguous, status.Ambiguous)
+		if current.Access == "" {
+			current.Access = status.Access
+		}
+		if current.LocationMode == "" {
+			current.LocationMode = status.LocationMode
+		}
+		current.Message = appendUniqueMessage(current.Message, status.Message)
+	}
+	return result
+}
+
+func sourceStatusFamily(id string) string {
+	value := strings.ToLower(strings.TrimSpace(id))
+	provider := strings.TrimPrefix(value, "provider-guide-")
+	provider = strings.TrimSuffix(provider, "-official-lineup")
+	provider = strings.TrimSuffix(provider, "-official-guide")
+	switch provider {
+	case "verizon-fios", "directv", "dish", "optimum", "afn", "glorystar", "att-uverse", "xfinity", "spectrum", "broadstar":
+		return "provider:" + provider
+	default:
+		return value
+	}
+}
+
+func sourceStatusRank(status string) int {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "active", "complete", "saved", "live", "cached", "local":
+		return 4
+	case "derived", "maintained":
+		return 3
+	case "registered", "no-matches":
+		return 2
+	case "error":
+		return 1
+	default:
+		return 0
+	}
+}
+
+func sourceURLIsDocument(rawURL string) bool {
+	clean := strings.ToLower(strings.TrimSpace(rawURL))
+	if index := strings.IndexByte(clean, '?'); index >= 0 {
+		clean = clean[:index]
+	}
+	return strings.HasSuffix(clean, ".pdf")
+}
+
+func appendUniqueMessage(current, addition string) string {
+	addition = strings.TrimSpace(addition)
+	if addition == "" || strings.Contains(current, addition) {
+		return current
+	}
+	if strings.TrimSpace(current) == "" {
+		return addition
+	}
+	return current + " · " + addition
+}
+
+func appendUniqueStringFold(values []string, value string) []string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return values
+	}
+	for _, existing := range values {
+		if strings.EqualFold(existing, value) {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func populateSourceMatches(statuses []SourceStatus, channels []DraftChannel) {
+	providerIDs := make(map[string]bool)
+	for _, status := range statuses {
+		if strings.HasPrefix(sourceStatusFamily(status.ID), "provider:") {
+			for _, id := range append(append([]string(nil), status.RelatedIDs...), status.ID) {
+				providerIDs[strings.ToLower(strings.TrimSpace(id))] = true
+			}
+		}
+	}
+	for index := range statuses {
+		ids := make(map[string]bool)
+		for _, id := range append(append([]string(nil), statuses[index].RelatedIDs...), statuses[index].ID) {
+			ids[strings.ToLower(strings.TrimSpace(id))] = true
+		}
+		for _, channel := range channels {
+			match, aliases, epgIDs, methods := sourceMatchForChannel(statuses[index].ID, ids, providerIDs, channel)
+			if !match {
+				continue
+			}
+			statuses[index].Matches = append(statuses[index].Matches, SourceMatch{
+				ChannelID: channel.ID, Number: channel.Number, CallSign: channel.CallSign, Name: channel.Name,
+				Category: channel.Category, Aliases: aliases, EPGIDs: epgIDs, Methods: methods,
+			})
+		}
+		if len(statuses[index].Matches) > 0 {
+			statuses[index].Matched = len(statuses[index].Matches)
+		}
+	}
+}
+
+func sourceMatchForChannel(statusID string, ids, providerIDs map[string]bool, channel DraftChannel) (bool, []string, []string, []string) {
+	if statusID == "gracenote" {
+		return true, nil, append([]string(nil), channel.EPGIDs...), []string{"active Gracenote lineup position"}
+	}
+	matchesID := func(value string) bool { return ids[strings.ToLower(strings.TrimSpace(value))] }
+	marketSummary := statusID == "gracenote-market-index"
+	matched := false
+	aliases := make([]string, 0)
+	epgIDs := make([]string, 0)
+	methods := make([]string, 0)
+	for _, source := range channel.MatchedSources {
+		key := strings.ToLower(strings.TrimSpace(source))
+		if matchesID(source) || (marketSummary && providerIDs[key]) {
+			matched = true
+		}
+	}
+	for _, evidence := range channel.AliasEvidence {
+		for _, source := range evidence.Sources {
+			key := strings.ToLower(strings.TrimSpace(source))
+			if !matchesID(source) && !(marketSummary && providerIDs[key]) {
+				continue
+			}
+			matched = true
+			aliases = appendUniqueStringFold(aliases, evidence.Value)
+			for _, method := range evidence.Methods {
+				methods = appendUniqueStringFold(methods, method)
+			}
+		}
+	}
+	for _, evidence := range channel.EPGIDEvidence {
+		for _, source := range evidence.Sources {
+			key := strings.ToLower(strings.TrimSpace(source))
+			if !matchesID(source) && !(marketSummary && providerIDs[key]) {
+				continue
+			}
+			matched = true
+			epgIDs = appendUniqueStringFold(epgIDs, evidence.Value)
+			for _, method := range evidence.Methods {
+				methods = appendUniqueStringFold(methods, method)
+			}
+		}
+	}
+	if matchesID(channel.CategorySource) {
+		matched = true
+		methods = appendUniqueStringFold(methods, channel.CategoryMethod)
+	}
+	return matched, aliases, epgIDs, methods
+}
+
 func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpdate) error {
 	if update.Included == nil && update.Category == nil {
 		return errors.New("included or category is required")
@@ -214,10 +404,7 @@ func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpd
 	if update.Category != nil {
 		category := cleanCategory(*update.Category)
 		if category == "" {
-			category = uncategorized
-		}
-		if len(category) > 80 {
-			return errors.New("category must be 80 characters or fewer")
+			return errors.New("category must be one of the master categories or Uncategorized")
 		}
 		update.Category = &category
 	}
@@ -330,6 +517,11 @@ func newChannelWork(input InputChannel) *channelWork {
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
+	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, input.EventCallSigns...); ok {
+		channel.draft.Category = category.Category
+		channel.draft.CategorySource = "gracenote"
+		channel.draft.CategoryMethod = category.Method
+	}
 	channel.addAlias(input.CallSign, "gracenote", "channel callsign")
 	channel.addAlias(input.StationID, "gracenote", "station ID")
 	channel.addAlias(input.PlacementID, "gracenote", "lineup position ID")
@@ -425,11 +617,12 @@ func finalizeChannel(channel *channelWork) {
 }
 
 type indexedEntry struct {
-	name     string
-	category string
-	aliases  []string
-	epgIDs   []string
-	keys     map[string]bool
+	name           string
+	category       string
+	categoryMethod string
+	aliases        []string
+	epgIDs         []string
+	keys           map[string]bool
 }
 
 func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, sourceLabel string) (int, int) {
@@ -442,7 +635,9 @@ func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, source
 			if name == "" {
 				continue
 			}
-			indexed := indexedEntry{name: name, category: cleanCategory(category), aliases: cleanStrings(entry.Aliases), epgIDs: cleanStrings(entry.EPGIDs), keys: make(map[string]bool)}
+			aliases := cleanStrings(entry.Aliases)
+			mappedCategory, categoryMethod := resolveProviderCategory(category, append([]string{name}, aliases...)...)
+			indexed := indexedEntry{name: name, category: mappedCategory, categoryMethod: categoryMethod, aliases: aliases, epgIDs: cleanStrings(entry.EPGIDs), keys: make(map[string]bool)}
 			for _, value := range append([]string{name}, indexed.aliases...) {
 				if key := identityKey(value); key != "" {
 					indexed.keys[key] = true
@@ -479,7 +674,7 @@ func applyCatalog(channels []*channelWork, catalog catalogFile, sourceID, source
 		if channel.draft.CategorySource == "unresolved" && entry.category != "" {
 			channel.draft.Category = entry.category
 			channel.draft.CategorySource = sourceLabel
-			channel.draft.CategoryMethod = "exact catalog identity"
+			channel.draft.CategoryMethod = "exact catalog identity; " + entry.categoryMethod
 		}
 		channel.addAlias(entry.name, sourceID, "exact catalog identity")
 		for _, alias := range entry.aliases {
@@ -535,13 +730,15 @@ func applyIPTVOrg(channels []*channelWork, sourceEntries []iptvOrgChannel, count
 			continue
 		}
 		category := ""
+		categoryMethod := ""
 		for _, rawCategory := range entry.Categories {
-			if mapped := mapIPTVOrgCategory(rawCategory); mapped != "" {
+			if mapped, method := resolveProviderCategory(rawCategory, append([]string{name}, entry.AltNames...)...); mapped != "" {
 				category = mapped
+				categoryMethod = method
 				break
 			}
 		}
-		indexed := indexedEntry{name: name, category: category, aliases: cleanStrings(entry.AltNames), epgIDs: cleanStrings([]string{entry.ID}), keys: make(map[string]bool)}
+		indexed := indexedEntry{name: name, category: category, categoryMethod: categoryMethod, aliases: cleanStrings(entry.AltNames), epgIDs: cleanStrings([]string{entry.ID}), keys: make(map[string]bool)}
 		for _, value := range append([]string{name}, indexed.aliases...) {
 			if key := identityKey(value); key != "" {
 				indexed.keys[key] = true
@@ -582,7 +779,7 @@ func applyIPTVOrg(channels []*channelWork, sourceEntries []iptvOrgChannel, count
 		if channel.draft.CategorySource == "unresolved" && entry.category != "" {
 			channel.draft.Category = entry.category
 			channel.draft.CategorySource = sourceLabel
-			channel.draft.CategoryMethod = "exact public database identity"
+			channel.draft.CategoryMethod = "exact public database identity; " + entry.categoryMethod
 		}
 		channel.addAlias(entry.name, sourceID, "exact public database identity")
 		for _, alias := range entry.aliases {
@@ -712,38 +909,32 @@ func looksLikeDigitalCallSign(value string) bool {
 }
 
 func mapIPTVOrgCategory(category string) string {
-	switch strings.ToLower(strings.TrimSpace(category)) {
-	case "news", "business", "legislative", "weather":
-		return "News"
-	case "sports":
-		return "Sports"
-	case "movies":
-		return "Movies"
-	case "kids", "animation", "family":
-		return "Kids"
-	case "entertainment", "general", "classic", "interactive", "public", "relax", "series":
-		return "Entertainment"
-	case "lifestyle":
-		return "Reality & Lifestyle"
-	case "culture", "documentary", "education", "science":
-		return "Discovery"
-	case "religious":
-		return "Faith"
-	case "music":
-		return "Music"
-	case "shop", "shopping":
-		return "Shopping"
-	case "comedy":
-		return "Comedy"
-	case "cooking", "travel":
-		return "Food & Travel"
-	case "auto", "outdoor":
-		return "Outdoors"
-	case "xxx":
-		return "Adult & PPV"
-	default:
-		return ""
+	if strings.EqualFold(strings.TrimSpace(category), "xxx") {
+		return channelcategory.Other
 	}
+	if strings.EqualFold(strings.TrimSpace(category), "auto") {
+		return channelcategory.Entertainment
+	}
+	mapped, _ := resolveProviderCategory(category)
+	return mapped
+}
+
+func resolveProviderCategory(category string, identities ...string) (string, string) {
+	if strings.EqualFold(strings.TrimSpace(category), "xxx") {
+		return channelcategory.Other, channelcategory.MethodAlias + " (xxx to Adult to Other)"
+	}
+	if strings.EqualFold(strings.TrimSpace(category), "auto") {
+		return channelcategory.Entertainment, channelcategory.MethodAlias + " (auto to Entertainment)"
+	}
+	match, ok := channelcategory.Resolve(category, identities...)
+	if !ok {
+		return "", ""
+	}
+	method := match.Method
+	if match.Method == channelcategory.MethodFuzzy {
+		method = fmt.Sprintf("%s %.0f%% to %q", match.Method, match.Confidence*100, match.MatchedAlias)
+	}
+	return match.Category, method
 }
 
 func safeAffiliate(value string) bool {
@@ -764,10 +955,14 @@ func safeAffiliate(value string) bool {
 
 func cleanCategory(value string) string {
 	value = cleanText(value)
-	if strings.EqualFold(value, "uncategorised") {
+	if strings.EqualFold(value, "uncategorised") || strings.EqualFold(value, uncategorized) {
 		return uncategorized
 	}
-	return value
+	match, ok := channelcategory.Resolve(value)
+	if !ok {
+		return ""
+	}
+	return match.Category
 }
 
 func cleanText(value string) string {
