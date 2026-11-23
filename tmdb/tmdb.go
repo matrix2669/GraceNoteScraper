@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -172,7 +173,7 @@ func (c *Client) search(title string, isMovie bool) CacheEntry {
 
 	var sr searchResponse
 	if err := c.getJSON(path, url.Values{"query": {title}}, &sr); err != nil {
-		log.Printf("tmdb: search failed for %q: %v", title, err)
+		applog.Errorf("tmdb search failed for %q: %v", title, err)
 		return CacheEntry{}
 	}
 
@@ -190,7 +191,7 @@ func (c *Client) search(title string, isMovie bool) CacheEntry {
 	params := url.Values{"append_to_response": {"credits,external_ids,keywords,release_dates,content_ratings"}}
 	var details detailsResponse
 	if err := c.getJSON(detailPath, params, &details); err != nil {
-		log.Printf("tmdb: detail lookup failed for %q (id=%d): %v", title, selected.ID, err)
+		applog.Warnf("tmdb detail lookup failed for %q (id=%d): %v", title, selected.ID, err)
 		return entry
 	}
 
