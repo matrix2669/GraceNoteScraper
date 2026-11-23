@@ -15,16 +15,22 @@ import (
 )
 
 type fakeProviders struct {
-	mu        sync.Mutex
-	responses map[string][]web.Provider
-	calls     []string
+	mu          sync.Mutex
+	responses   map[string][]web.Provider
+	standardUTC map[string]string
+	daylightUTC map[string]string
+	calls       []string
 }
 
 func (f *fakeProviders) FindProviders(_ context.Context, _, postalCode, _ string) (*web.ProviderResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, postalCode)
-	return &web.ProviderResponse{Providers: append([]web.Provider(nil), f.responses[postalCode]...)}, nil
+	return &web.ProviderResponse{
+		Providers:    append([]web.Provider(nil), f.responses[postalCode]...),
+		StdUTCOffset: f.standardUTC[postalCode],
+		DSTUTCOffset: f.daylightUTC[postalCode],
+	}, nil
 }
 
 type fakeGrids struct {
@@ -173,6 +179,44 @@ func waitForPostal(t *testing.T, service *Service, country, postalCode string) S
 	}
 	t.Fatalf("postal scan did not finish; snapshot = %+v", service.SnapshotForPostal(country, postalCode).Job)
 	return Snapshot{}
+}
+
+func TestResolveLineupTimezoneRepairsResponseLevelTimezone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "market_index.json")
+	provider := testProvider("USA-FL65018-DEFAULT")
+	provider.PostalCode = "33308"
+	providers := &fakeProviders{
+		responses:   map[string][]web.Provider{"33308": {provider}},
+		standardUTC: map[string]string{"33308": "-300"},
+		daylightUTC: map[string]string{"33308": "-240"},
+	}
+	service, err := NewService(ServiceConfig{
+		Path: path, Providers: providers, Grids: &fakeGrids{}, Now: func() time.Time { return time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := service.prepareLineup(MarketSeed{Country: "USA", PostalCode: "33308"}, provider, true); err != nil {
+		t.Fatal(err)
+	}
+	if location := service.LineupTimezone("USA", "33308", provider.LineupID, provider.Device); location != nil {
+		t.Fatalf("timezone unexpectedly present before repair: %s", location)
+	}
+	location, err := service.ResolveLineupTimezone(context.Background(), "USA", "33308", provider.LineupID, provider.Device, "en-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if location.String() != "America/New_York" {
+		t.Fatalf("resolved timezone = %q", location)
+	}
+	retained := service.LineupTimezone("USA", "33308", provider.LineupID, provider.Device)
+	if retained == nil || retained.String() != "America/New_York" {
+		t.Fatalf("retained timezone = %v", retained)
+	}
+	lineups, err := service.ProviderLineups(context.Background(), "USA", "33308", "en-us")
+	if err != nil || len(lineups) != 1 || lineups[0].Timezone != "America/New_York" {
+		t.Fatalf("provider lineups = %+v, %v", lineups, err)
+	}
 }
 
 func TestPostalScanEnrichesEveryProviderBeforeCrossLineupReuse(t *testing.T) {
