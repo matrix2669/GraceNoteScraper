@@ -15,6 +15,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/dispatcharr"
+	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	lineuparrmatcher "github.com/daniel-widrick/GraceNoteScraper/lineuparr_matcher"
 )
@@ -72,6 +73,7 @@ func (s *dispatcharrServer) handleProgress(w http.ResponseWriter, r *http.Reques
 }
 
 type dispatcharrMatchSnapshot struct {
+	guide                  *guide.TVGuide
 	channels               []dispatcharr.MatchChannel
 	dispatcharrFingerprint string
 	lineupFingerprint      string
@@ -124,6 +126,7 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
 	StreamCount          int                          `json:"streamCount"`
 	CandidateCount       int                          `json:"candidateCount"`
@@ -390,6 +393,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "Connect Dispatcharr to review M3U matches", http.StatusConflict)
 		return dispatcharrReviewBuild{}, false
 	}
+	currentGuide := s.lineup.state.Get()
 	draft, lineupConfig, _, ok := s.lineup.buildDraft(w, r)
 	if !ok {
 		return dispatcharrReviewBuild{}, false
@@ -461,7 +465,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 				matches.All[i].Key = fmt.Sprintf("%x", sha256.Sum256([]byte(matches.All[i].Key+generation)))
 			}
 			snapshot = dispatcharrMatchSnapshot{
-				dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
+				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
 				channels: channels, digest: digest, candidates: matches.All, streamCount: len(streams), fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
@@ -478,7 +482,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "The Dispatcharr connection changed; reload match review", http.StatusConflict)
 		return dispatcharrReviewBuild{}, false
 	}
-	validSnapshot := snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && snapshot.digest == digest && !snapshot.fetchedAt.IsZero()
+	validSnapshot := (snapshot.guide == nil || snapshot.guide == s.lineup.state.Get()) && snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && snapshot.digest == digest && !snapshot.fetchedAt.IsZero()
 	warning := snapshot.warning
 	if !validSnapshot {
 		warning = "Refresh required to match streams to the included channels. Press Refresh streams."
@@ -494,7 +498,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		}
 	}
 	for key, decision := range stored {
-		// Retain history, but an excluded target cannot reserve a stream.
+		// Preserve the established manual review/history behavior across auth changes.
 		if !includedTargets[decision.ChannelID] {
 			continue
 		}
@@ -514,6 +518,39 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		matches.All = dispatcharr.FilterSnapshotCandidates(snapshot.candidates, includedTargets, matcherDecisions)
 	}
 
+	automatic := automaticMatchView{Rows: []automaticMatchRow{}}
+	if s.lineup.automaticProjection != nil {
+		var derived dispatcharr.AutomaticResult
+		automatic, derived = s.automaticView(draft, lineupConfig, snapshot)
+		// Legacy group decisions use a lossy normalized alias. An unresolved
+		// new raw constituent must still be available for an explicit decision.
+		present := map[string]bool{}
+		for _, c := range matches.All {
+			present[c.Key] = true
+		}
+		for _, row := range derived.Rows {
+			if row.PendingReview && !row.Conflict && row.ManualDecision == "" && !present[row.Candidate.Key] {
+				matches.All = append(matches.All, row.Candidate)
+				present[row.Candidate.Key] = true
+			}
+		}
+		kept := matches.All[:0]
+		reasons := map[string]string{}
+		for _, row := range automatic.Rows {
+			if row.PendingReview && !row.Conflict {
+				reasons[row.Key] = row.Reason
+			}
+		}
+		for _, c := range matches.All {
+			if !automatic.Hidden[c.Key] {
+				if reason := reasons[c.Key]; reason != "" {
+					c.Reason += "; manual feed review required: " + reason
+				}
+				kept = append(kept, c)
+			}
+		}
+		matches.All = kept
+	}
 	allGroups := dispatcharr.GroupCandidates(matches.All)
 	groups := attachDispatcharrAlternatives(allGroups, allGroups)
 	s.cacheCandidates(dispatchConfig.Fingerprint(), lineupConfig.Fingerprint(), matches.All)
@@ -539,8 +576,8 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			ReviewStatus: status,
-			StreamCount:  snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
+			Automatic: automatic, ReviewStatus: status,
+			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
 		candidates: matches.All, dispatchConfig: dispatchConfig, lineupConfig: lineupConfig,

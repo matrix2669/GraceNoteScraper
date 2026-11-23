@@ -27,6 +27,10 @@ GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o gra
 
 Run `go test ./...` for setup, configuration, provider-client, Lineuparr builder, and Dispatcharr match-review tests.
 
+## Automatic stream exclusions
+
+See [docs/automatic-stream-exclusions.md](docs/automatic-stream-exclusions.md). Automatic current-snapshot identity constraints/unknown-feed holds are distinct from manual ADR024 score eligibility; do not apply the manual >=95 Deny threshold to them. Preserve matcher/pin bytes, source-bound evidence, explicit confirmations, raw-name scoping, stale export leases and advisory navigation. No bulk selection is required.
+
 ## Service identity repair
 
 The current duplicate identity and historical provider evidence policy supersedes the older quality-dependent duplicate guidance below. See [docs/service-identity-repair.md](docs/service-identity-repair.md). Active aliases/categories/proofs now come from one immutable source-bound evidence view. Historic method labels or station storage alone never establish reusability. New schedule proofs transfer raw station callsigns only, with explicit station IDs, windows, timezone and programme revision; provider aliases/categories do not transfer. Identity grouping is quality-neutral, preserves all verified positions and saved choices, and applies row-level provider safeguards and non-destructive versioned evidence quarantine.

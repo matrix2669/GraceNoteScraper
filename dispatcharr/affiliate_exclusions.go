@@ -92,6 +92,15 @@ func explicitStreamAffiliate(raw string) string {
 // suggestions through the existing Deny path. Scores below 95 stay manual per
 // ADR024; explicit confirmed/denied group decisions always take precedence.
 func PlanAffiliateExclusions(candidates []Candidate, targets map[string]AffiliateTarget, decisions []Decision) AffiliateExclusionPlan {
+	return planAffiliateExclusions(candidates, targets, decisions, 95, true)
+}
+
+// Automatic identity negatives are semantic assertions, independent from the
+// name score. The manual bulk Deny contract above retains its >=95 threshold.
+func planAutomaticAffiliateExclusions(candidates []Candidate, targets map[string]AffiliateTarget) AffiliateExclusionPlan {
+	return planAffiliateExclusions(candidates, targets, nil, 0, false)
+}
+func planAffiliateExclusions(candidates []Candidate, targets map[string]AffiliateTarget, decisions []Decision, minimumNameScore int, preserveGroups bool) AffiliateExclusionPlan {
 	plan := AffiliateExclusionPlan{}
 	for _, candidate := range candidates {
 		target, ok := targets[candidate.ChannelID]
@@ -110,11 +119,14 @@ func PlanAffiliateExclusions(candidates []Candidate, targets map[string]Affiliat
 				break
 			}
 		}
-		if candidate.Key == "" || candidate.Source == "" || candidate.StreamHash == "" || !ok || target.Country != "US" || targetCall == "" || streamCall == "" || streamCall == targetCall || candidate.NameScore < 95 || reviewed {
+		if candidate.Key == "" || candidate.Source == "" || candidate.StreamHash == "" || !ok || target.Country != "US" || targetCall == "" || streamCall == "" || streamCall == targetCall || candidate.NameScore < minimumNameScore || reviewed {
 			plan.Manual = append(plan.Manual, candidate)
 			continue
 		}
 		plan.Suggestions = append(plan.Suggestions, AffiliateExclusionSuggestion{Candidate: candidate, TargetCallSign: targetCall, StreamCallSign: streamCall})
+	}
+	if !preserveGroups {
+		return plan
 	}
 	// Existing review and Undo operate on alias groups. A mixed group must
 	// stay manual as a whole rather than silently deciding its uncertain siblings.

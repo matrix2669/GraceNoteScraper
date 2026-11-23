@@ -117,10 +117,18 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	record := publishedLineuparr{EvidencePolicy: lineupindex.ActiveEvidencePolicy, SourceFingerprint: config.Fingerprint(), Version: 1, Filename: lineuparrbuilder.ExportFilename(draft), PublishedAt: time.Now().UTC(), Data: data}
-	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
-		return savePublishedLineuparr(s.exportDir, record)
-	})
+	save := func() error { return savePublishedLineuparr(s.exportDir, record) }
+	var current bool
+	if s.commitDraft != nil {
+		current, err = s.commitDraft(draft, save)
+	} else {
+		current, err = s.store.WhileCurrent(config.Fingerprint(), save)
+	}
 	if err != nil {
+		if errors.Is(err, errAutomaticStale) || errors.Is(err, lineuparrbuilder.ErrStaleReview) {
+			http.Error(w, err.Error(), 409)
+			return
+		}
 		http.Error(w, "Unable to save the export. The previous published version is unchanged.", http.StatusInternalServerError)
 		return
 	}

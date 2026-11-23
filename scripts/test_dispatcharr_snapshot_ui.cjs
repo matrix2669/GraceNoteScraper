@@ -73,8 +73,8 @@ async function testWorkflowCompletionAndLateReplies() {
   // Execute real loadMatchReview with controllable deferred replies.
   const start=html.indexOf('    async function loadMatchReview('),end=html.indexOf('    function renderMatchReview()',start);
   let resolve,reject;const messages=[];
-  const c=vm.createContext({draft:{},dispatchConfig:{configured:true},dispatchBusy:false,dispatchBusyRequest:0,dispatchReviewEpoch:0,matchReviewRequest:0,decisionRevision:0,matchReviewLimit:100,matchReview:null,workflowRemote:{},URLSearchParams,
-    els:{dispatchLoading:{replaceChildren(){}}},emptyMessage:x=>x,setDispatchControls(){},renderGuidedWorkflow(){},renderMatchReview(){},startMatchProgress:()=>()=>{},showMessage:x=>messages.push(x),api:()=>new Promise((yes,no)=>{resolve=yes;reject=no})});
+  const c=vm.createContext({document:{getElementById:()=>({textContent:'',replaceChildren(){},append(){}}),createElement:()=>({textContent:''})},draft:{},dispatchConfig:{configured:true},dispatchBusy:false,dispatchBusyRequest:0,dispatchReviewEpoch:0,matchReviewRequest:0,decisionRevision:0,matchReviewLimit:100,matchReview:null,workflowRemote:{},URLSearchParams,
+    els:{dispatchLoading:{replaceChildren(){}}},emptyMessage:x=>x,setDispatchControls(){},renderGuidedWorkflow(){},renderMatchReview(){},renderAutomaticExclusions(){},startMatchProgress:()=>()=>{},showMessage:x=>messages.push(x),api:()=>new Promise((yes,no)=>{resolve=yes;reject=no})});
   vm.runInContext(html.slice(start,end),c);
   let pending=vm.runInContext('loadMatchReview(false,false)',c);c.dispatchReviewEpoch++;c.matchReviewRequest++;resolve({reviewStatus:'current',candidateCount:0});await pending;assert.equal(c.matchReview,null);
   pending=vm.runInContext('loadMatchReview(false,false)',c);c.dispatchReviewEpoch++;c.matchReviewRequest++;reject(new Error('obsolete'));await pending;assert.equal(messages.length,0);
@@ -87,7 +87,7 @@ async function testWorkflowCompletionAndLateReplies() {
   const pollStart=html.indexOf('    async function loadWorkflowStatus()'),pollEnd=html.indexOf('    function workflowStates()',pollStart);
   let oldPoll,refresh;
   c.workflowRefreshing=false;c.workflowProgress={};c.workflowRemote={};c.dispatchBusy=false;
-  c.document={querySelector:selector=>selector==='#dispatch-panel'?{}:null};
+  c.document.querySelector=selector=>selector==='#dispatch-panel'?{}:null;
   c.scheduleWorkflowRefresh=()=>{};
   c.optionalAPI=path=>c.api(path).catch(()=>null);
   c.api=path=> {
