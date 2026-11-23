@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -22,6 +22,12 @@ type fakeProviderFinder struct {
 	country  string
 	postal   string
 	language string
+}
+
+type fakeMarketGridFetcher struct{}
+
+func (fakeMarketGridFetcher) FetchGrid(_ context.Context, _ web.Preferences, _ int64) (*web.GridResponse, error) {
+	return &web.GridResponse{}, nil
 }
 
 type fakeProviderChannelCounter struct {
@@ -180,6 +186,27 @@ func TestSetupScrapeStatus(t *testing.T) {
 	}
 }
 
+func TestLineuparrAliasIndexFlow(t *testing.T) {
+	service, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviderFinder{response: &web.ProviderResponse{}},
+		Grids:     fakeMarketGridFetcher{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &lineuparrServer{marketIndex: service}
+	for _, action := range []string{"continue", "refresh", "rebuild"} {
+		request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias-index/run", strings.NewReader(`{"action":"`+action+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		server.handleAliasIndexRun(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d body=%s", action, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
 func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
 	store, _ := appconfig.LoadStore(filepath.Join(t.TempDir(), "config.json"))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -216,7 +243,7 @@ func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
 
 func TestGuideCacheRequiresMatchingSource(t *testing.T) {
 	t.Chdir(t.TempDir())
-	want := &guide.TVGuide{}
+	want := &guide.TVGuide{LineupChannels: []guide.Channel{{ID: "station", PlacementID: "position", ChannelNo: "10", CallSign: "TEST"}}}
 	saveGuideCache(want, "source-one")
 
 	if _, _, ok := loadGuideCache(time.Hour, "source-two"); ok {
@@ -226,22 +253,47 @@ func TestGuideCacheRequiresMatchingSource(t *testing.T) {
 	if !ok || got == nil {
 		t.Fatal("cache did not load for matching source")
 	}
+	if len(got.LineupChannels) != 1 || got.LineupChannels[0].PlacementID != "position" {
+		t.Fatalf("cached provider positions = %+v", got.LineupChannels)
+	}
 }
 
-func TestGuideCacheRequiresCurrentSchemaVersion(t *testing.T) {
-	t.Chdir(t.TempDir())
-
-	// A cache written by an older build has no version field.
-	legacy := []byte(`{"saved_at":"` + time.Now().UTC().Format(time.RFC3339) + `","source_fingerprint":"src","guide":{"Channels":[],"Programs":[]}}`)
-	if err := os.WriteFile(guideCachePath, legacy, 0644); err != nil {
-		t.Fatal(err)
+func TestGuideFilterPreservesFullProviderLineup(t *testing.T) {
+	g := &guide.TVGuide{
+		Channels: []guide.Channel{
+			{ID: "one", ChannelNo: "1", DisplayNames: []guide.DisplayName{{Name: "1 ONE"}, {Name: "1"}, {Name: "ONE"}}},
+			{ID: "two", ChannelNo: "2", DisplayNames: []guide.DisplayName{{Name: "2 TWO"}, {Name: "2"}, {Name: "TWO"}}},
+		},
+		Programs:       []guide.Program{{Channel: "one"}, {Channel: "two"}},
+		LineupChannels: []guide.Channel{{PlacementID: "one-sd"}, {PlacementID: "one-hd"}, {PlacementID: "two"}},
 	}
-	if _, _, ok := loadGuideCache(time.Hour, "src"); ok {
-		t.Fatal("legacy cache without a version loaded")
+	filtered := filterGuideChannels(g, map[string]bool{"1": true})
+	if len(filtered.Channels) != 1 || len(filtered.Programs) != 1 {
+		t.Fatalf("filtered guide = %+v", filtered)
 	}
+	if len(filtered.LineupChannels) != 3 {
+		t.Fatalf("provider lineup was filtered with the guide: %+v", filtered.LineupChannels)
+	}
+}
 
-	saveGuideCache(&guide.TVGuide{}, "src")
-	if _, _, ok := loadGuideCache(time.Hour, "src"); !ok {
-		t.Fatal("current-version cache did not load")
+func TestGuideStateRequiresMatchingSource(t *testing.T) {
+	state := &GuideState{}
+	g := &guide.TVGuide{LineupChannels: []guide.Channel{{PlacementID: "position"}}}
+	state.UpdateForSource(g, "source-one")
+	if state.GetForSource("source-one") != g {
+		t.Fatal("matching source did not return guide")
+	}
+	if state.GetForSource("source-two") != nil {
+		t.Fatal("guide leaked to a different source")
+	}
+}
+
+func TestMergeLineupChannelCollectsEventCallsigns(t *testing.T) {
+	merged := mergeLineupChannel(
+		guide.Channel{ID: "one", EventCallSigns: []string{"ONE"}},
+		guide.Channel{ID: "one", PlacementID: "position", ChannelNo: "1", CallSign: "ONE", EventCallSigns: []string{"one", "ONEDT"}},
+	)
+	if merged.PlacementID != "position" || len(merged.EventCallSigns) != 2 || merged.EventCallSigns[1] != "ONEDT" {
+		t.Fatalf("merged channel = %+v", merged)
 	}
 }

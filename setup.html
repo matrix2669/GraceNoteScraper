@@ -81,6 +81,8 @@
 
     .guide-link:hover { border-color: var(--accent); color: var(--text); }
 
+    .top-links { display: flex; gap: 9px; }
+
     .hero {
       max-width: 760px;
       margin-bottom: 28px;
@@ -383,7 +385,10 @@
   <main class="shell">
     <header class="topbar">
       <div class="brand"><span class="brand-mark">GN</span><span>GraceNoteScraper</span></div>
-      <a class="guide-link" id="guideLink" href="/">Open guide</a>
+      <div class="top-links">
+        <a class="guide-link" id="builderLink" href="/lineuparr">Lineuparr builder</a>
+        <a class="guide-link" id="guideLink" href="/">Open guide</a>
+      </div>
     </header>
 
     <section class="hero">
@@ -405,6 +410,7 @@
       </div>
       <div class="current-actions">
         <button class="secondary-button" id="changeButton" type="button">Change lineup</button>
+        <a class="guide-link" style="display:inline-block" href="/lineuparr">Build Lineuparr JSON</a>
         <a class="guide-link" style="display:inline-block" href="/">View guide</a>
       </div>
     </section>
@@ -446,6 +452,7 @@
     </section>
 
     <p class="footnote">Lineup availability comes from Gracenote's provider directory. GraceNoteScraper stores the selected lineup identifiers locally; this step does not require a provider account or password.</p>
+
   </main>
 
   <script>
@@ -466,6 +473,7 @@
       var progressTrack = document.getElementById('progressTrack');
       var progressFill = document.getElementById('progressFill');
       var guideLink = document.getElementById('guideLink');
+      var builderLink = document.getElementById('builderLink');
       var form = document.getElementById('searchForm');
       var country = document.getElementById('country');
       var postalCode = document.getElementById('postalCode');
@@ -570,6 +578,7 @@
         currentMeta.textContent = [config.location, config.postalCode, providerTypeLabel(config.providerType)].filter(Boolean).join(' · ');
         currentCard.style.display = 'flex';
         guideLink.style.display = 'inline-block';
+        builderLink.style.display = 'inline-block';
         chooserPanel.style.display = 'none';
         guideStatus.classList.add('show');
         pollGuideStatus();

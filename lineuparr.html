@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lineuparr builder · GraceNoteScraper</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --page: #07110e;
+      --panel: #101e19;
+      --panel-strong: #152720;
+      --line: #2b463b;
+      --text: #f2f7f4;
+      --muted: #a8bbb2;
+      --accent: #7ce6a6;
+      --accent-strong: #4bc77d;
+      --warning: #f6d274;
+      --danger: #ff9b94;
+      --blue: #8cc8ff;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .32);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 12% -10%, rgba(75, 199, 125, .18), transparent 35rem),
+        linear-gradient(145deg, #07110e 0%, #0b1512 52%, #08100e 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    a { color: inherit; }
+    button, input, select { font: inherit; }
+
+    .shell {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 70px;
+    }
+
+    .topbar, .nav, .toolbar, .stats, .channel-main, .channel-actions, .source-row {
+      display: flex;
+      align-items: center;
+    }
+
+    .topbar { justify-content: space-between; gap: 20px; margin-bottom: 42px; }
+
+    .brand { display: flex; align-items: center; gap: 12px; font-weight: 780; letter-spacing: -.02em; }
+    .brand-mark {
+      display: grid; width: 42px; height: 42px; place-items: center;
+      border: 1px solid rgba(124, 230, 166, .45); border-radius: 13px;
+      background: linear-gradient(145deg, rgba(124, 230, 166, .22), rgba(124, 230, 166, .05));
+      color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    .nav { gap: 8px; }
+    .nav a {
+      padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px;
+      color: var(--muted); text-decoration: none; font-size: 13px;
+    }
+    .nav a:hover { border-color: var(--accent); color: var(--text); }
+
+    .hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 34px; align-items: end; margin-bottom: 26px; }
+    .eyebrow { margin: 0 0 11px; color: var(--accent); font-size: 12px; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: clamp(34px, 6vw, 58px); line-height: 1.02; letter-spacing: -.045em; }
+    .hero-copy { max-width: 720px; margin: 17px 0 0; color: var(--muted); font-size: 16px; line-height: 1.62; }
+    .provider-pill { max-width: 330px; padding: 15px 17px; border: 1px solid rgba(124, 230, 166, .28); border-radius: 14px; background: rgba(124, 230, 166, .075); }
+    .provider-label { color: var(--accent); font-size: 10px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .provider-name { margin-top: 5px; font-weight: 760; }
+    .provider-meta { margin-top: 4px; color: var(--muted); font-size: 12px; }
+
+    .status-message { display: none; margin-bottom: 18px; padding: 14px 16px; border-radius: 12px; color: var(--muted); background: rgba(255,255,255,.05); line-height: 1.45; }
+    .status-message.error { color: var(--danger); background: rgba(255, 92, 84, .09); }
+    .status-message.show { display: block; }
+
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 18px; }
+    .stat { min-width: 0; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: rgba(16, 30, 25, .88); }
+    .stat-value { font-size: 25px; font-weight: 820; letter-spacing: -.03em; }
+    .stat-label { margin-top: 4px; color: var(--muted); font-size: 11px; font-weight: 760; letter-spacing: .09em; text-transform: uppercase; }
+    .stat.warning .stat-value { color: var(--warning); }
+
+    .panel { border: 1px solid var(--line); border-radius: 19px; background: rgba(16, 30, 25, .94); box-shadow: var(--shadow); }
+    .source-panel { margin-bottom: 18px; padding: 19px 21px; }
+    .panel-title { margin: 0; font-size: 15px; }
+    .panel-help { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .sources { display: grid; gap: 9px; margin-top: 15px; }
+    .source-row { justify-content: space-between; gap: 20px; padding: 11px 12px; border: 1px solid rgba(43,70,59,.75); border-radius: 10px; background: rgba(7,17,14,.42); }
+    .source-name { min-width: 0; font-size: 13px; font-weight: 700; }
+    .source-message { overflow: hidden; margin-top: 3px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .source-state { flex: 0 0 auto; color: var(--muted); font-size: 11px; text-align: right; }
+    .source-state.good { color: var(--accent); }
+    .source-state.bad { color: var(--danger); }
+    .provider-address {
+      display: grid; grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr); gap: 18px;
+      align-items: center; margin-top: 15px; padding: 15px; border: 1px solid rgba(140,200,255,.26);
+      border-radius: 12px; background: rgba(140,200,255,.055);
+    }
+    .provider-address[hidden] { display: none; }
+    .provider-address h3 { margin: 0; font-size: 14px; }
+    .provider-address p { margin: 6px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .provider-address-input { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; min-width: 0; }
+    .provider-address-input button { min-width: 92px; }
+    .provider-address-results { display: grid; gap: 6px; margin-top: 8px; }
+    .provider-address-result { min-height: 38px; padding: 8px 10px; color: var(--text); font-size: 12px; text-align: left; }
+    .provider-address-attribution { font-size: 10px !important; }
+    .provider-address-status { margin-top: 7px; color: var(--muted); font-size: 11px; line-height: 1.4; }
+    .provider-address-status.good { color: var(--accent); }
+    .provider-address-status.bad { color: var(--danger); }
+
+    .alias-panel { margin-bottom: 18px; padding: 24px 21px; }
+    .alias-header h2 { margin: 0; font-size: 24px; letter-spacing: -.025em; }
+    .alias-header p { max-width: 760px; margin: 9px 0 0; color: var(--muted); line-height: 1.55; }
+    .metric-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 20px; }
+    .metric { min-height: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(7,17,14,.48); }
+    .metric-value { font-size: 24px; font-weight: 820; letter-spacing: -.03em; }
+    .metric-label { margin-top: 5px; color: var(--muted); font-size: 11px; line-height: 1.35; }
+    .scan-progress { margin-top: 18px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: rgba(7,17,14,.38); }
+    .progress-copy { display: flex; justify-content: space-between; gap: 16px; color: var(--muted); font-size: 13px; }
+    .progress-copy strong { color: var(--text); }
+    .progress-track { overflow: hidden; height: 8px; margin-top: 12px; border-radius: 999px; background: rgba(255,255,255,.07); }
+    .progress-bar { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,var(--accent-strong),var(--accent)); transition: width .25s ease; }
+    .alias-message { display: none; margin-top: 13px; padding: 11px 12px; border-radius: 9px; color: var(--muted); background: rgba(255,255,255,.04); font-size: 12px; }
+    .alias-message.show { display: block; }
+    .alias-message.error { color: var(--danger); background: rgba(255,95,87,.08); }
+    .alias-message.success { color: var(--accent); background: rgba(124,230,166,.08); }
+    .action-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 16px; }
+    button.secondary { border: 1px solid var(--line); background: transparent; color: var(--text); }
+    button.secondary:hover { border-color: var(--accent); background: rgba(124,230,166,.06); }
+    button.danger { color: var(--danger); }
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td { padding: 10px 11px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--muted); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    .status-pill { justify-self: start; padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); }
+    .status-pill.complete { color: var(--accent); background: rgba(124,230,166,.08); }
+    .status-pill.error { color: var(--danger); background: rgba(255,95,87,.08); }
+    .status-pill.running { color: var(--warning); }
+
+    .builder-panel { overflow: hidden; }
+    .toolbar { flex-wrap: wrap; gap: 10px; padding: 18px; border-bottom: 1px solid var(--line); }
+    .field { display: grid; gap: 6px; min-width: 150px; }
+    .field.search { flex: 1 1 250px; }
+    .field label { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+    input, select {
+      width: 100%; height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 9px;
+      outline: none; background: #09130f; color: var(--text);
+    }
+    input:focus, select:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px rgba(75,199,125,.12); }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; margin-left: auto; align-self: end; }
+    button, .export-button {
+      display: inline-flex; min-height: 42px; align-items: center; justify-content: center;
+      padding: 0 14px; border: 1px solid var(--line); border-radius: 9px;
+      background: rgba(255,255,255,.04); color: var(--text); font-weight: 760; text-decoration: none; cursor: pointer;
+    }
+    button:hover, .export-button:hover { border-color: var(--accent); }
+    button:disabled { cursor: wait; opacity: .5; }
+    .export-button { border-color: var(--accent); background: var(--accent); color: #092015; }
+    .export-button:hover { background: #9af0bb; }
+    .duplicate-button:not(:disabled) { border-color: rgba(246,210,116,.55); color: var(--warning); }
+
+    .channel-list { display: grid; }
+    .channel-card { padding: 15px 18px; border-bottom: 1px solid rgba(43,70,59,.75); }
+    .channel-card:last-child { border-bottom: 0; }
+    .channel-card.excluded { opacity: .55; background: rgba(0,0,0,.16); }
+    .channel-main { gap: 13px; align-items: flex-start; }
+    .include-toggle { display: grid; flex: 0 0 22px; width: 22px; height: 32px; place-items: center; }
+    .include-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+    .channel-number { flex: 0 0 68px; padding-top: 4px; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 820; }
+    .channel-copy { min-width: 0; flex: 1 1 auto; }
+    .channel-name { font-weight: 760; overflow-wrap: anywhere; }
+    .channel-meta { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .badges { display: inline-flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+    .badge { padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.06); color: var(--muted); font-size: 10px; }
+    .badge.unresolved { color: var(--warning); background: rgba(246,210,116,.09); }
+    .badge.duplicate { color: var(--blue); background: rgba(140,200,255,.09); }
+    .channel-actions { flex: 0 1 270px; gap: 8px; align-items: flex-start; }
+    .category-input { height: 38px; font-size: 13px; }
+    details { margin: 11px 0 0 103px; }
+    summary { width: fit-content; color: var(--muted); font-size: 11px; cursor: pointer; }
+    .alias-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+    .alias { padding: 5px 7px; border: 1px solid rgba(43,70,59,.8); border-radius: 7px; color: #c8d5cf; background: rgba(7,17,14,.38); font-size: 11px; }
+    .empty { padding: 55px 20px; color: var(--muted); text-align: center; }
+    .loading { padding: 70px 20px; color: var(--muted); text-align: center; }
+    .spinner { width: 28px; height: 28px; margin: 0 auto 14px; border: 3px solid rgba(124,230,166,.18); border-top-color: var(--accent); border-radius: 50%; animation: spin .85s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 880px) {
+      .hero { grid-template-columns: 1fr; }
+      .provider-pill { max-width: none; }
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .metric-grid { grid-template-columns: repeat(3, 1fr); }
+      .channel-main { flex-wrap: wrap; }
+      .channel-copy { flex-basis: calc(100% - 120px); }
+      .channel-actions { flex: 1 1 100%; margin-left: 103px; }
+    }
+
+    @media (max-width: 600px) {
+      .shell { width: min(100% - 20px, 1240px); padding-top: 20px; }
+      .topbar { align-items: flex-start; margin-bottom: 30px; }
+      .brand-name { display: none; }
+      .nav { flex-wrap: wrap; justify-content: flex-end; }
+      .hero { gap: 20px; }
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .toolbar { align-items: stretch; }
+      .field { flex: 1 1 100%; }
+      .actions { width: 100%; margin-left: 0; }
+      .actions > * { flex: 1 1 auto; }
+      .channel-card { padding: 14px 12px; }
+      .channel-number { flex-basis: 48px; }
+      .channel-copy { flex-basis: calc(100% - 96px); }
+      .channel-actions { margin-left: 83px; }
+      details { margin-left: 83px; }
+      .source-row { align-items: flex-start; }
+      .source-message { white-space: normal; }
+      .provider-address { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">GN</span><span class="brand-name">GraceNoteScraper</span></div>
+      <nav class="nav" aria-label="Application">
+        <a href="/">Guide</a>
+        <a href="/setup">Provider setup</a>
+      </nav>
+    </header>
+
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Lineuparr extension</p>
+        <h1>Shape your current lineup.</h1>
+        <p class="hero-copy">Every provider channel starts included. Review exact, attributable aliases and categories, optionally remove suggested SD duplicates, then export a Lineuparr-compatible JSON file.</p>
+      </div>
+      <div class="provider-pill" id="provider-card" hidden>
+        <div class="provider-label">Active provider</div>
+        <div class="provider-name" id="provider-name"></div>
+        <div class="provider-meta" id="provider-meta"></div>
+      </div>
+    </section>
+
+    <div class="status-message" id="message" role="status"></div>
+
+    <section class="stats" id="stats" hidden>
+      <div class="stat"><div class="stat-value" id="stat-included">—</div><div class="stat-label">Included</div></div>
+      <div class="stat"><div class="stat-value" id="stat-total">—</div><div class="stat-label">Provider positions</div></div>
+      <div class="stat"><div class="stat-value" id="stat-aliases">—</div><div class="stat-label">Aliases</div></div>
+      <div class="stat"><div class="stat-value" id="stat-categorized">—</div><div class="stat-label">Categorized</div></div>
+      <div class="stat warning"><div class="stat-value" id="stat-unresolved">—</div><div class="stat-label">Needs category</div></div>
+    </section>
+
+    <section class="panel source-panel" id="source-panel" hidden>
+      <h2 class="panel-title">Enrichment sources</h2>
+      <p class="panel-help">Gracenote controls membership and channel numbers. Other sources contribute only unique exact matches; ambiguous identities are counted but not applied.</p>
+      <div class="sources" id="sources"></div>
+      <section class="provider-address" id="provider-address" hidden>
+        <div>
+          <h3 id="provider-address-title">Official provider location</h3>
+          <p id="provider-address-help"></p>
+        </div>
+        <div>
+          <form class="provider-address-input" id="provider-address-form">
+            <input id="provider-address-query" autocomplete="street-address" placeholder="Enter a complete street address">
+            <button type="submit" id="provider-address-search">Search</button>
+          </form>
+          <div class="provider-address-results" id="provider-address-results"></div>
+          <div class="provider-address-status" id="provider-address-status" role="status" aria-live="polite"></div>
+          <p class="provider-address-attribution">Address search © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>. Public-service searches may be logged; configure a self-hosted Nominatim endpoint for private addresses.</p>
+        </div>
+      </section>
+    </section>
+
+    <section class="panel alias-panel" id="alias-panel">
+      <div class="alias-header">
+        <p class="eyebrow">Alias discovery</p>
+        <h2>Build a reusable station-name index</h2>
+        <p>Scan provider lineups in the configured ZIP. Exact Gracenote station IDs, event callsigns, official provider sources, and reviewed network renames can contribute attributable aliases to this Lineuparr draft.</p>
+      </div>
+      <div class="metric-grid" aria-live="polite">
+        <div class="metric"><div class="metric-value" id="lineups-metric">—</div><div class="metric-label">Unique lineups</div></div>
+        <div class="metric"><div class="metric-value" id="stations-metric">—</div><div class="metric-label">Station IDs</div></div>
+        <div class="metric"><div class="metric-value" id="aliases-metric">—</div><div class="metric-label">Meaningful aliases</div></div>
+        <div class="metric"><div class="metric-value" id="current-aliases-metric">—</div><div class="metric-label">Aliases for current lineup</div></div>
+      </div>
+      <p id="alias-last-refresh">Last provider refresh: never</p>
+      <div class="scan-progress">
+        <div class="progress-copy"><strong id="scan-status">Loading alias index…</strong><span id="scan-progress-count"></span></div>
+        <div class="progress-track"><div class="progress-bar" id="scan-progress-bar"></div></div>
+        <div class="alias-message" id="market-message" role="status" aria-live="polite"></div>
+        <div class="action-row">
+          <button id="postal-scan" type="button">Scan providers in this ZIP</button>
+          <button class="secondary" id="stop-scan" type="button" hidden>Stop scan</button>
+
+        </div>
+      </div>
+
+
+
+    </section>
+
+    <section class="panel builder-panel">
+      <div class="toolbar" id="toolbar" hidden>
+        <div class="field search">
+          <label for="search">Find a channel</label>
+          <input id="search" type="search" placeholder="Number, name, callsign, or alias" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="category-filter">Category</label>
+          <select id="category-filter"><option value="">All categories</option></select>
+        </div>
+        <div class="field">
+          <label for="included-filter">Visibility</label>
+          <select id="included-filter">
+            <option value="all">All channels</option>
+            <option value="included">Included only</option>
+            <option value="excluded">Excluded only</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button type="button" id="remove-duplicates" class="duplicate-button">Remove suggested SD</button>
+          <button type="button" id="restore-all">Restore all</button>
+          <a class="export-button" href="/api/lineuparr/export">Export JSON</a>
+        </div>
+      </div>
+      <datalist id="category-options"></datalist>
+      <div class="channel-list" id="channel-list">
+        <div class="loading"><div class="spinner"></div><div id="loading-copy">Building the lineup and checking enrichment sources…</div></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const els = {
+      message: document.getElementById('message'), stats: document.getElementById('stats'),
+      providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
+      sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
+      providerAddress: document.getElementById('provider-address'), providerAddressTitle: document.getElementById('provider-address-title'),
+      providerAddressHelp: document.getElementById('provider-address-help'), providerAddressForm: document.getElementById('provider-address-form'),
+      providerAddressQuery: document.getElementById('provider-address-query'), providerAddressSearch: document.getElementById('provider-address-search'),
+      providerAddressResults: document.getElementById('provider-address-results'), providerAddressStatus: document.getElementById('provider-address-status'),
+      list: document.getElementById('channel-list'), search: document.getElementById('search'), categoryFilter: document.getElementById('category-filter'),
+      includedFilter: document.getElementById('included-filter'), categoryOptions: document.getElementById('category-options'),
+      removeDuplicates: document.getElementById('remove-duplicates'), restoreAll: document.getElementById('restore-all'),
+      included: document.getElementById('stat-included'), total: document.getElementById('stat-total'), aliases: document.getElementById('stat-aliases'),
+      categorized: document.getElementById('stat-categorized'), unresolved: document.getElementById('stat-unresolved'), lineupsMetric: document.getElementById('lineups-metric'),
+      stationsMetric: document.getElementById('stations-metric'), aliasesMetric: document.getElementById('aliases-metric'),
+      currentAliasesMetric: document.getElementById('current-aliases-metric'), scanStatus: document.getElementById('scan-status'),
+      scanProgressCount: document.getElementById('scan-progress-count'), scanProgressBar: document.getElementById('scan-progress-bar'),
+      marketMessage: document.getElementById('market-message'),
+      postalScan: document.getElementById('postal-scan'), stopScan: document.getElementById('stop-scan'),
+    };
+
+    let draft = null;
+    let saving = false;
+    let marketPoll = null;
+    let marketWasRunning = false;
+    let aliasQueue = {};
+    let selectedProviderAddress = null;
+    let providerAddressConfig = null;
+    const providerAddressCache = new Map();
+
+    function showMessage(text, error = false) {
+      els.message.textContent = text || '';
+      els.message.className = 'status-message' + (text ? ' show' : '') + (error ? ' error' : '');
+    }
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, options);
+      if (!response.ok) throw new Error((await response.text()).trim() || `Request failed (${response.status})`);
+      const type = response.headers.get('content-type') || '';
+      return type.includes('application/json') ? response.json() : null;
+    }
+
+    function setProviderAddressStatus(text, kind = '') {
+      els.providerAddressStatus.textContent = text || '';
+      els.providerAddressStatus.className = `provider-address-status${kind ? ` ${kind}` : ''}`;
+    }
+
+    async function initProviderAddress() {
+      try {
+        const config = await api('/api/lineuparr/provider-address/config');
+        if (!config.required) return;
+        providerAddressConfig = config;
+        els.providerAddress.hidden = false;
+        els.providerAddressTitle.textContent = `${config.providerLabel || 'Provider'} service address`;
+        els.providerAddressHelp.textContent = `This official lineup source requires a service address. Search for a complete address in ${config.postalCode}, then select one result. GraceNoteScraper does not persist the address.`;
+        if (!config.enabled) {
+          els.providerAddressQuery.disabled = true;
+          els.providerAddressSearch.disabled = true;
+          setProviderAddressStatus(config.message || 'Address search is not configured.', 'bad');
+          return;
+        }
+        els.providerAddressQuery.placeholder = `Complete street address in ${config.postalCode}`;
+        setProviderAddressStatus(config.message || `Search for an address in ${config.postalCode}.`);
+      } catch (error) {
+        setProviderAddressStatus(error.message || 'Provider address setup is unavailable.', 'bad');
+      }
+    }
+
+    function renderProviderAddressResults(results) {
+      els.providerAddressResults.replaceChildren();
+      if (!results.length) {
+        setProviderAddressStatus(`No complete street addresses were found in ${providerAddressConfig.postalCode}. Check the address and search again.`, 'bad');
+        return;
+      }
+      for (const result of results) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'provider-address-result';
+        button.textContent = result.formattedAddress;
+        button.addEventListener('click', () => {
+          selectedProviderAddress = {placeId: result.id, formattedAddress: result.formattedAddress, postalCode: result.postalCode};
+          setProviderAddressStatus(`${result.formattedAddress} is ready for this provider source. It will not be stored.`, 'good');
+        });
+        els.providerAddressResults.append(button);
+      }
+      setProviderAddressStatus(`Choose one verified address in ${providerAddressConfig.postalCode}.`);
+    }
+
+    async function searchProviderAddress(event) {
+      event.preventDefault();
+      if (!providerAddressConfig?.enabled) return;
+      const query = els.providerAddressQuery.value.trim();
+      if (query.length < 5) {
+        setProviderAddressStatus('Enter a complete street address before searching.', 'bad');
+        return;
+      }
+      selectedProviderAddress = null;
+      els.providerAddressSearch.disabled = true;
+      setProviderAddressStatus('Searching OpenStreetMap addresses…');
+      try {
+        const cacheKey = query.toLowerCase();
+        let response = providerAddressCache.get(cacheKey);
+        if (!response) {
+          response = await api('/api/lineuparr/provider-address/search', {
+            method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query})
+          });
+          providerAddressCache.set(cacheKey, response);
+        }
+        renderProviderAddressResults(response.results || []);
+      } catch (error) {
+        setProviderAddressStatus(error.message || 'The address search failed.', 'bad');
+      } finally {
+        els.providerAddressSearch.disabled = false;
+      }
+    }
+
+    function setMarketMessage(text, kind = '') {
+      els.marketMessage.textContent = text || '';
+      els.marketMessage.className = `alias-message${text ? ' show' : ''}${kind ? ` ${kind}` : ''}`;
+    }
+
+    function renderAliasIndex(data) {
+      const summary = data.summary || {}, job = data.job || {}, postalScan = data.postalScan;
+      const queue = data.queue || {};
+      aliasQueue = queue;
+      els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
+      els.stationsMetric.textContent = (summary.stations || 0).toLocaleString();
+      els.aliasesMetric.textContent = (summary.meaningfulAliases || 0).toLocaleString();
+      els.currentAliasesMetric.textContent = (summary.currentLineupAliases || 0).toLocaleString();
+      els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
+      els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
+      els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
+      els.postalScan.disabled = !!job.running;
+      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
+      els.stopScan.hidden = !job.running;
+      const refreshed = postalScan?.completedAt || job.completedAt;
+      const refreshLabel = document.getElementById('alias-last-refresh');
+      if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
+      if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
+      else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
+      else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
+      else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
+      const polling = job.running || queue.queued || queue.guideBusy;
+      if (polling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
+      if (!polling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
+      if (marketWasRunning && !job.running) reloadDraft().catch(error => showMessage(error.message, true));
+      marketWasRunning = job.running;
+    }
+
+    async function loadAliasIndex() {
+      try {
+        renderAliasIndex(await api('/api/lineuparr/alias-index'));
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to load alias discovery.', 'error');
+        els.scanStatus.textContent = 'Alias discovery unavailable';
+      }
+    }
+
+    async function startAliasScan(action) {
+      els.postalScan.disabled = true;
+      setMarketMessage('Finding and scanning provider lineups in the configured ZIP…');
+      try {
+        const result = await api('/api/lineuparr/alias-index/run', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({action, })
+        });
+        setMarketMessage(result?.queued ? 'Scan queued until the guide is ready. Click the queued button to cancel.' : 'Scan started. Progress is saved after every lineup.', 'success');
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to start the alias scan.', 'error');
+      }
+      await loadAliasIndex();
+    }
+
+    async function cancelQueuedAliasScan() {
+      try {
+        const result = await api('/api/lineuparr/alias-index/run', {method: 'DELETE'});
+        setMarketMessage(result?.cancelled ? 'Queued alias scan cancelled.' : 'No alias scan was queued.');
+      } catch (error) {
+        setMarketMessage(error.message || 'Unable to cancel the queued scan.', 'error');
+      }
+      await loadAliasIndex();
+    }
+
+    async function reloadDraft() {
+      draft = await api('/api/lineuparr/draft');
+      renderAll();
+    }
+
+    async function loadDraft() {
+      try {
+        draft = await api('/api/lineuparr/draft');
+        showMessage('');
+        renderAll();
+      } catch (error) {
+        const waiting = /still being generated/i.test(error.message);
+        document.getElementById('loading-copy').textContent = waiting ? 'The guide is still being generated. This page will retry automatically…' : 'The lineup could not be loaded.';
+        showMessage(error.message, !waiting);
+        if (waiting) setTimeout(loadDraft, 10000);
+      }
+    }
+
+    function renderAll() {
+      els.providerName.textContent = draft.providerName;
+      els.providerMeta.textContent = `${draft.postalCode} · ${draft.lineupId}`;
+      els.providerCard.hidden = false;
+      els.stats.hidden = false;
+      els.sourcePanel.hidden = false;
+      els.toolbar.hidden = false;
+      renderSummary();
+      renderSources();
+      renderCategoryOptions();
+      renderChannels();
+    }
+
+    function renderSummary() {
+      const included = draft.channels.filter(channel => channel.included).length;
+      const categorized = draft.channels.filter(channel => channel.category !== 'Uncategorized').length;
+      els.included.textContent = included.toLocaleString();
+      els.total.textContent = draft.channels.length.toLocaleString();
+      els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
+      els.categorized.textContent = categorized.toLocaleString();
+      els.unresolved.textContent = (draft.channels.length - categorized).toLocaleString();
+      const count = (draft.duplicateSuggestions || []).length;
+      els.removeDuplicates.textContent = count ? `Remove ${count} suggested SD` : 'No SD duplicates suggested';
+      els.removeDuplicates.disabled = saving || count === 0;
+      els.restoreAll.disabled = saving || included === draft.channels.length;
+    }
+
+    function renderSources() {
+      els.sources.replaceChildren();
+      for (const source of draft.sources) {
+        const row = document.createElement('div'); row.className = 'source-row';
+        const copy = document.createElement('div'); copy.style.minWidth = '0';
+        const name = source.url ? document.createElement('a') : document.createElement('div');
+        name.className = 'source-name'; name.textContent = source.label;
+        if (source.url) { name.href = source.url; name.target = '_blank'; name.rel = 'noreferrer'; }
+        const message = document.createElement('div'); message.className = 'source-message'; message.textContent = source.message || '';
+        copy.append(name, message);
+        const state = document.createElement('div');
+        const good = !['error'].includes(source.status);
+        state.className = 'source-state ' + (good ? 'good' : 'bad');
+        state.textContent = source.id === 'gracenote' ? `${source.matched} positions` : `${source.matched} matched${source.ambiguous ? ` · ${source.ambiguous} ambiguous` : ''}`;
+        row.append(copy, state); els.sources.append(row);
+      }
+    }
+
+    function categories() {
+      const defaults = ['Local','News','Sports','Regional Sports','Movies','Kids','Entertainment','Reality & Lifestyle','Comedy','Discovery','Crime','Faith','Music','Shopping','Spanish','International','Outdoors','Food & Travel','Adult & PPV','Uncategorized'];
+      return [...new Set([...defaults, ...draft.channels.map(channel => channel.category).filter(Boolean)])].sort((a,b) => a.localeCompare(b));
+    }
+
+    function renderCategoryOptions() {
+      const previous = els.categoryFilter.value;
+      els.categoryFilter.replaceChildren(new Option('All categories', ''));
+      els.categoryOptions.replaceChildren();
+      for (const category of categories()) {
+        els.categoryFilter.add(new Option(category, category));
+        const option = document.createElement('option'); option.value = category; els.categoryOptions.append(option);
+      }
+      els.categoryFilter.value = previous;
+    }
+
+    function sourceLabel(id) {
+      return draft.sources.find(source => source.id === id)?.label || id;
+    }
+
+    function renderChannels() {
+      const query = els.search.value.trim().toLowerCase();
+      const category = els.categoryFilter.value;
+      const visibility = els.includedFilter.value;
+      const visible = draft.channels.filter(channel => {
+        if (category && channel.category !== category) return false;
+        if (visibility === 'included' && !channel.included) return false;
+        if (visibility === 'excluded' && channel.included) return false;
+        if (!query) return true;
+        return [channel.number, channel.name, channel.callSign, channel.affiliate, ...(channel.aliases || [])].join(' ').toLowerCase().includes(query);
+      });
+
+      if (!visible.length) {
+        const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No channels match these filters.';
+        els.list.replaceChildren(empty); return;
+      }
+
+      const fragment = document.createDocumentFragment();
+      for (const channel of visible) fragment.append(channelCard(channel));
+      els.list.replaceChildren(fragment);
+    }
+
+    function channelCard(channel) {
+      const card = document.createElement('article'); card.className = 'channel-card' + (channel.included ? '' : ' excluded');
+      const main = document.createElement('div'); main.className = 'channel-main';
+      const toggleLabel = document.createElement('label'); toggleLabel.className = 'include-toggle'; toggleLabel.title = 'Include in export';
+      const toggle = document.createElement('input'); toggle.type = 'checkbox'; toggle.checked = channel.included; toggle.disabled = saving;
+      toggle.addEventListener('change', () => saveChannel(channel, { included: toggle.checked }, toggle));
+      toggleLabel.append(toggle);
+      const number = document.createElement('div'); number.className = 'channel-number'; number.textContent = channel.number || '—';
+      const copy = document.createElement('div'); copy.className = 'channel-copy';
+      const name = document.createElement('div'); name.className = 'channel-name'; name.textContent = channel.name;
+      const meta = document.createElement('div'); meta.className = 'channel-meta';
+      meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
+      const badges = document.createElement('div'); badges.className = 'badges';
+      if (channel.category === 'Uncategorized') badges.append(badge('Needs category', 'unresolved'));
+      if (channel.duplicateOf) badges.append(badge('Suggested SD duplicate', 'duplicate'));
+      for (const source of channel.matchedSources || []) if (source !== 'gracenote') badges.append(badge(sourceLabel(source)));
+      copy.append(name, meta, badges);
+      const actions = document.createElement('div'); actions.className = 'channel-actions';
+      const categoryInput = document.createElement('input'); categoryInput.className = 'category-input'; categoryInput.value = channel.category; categoryInput.setAttribute('list', 'category-options'); categoryInput.setAttribute('aria-label', `Category for ${channel.name}`); categoryInput.disabled = saving;
+      const saveCategory = () => {
+        const category = categoryInput.value.trim() || 'Uncategorized';
+        if (category !== channel.category) saveChannel(channel, { category }, categoryInput);
+      };
+      categoryInput.addEventListener('change', saveCategory);
+      categoryInput.addEventListener('blur', saveCategory);
+      categoryInput.addEventListener('keydown', event => {
+        if (event.key === 'Enter') categoryInput.blur();
+      });
+      actions.append(categoryInput);
+      main.append(toggleLabel, number, copy, actions); card.append(main);
+
+      const details = document.createElement('details');
+      const summary = document.createElement('summary'); summary.textContent = `${(channel.aliases || []).length} aliases · ${(channel.epgIds || []).length} EPG IDs`;
+      const aliases = document.createElement('div'); aliases.className = 'alias-list';
+      for (const evidence of channel.aliasEvidence || []) {
+        const item = document.createElement('span'); item.className = 'alias'; item.textContent = evidence.value; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
+      }
+      for (const evidence of channel.epgIdEvidence || []) {
+        const item = document.createElement('span'); item.className = 'alias'; item.textContent = `EPG: ${evidence.value}`; item.title = `${evidence.methods.join(', ')} · ${evidence.sources.map(sourceLabel).join(', ')}`; aliases.append(item);
+      }
+      details.append(summary, aliases); card.append(details);
+      return card;
+    }
+
+    function badge(text, kind = '') { const item = document.createElement('span'); item.className = `badge ${kind}`; item.textContent = text; return item; }
+
+    async function saveChannel(channel, patch, control) {
+      const oldIncluded = channel.included; const oldCategory = channel.category;
+      if ('included' in patch) channel.included = patch.included;
+      if ('category' in patch) channel.category = patch.category.trim() || 'Uncategorized';
+      control.disabled = true; renderSummary();
+      try {
+        await api('/api/lineuparr/channel', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({channelId: channel.id, ...patch}) });
+        if ('category' in patch) { channel.categorySource = 'user'; renderCategoryOptions(); }
+        showMessage('Saved.'); setTimeout(() => { if (els.message.textContent === 'Saved.') showMessage(''); }, 1300);
+      } catch (error) {
+        channel.included = oldIncluded; channel.category = oldCategory; control.checked = oldIncluded; control.value = oldCategory;
+        showMessage(error.message, true);
+      } finally {
+        control.disabled = false; renderSummary(); renderChannels();
+      }
+    }
+
+    async function removeDuplicates() {
+      saving = true; renderSummary(); showMessage('Applying the duplicate-SD suggestions…');
+      try {
+        await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        const ids = new Set((draft.duplicateSuggestions || []).map(item => item.removeId));
+        for (const channel of draft.channels) if (ids.has(channel.id)) channel.included = false;
+        showMessage(`${ids.size} suggested SD channel${ids.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
+      } catch (error) { showMessage(error.message, true); }
+      finally { saving = false; renderSummary(); renderChannels(); }
+    }
+
+    async function restoreAll() {
+      saving = true; renderSummary(); showMessage('Restoring every provider channel…');
+      try {
+        await api('/api/lineuparr/restore-all', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+        for (const channel of draft.channels) channel.included = true;
+        showMessage('All provider channels are included again.');
+      } catch (error) { showMessage(error.message, true); }
+      finally { saving = false; renderSummary(); renderChannels(); }
+    }
+
+    let searchTimer;
+    els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
+    els.categoryFilter.addEventListener('change', renderChannels);
+    els.includedFilter.addEventListener('change', renderChannels);
+    els.removeDuplicates.addEventListener('click', removeDuplicates);
+    els.restoreAll.addEventListener('click', restoreAll);
+    els.providerAddressForm.addEventListener('submit', searchProviderAddress);
+    els.postalScan.addEventListener('click', () => aliasQueue.queued ? cancelQueuedAliasScan() : startAliasScan('postal'));
+    els.stopScan.addEventListener('click', async () => {
+      try {
+        await api('/api/lineuparr/alias-index/stop', {method:'POST'});
+        setMarketMessage('Stop requested. Completed checkpoints remain saved.');
+        await loadAliasIndex();
+      } catch (error) { setMarketMessage(error.message, 'error'); }
+    });
+    loadAliasIndex();
+    initProviderAddress();
+    loadDraft();
+  </script>
+</body>
+</html>

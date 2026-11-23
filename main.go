@@ -21,13 +21,15 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"text/template"
 	"time"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/scrape"
 	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/tvlogo"
@@ -46,19 +48,30 @@ var indexHTML []byte
 
 // GuideState holds the current guide data, safe for concurrent access.
 type GuideState struct {
-	mu    sync.RWMutex
-	guide *guide.TVGuide
+	mu                sync.RWMutex
+	guide             *guide.TVGuide
+	sourceFingerprint string
 }
 
-func (s *GuideState) Update(g *guide.TVGuide) {
+func (s *GuideState) UpdateForSource(g *guide.TVGuide, sourceFingerprint string) {
 	s.mu.Lock()
 	s.guide = g
+	s.sourceFingerprint = sourceFingerprint
 	s.mu.Unlock()
 }
 
 func (s *GuideState) Get() *guide.TVGuide {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	return s.guide
+}
+
+func (s *GuideState) GetForSource(sourceFingerprint string) *guide.TVGuide {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.guide == nil || s.sourceFingerprint != sourceFingerprint {
+		return nil
+	}
 	return s.guide
 }
 
@@ -89,35 +102,25 @@ type APIProgram struct {
 	Description string `json:"description,omitempty"`
 }
 
-// APILineup is the response shape of /api/lineup.json: every provider
-// position for the active lineup, plus the source it came from.
-type APILineup struct {
-	Generated string              `json:"generated"`
-	Source    APILineupSource     `json:"source"`
-	Positions []APILineupPosition `json:"positions"`
-}
-
-type APILineupSource struct {
-	ProviderName string `json:"providerName"`
-	ProviderType string `json:"providerType"`
-	Location     string `json:"location"`
-	LineupID     string `json:"lineupId"`
-	HeadendID    string `json:"headendId"`
-	PostalCode   string `json:"postalCode"`
-	Country      string `json:"country"`
-	Device       string `json:"device"`
-	Language     string `json:"language"`
-}
-
-type APILineupPosition struct {
-	Number            string   `json:"number"`
-	StationID         string   `json:"stationId"`
-	PlacementID       string   `json:"placementId"`
-	CallSign          string   `json:"callSign"`
-	Affiliate         string   `json:"affiliate"`
-	AffiliateCallSign string   `json:"affiliateCallSign"`
-	Filters           []string `json:"filters,omitempty"`
-	LogoURL           string   `json:"logoUrl"`
+func currentStationNames(g *guide.TVGuide) map[string][]string {
+	stations := make(map[string][]string)
+	if g == nil {
+		return stations
+	}
+	for _, channel := range g.Channels {
+		if strings.TrimSpace(channel.ID) == "" {
+			continue
+		}
+		names := make([]string, 0, 2)
+		if strings.TrimSpace(channel.CallSign) != "" {
+			names = append(names, channel.CallSign)
+		}
+		if strings.TrimSpace(channel.Affiliate) != "" {
+			names = append(names, channel.Affiliate)
+		}
+		stations[channel.ID] = names
+	}
+	return stations
 }
 
 // ---------- Conversion ----------
@@ -178,7 +181,7 @@ func guideToJSON(g *guide.TVGuide) APIGuide {
 
 	// Sort channels by number (numeric sort)
 	sort.Slice(channels, func(i, j int) bool {
-		return guide.ChannelNumberLess(channels[i].Number, channels[j].Number)
+		return channelNumberLess(channels[i].Number, channels[j].Number)
 	})
 
 	return APIGuide{
@@ -187,54 +190,54 @@ func guideToJSON(g *guide.TVGuide) APIGuide {
 	}
 }
 
-// lineupToJSON converts a guide's lineup into the API shape. Provider naming
-// comes from the saved configuration only when it describes the same source
-// the guide was built from.
-func lineupToJSON(g *guide.TVGuide, config appconfig.Config, configured bool) APILineup {
-	positions := make([]guide.LineupPosition, len(g.Lineup))
-	copy(positions, g.Lineup)
-	guide.SortLineup(positions)
-
-	out := APILineup{
-		Generated: g.Source.GeneratedAt.UTC().Format(time.RFC3339),
-		Source: APILineupSource{
-			LineupID:   g.Source.LineupID,
-			HeadendID:  g.Source.HeadendID,
-			PostalCode: g.Source.PostalCode,
-			Country:    g.Source.Country,
-			Device:     g.Source.Device,
-			Language:   g.Source.Language,
-		},
-		Positions: make([]APILineupPosition, 0, len(positions)),
+// channelNumberLess compares channel numbers numerically where possible.
+func channelNumberLess(a, b string) bool {
+	// Try to parse as float for numeric comparison (handles "5.1", "12", etc.)
+	var ai, bi float64
+	_, errA := fmt.Sscanf(a, "%f", &ai)
+	_, errB := fmt.Sscanf(b, "%f", &bi)
+	if errA == nil && errB == nil {
+		return ai < bi
 	}
-	if g.Source.GeneratedAt.IsZero() {
-		out.Generated = time.Now().UTC().Format(time.RFC3339)
-	}
-	if configured && sourceMatchesConfig(g.Source, config) {
-		out.Source.ProviderName = config.Gracenote.ProviderName
-		out.Source.ProviderType = config.Gracenote.ProviderType
-		out.Source.Location = config.Gracenote.Location
-	}
-	for _, p := range positions {
-		out.Positions = append(out.Positions, APILineupPosition{
-			Number:            p.ChannelNo,
-			StationID:         p.StationID,
-			PlacementID:       p.PlacementID,
-			CallSign:          p.CallSign,
-			Affiliate:         p.Affiliate,
-			AffiliateCallSign: p.AffiliateCallSign,
-			Filters:           p.Filters,
-			LogoURL:           p.LogoURL,
-		})
-	}
-	return out
+	return a < b
 }
 
-// sourceMatchesConfig reports whether a guide was built from the configured lineup.
-func sourceMatchesConfig(src guide.Source, config appconfig.Config) bool {
-	p := config.Preferences()
-	return src.LineupID == p.LineupId && src.HeadendID == p.Headend && src.PostalCode == p.ZipCode &&
-		src.Country == p.Country && src.Device == p.Device && src.Language == p.Language
+func mergeLineupChannel(existing, observed guide.Channel) guide.Channel {
+	if existing.ID == "" {
+		existing.ID = observed.ID
+	}
+	if existing.PlacementID == "" {
+		existing.PlacementID = observed.PlacementID
+	}
+	if existing.ChannelNo == "" {
+		existing.ChannelNo = observed.ChannelNo
+	}
+	if existing.CallSign == "" {
+		existing.CallSign = observed.CallSign
+	}
+	if existing.Affiliate == "" {
+		existing.Affiliate = observed.Affiliate
+	}
+	if existing.IconURL == "" {
+		existing.IconURL = observed.IconURL
+	}
+	if len(existing.DisplayNames) == 0 {
+		existing.DisplayNames = observed.DisplayNames
+	}
+	seen := make(map[string]bool, len(existing.EventCallSigns)+len(observed.EventCallSigns))
+	merged := make([]string, 0, len(existing.EventCallSigns)+len(observed.EventCallSigns))
+	for _, values := range [][]string{existing.EventCallSigns, observed.EventCallSigns} {
+		for _, value := range values {
+			key := strings.ToLower(strings.TrimSpace(value))
+			if key == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			merged = append(merged, strings.TrimSpace(value))
+		}
+	}
+	existing.EventCallSigns = merged
+	return existing
 }
 
 // xmltvTimeToISO converts "20250225200000 +0000" → "2025-02-25T20:00:00Z"
@@ -278,13 +281,26 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 			}
 		}
 	}
-
+	lineupMap := make(map[string]guide.Channel)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	sourceChanged := watchSourceChange(ctx, cancel, sourceCurrent)
-
+	changed := watchSourceChange(ctx, cancel, sourceCurrent)
 	opts := newScrapeOptions(pref)
+	opts.ObserveChannel = func(ch web.JSONChannel, converted guide.Channel) {
+		lineupKey := converted.PlacementID
+		if lineupKey == "" {
+			lineupKey = strings.Join([]string{converted.ID, converted.ChannelNo, converted.CallSign}, "|")
+		}
+		if existing, exists := lineupMap[lineupKey]; exists {
+			lineupMap[lineupKey] = mergeLineupChannel(existing, converted)
+		} else {
+			lineupMap[lineupKey] = converted
+		}
+	}
 	opts.Progress = func(p scrape.Progress) {
+		if changed() {
+			return
+		}
 		message := fmt.Sprintf("Downloading guide data (%d of %d)", p.Slot, p.TotalSlots)
 		if p.Phase == scrape.PhaseFetched {
 			message = fmt.Sprintf("Downloaded guide data (%d of %d)", p.Slot, p.TotalSlots)
@@ -292,18 +308,23 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		report(scrapeProgressUpdate{Stage: "gracenote", Message: message, Completed: p.Completed, Total: p.TotalSlots, Channels: p.Channels, Programs: p.Programs})
 	}
 	fetched, err := scrape.Fetch(ctx, pref, opts)
-	if err != nil {
-		if sourceChanged() {
-			return nil, errScrapeSourceChanged
-		}
-		return nil, err
-	}
-	if sourceChanged() {
+	if changed() {
 		return nil, errScrapeSourceChanged
 	}
-	channels := fetched.Channels
-	lineup := fetched.Lineup
-	programs := fetched.Programs
+	if err != nil {
+		return nil, err
+	}
+	channels, programs := fetched.Channels, fetched.Programs
+	var lineupChannels []guide.Channel
+	for _, ch := range lineupMap {
+		lineupChannels = append(lineupChannels, ch)
+	}
+	sort.Slice(lineupChannels, func(i, j int) bool {
+		if lineupChannels[i].ChannelNo != lineupChannels[j].ChannelNo {
+			return channelNumberLess(lineupChannels[i].ChannelNo, lineupChannels[j].ChannelNo)
+		}
+		return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+	})
 
 	logoClient := tvlogo.NewClient(pref.Country, "tvlogo_cache.json")
 	if logoClient != nil {
@@ -311,7 +332,6 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	}
 	report(scrapeProgressUpdate{Stage: "logos", Message: "Matching channel logos", Channels: len(channels), Programs: len(programs)})
 	enrichChannelIcons(logoClient, channels)
-	propagateChannelLogos(channels, lineup)
 	enrichProgramThumbnails(tmdbClient, programs, func(completed, total int) {
 		report(scrapeProgressUpdate{Stage: "tmdb", Message: fmt.Sprintf("Enriching program titles (%d of %d)", completed, total), Completed: completed, Total: total, Channels: len(channels), Programs: len(programs)})
 	})
@@ -319,16 +339,34 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 
 	// Rewrite image URLs to go through the local proxy
 	if baseURL != "" {
-		rewriteImageURLs(baseURL, channels, lineup, programs)
+		proxy := strings.TrimRight(baseURL, "/") + "/img?url="
+		for i := range channels {
+			if channels[i].IconURL != "" {
+				channels[i].IconURL = proxy + neturl.QueryEscape(channels[i].IconURL)
+			}
+		}
+		for i := range programs {
+			if programs[i].IconSrc != "" {
+				programs[i].IconSrc = proxy + neturl.QueryEscape(programs[i].IconSrc)
+			}
+			for j := range programs[i].Images {
+				if programs[i].Images[j].URL != "" {
+					programs[i].Images[j].URL = proxy + neturl.QueryEscape(programs[i].Images[j].URL)
+				}
+			}
+		}
 		log.Printf("Rewrote image URLs with base %s", baseURL)
 	}
 
 	tvGuide := &guide.TVGuide{
-		Channels: channels,
-		Programs: programs,
-		Lineup:   lineup,
-		Source:   fetched.Source,
+		Lineup:         fetched.Lineup,
+		Source:         fetched.Source,
+		Channels:       channels,
+		Programs:       programs,
+		LineupChannels: lineupChannels,
 	}
+
+	prepareRawLineupLogos(tvGuide, baseURL)
 
 	if channelFilter != nil {
 		before := len(tvGuide.Channels)
@@ -351,66 +389,14 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	return tvGuide, nil
 }
 
-// renderXMLTV writes the guide as XMLTV using the embedded template.
-func renderXMLTV(w io.Writer, tvGuide *guide.TVGuide) error {
+func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
+	log.Printf("Rendering XMLTV: %d channels, %d programs", len(tvGuide.Channels), len(tvGuide.Programs))
+
+	// Parse embedded template
 	tmpl, err := template.ParseFS(guideTmplFS, "guide.tmpl")
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
-	if err := tmpl.Execute(w, tvGuide); err != nil {
-		return fmt.Errorf("failed to execute template: %w", err)
-	}
-	return nil
-}
-
-// newScrapeOptions builds the production scrape configuration. Tests replace
-// it to inject a fake grid fetcher and remove the inter-slot delay.
-var newScrapeOptions = func(pref web.Preferences) scrape.Options {
-	return scrape.Options{Fetcher: web.NewClient(pref)}
-}
-
-// watchSourceChange cancels ctx as soon as sourceCurrent reports false, so a
-// lineup change during the grid download stops the scrape promptly. The
-// returned func reports whether a change has been observed, re-checking live
-// so a change between the last tick and the call is not missed.
-func watchSourceChange(ctx context.Context, cancel context.CancelFunc, sourceCurrent func() bool) func() bool {
-	if sourceCurrent == nil {
-		return func() bool { return false }
-	}
-	var changed atomic.Bool
-	check := func() bool {
-		if changed.Load() {
-			return true
-		}
-		if !sourceCurrent() {
-			changed.Store(true)
-			cancel()
-			return true
-		}
-		return false
-	}
-	if check() {
-		return check
-	}
-	go func() {
-		ticker := time.NewTicker(time.Second)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				if check() {
-					return
-				}
-			}
-		}
-	}()
-	return check
-}
-
-func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
-	log.Printf("Rendering XMLTV: %d channels, %d programs", len(tvGuide.Channels), len(tvGuide.Programs))
 
 	// Atomic write: write to temp file, then rename
 	tmpFile, err := os.CreateTemp(".", "xmlguide-*.tmp")
@@ -419,10 +405,10 @@ func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
 	}
 	tmpName := tmpFile.Name()
 
-	if err := renderXMLTV(tmpFile, tvGuide); err != nil {
+	if err := tmpl.Execute(tmpFile, tvGuide); err != nil {
 		tmpFile.Close()
 		os.Remove(tmpName)
-		return err
+		return fmt.Errorf("failed to execute template: %w", err)
 	}
 	if err := tmpFile.Close(); err != nil {
 		os.Remove(tmpName)
@@ -444,12 +430,10 @@ func persistGuideFiles(tvGuide *guide.TVGuide, sourceFingerprint string) error {
 
 // ---------- Guide cache ----------
 
-const guideCachePath = "guide_cache.json"
-
-// guideCacheVersion is bumped whenever the persisted guide shape gains fields
-// that a scrape must populate. An older cache is rebuilt rather than served
-// with empty fields.
-const guideCacheVersion = 2
+const (
+	guideCachePath    = "guide_cache.json"
+	guideCacheVersion = 2
+)
 
 type guideCache struct {
 	Version           int           `json:"version"`
@@ -484,8 +468,8 @@ func loadGuideCache(maxAge time.Duration, sourceFingerprint string) (*guide.TVGu
 		log.Printf("guide cache: corrupt, ignoring: %v", err)
 		return nil, 0, false
 	}
-	if c.Version != guideCacheVersion {
-		log.Printf("guide cache: schema version %d, want %d; rebuilding", c.Version, guideCacheVersion)
+	if c.Version != guideCacheVersion || len(c.Guide.LineupChannels) == 0 {
+		log.Println("guide cache: missing full provider lineup data, ignoring cached guide")
 		return nil, 0, false
 	}
 	if c.SourceFingerprint != sourceFingerprint {
@@ -589,7 +573,7 @@ func startScraper(ctx context.Context, state *GuideState, store *appconfig.Store
 				if err := persistGuideFiles(g, fingerprint); err != nil {
 					return err
 				}
-				state.Update(g)
+				state.UpdateForSource(g, fingerprint)
 				rotateFiles()
 				return nil
 			})
@@ -695,24 +679,6 @@ func handleGuideJSON(state *GuideState) http.HandlerFunc {
 		enc := json.NewEncoder(w)
 		enc.SetEscapeHTML(false)
 		enc.Encode(apiGuide)
-	}
-}
-
-func handleLineupJSON(state *GuideState, store *appconfig.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		g := state.Get()
-		if g == nil {
-			w.Header().Set("Retry-After", "30")
-			http.Error(w, "Guide is being generated", http.StatusServiceUnavailable)
-			return
-		}
-
-		config, configured, _ := store.Get()
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		enc := json.NewEncoder(w)
-		enc.SetEscapeHTML(false)
-		enc.Encode(lineupToJSON(g, config, configured))
 	}
 }
 
@@ -1069,18 +1035,12 @@ func filterGuideChannels(g *guide.TVGuide, allowed map[string]bool) *guide.TVGui
 		}
 	}
 
-	var lineup []guide.LineupPosition
-	for _, position := range g.Lineup {
-		if allowed[position.ChannelNo] {
-			lineup = append(lineup, position)
-		}
-	}
-
 	return &guide.TVGuide{
-		Channels: channels,
-		Programs: programs,
-		Lineup:   lineup,
-		Source:   g.Source,
+		Source:         g.Source,
+		Lineup:         selectedRawPositions(g.Lineup, allowed),
+		Channels:       channels,
+		Programs:       programs,
+		LineupChannels: g.LineupChannels,
 	}
 }
 
@@ -1101,6 +1061,31 @@ func main() {
 	if configErr != nil {
 		log.Printf("Configuration could not be loaded; /setup will remain available: %v", configErr)
 	}
+	lineuparrStatePath := util.GetEnv("LINEUPARR_STATE_PATH", "lineuparr_state.json")
+	lineuparrStateStore, lineuparrStateErr := lineuparrbuilder.LoadStateStore(lineuparrStatePath)
+	if lineuparrStateErr != nil {
+		log.Printf("Lineuparr builder state could not be loaded; choices will start clean: %v", lineuparrStateErr)
+	}
+	catalogSetting := strings.TrimSpace(util.GetEnv("LINEUPARR_CATALOG_URLS", ""))
+	useDefaultCatalogs := catalogSetting == "" || strings.EqualFold(catalogSetting, "default")
+	var catalogURLs []string
+	if !useDefaultCatalogs && !strings.EqualFold(catalogSetting, "off") && !strings.EqualFold(catalogSetting, "none") {
+		for _, rawURL := range strings.FieldsFunc(catalogSetting, func(r rune) bool { return r == ',' || r == '\n' }) {
+			if rawURL = strings.TrimSpace(rawURL); rawURL != "" {
+				catalogURLs = append(catalogURLs, rawURL)
+			}
+		}
+	}
+	iptvOrgURL := strings.TrimSpace(util.GetEnv("LINEUPARR_IPTV_ORG_URL", lineuparrbuilder.DefaultIPTVOrgURL))
+	if strings.EqualFold(iptvOrgURL, "off") || strings.EqualFold(iptvOrgURL, "none") {
+		iptvOrgURL = ""
+	}
+	lineuparrBuilder := lineuparrbuilder.NewService(lineuparrStateStore, lineuparrbuilder.ServiceOptions{
+		CacheDir:           util.GetEnv("LINEUPARR_CACHE_DIR", "lineuparr_source_cache"),
+		CatalogURLs:        catalogURLs,
+		UseDefaultCatalogs: useDefaultCatalogs,
+		IPTVOrgURL:         iptvOrgURL,
+	})
 
 	jellyfinURL := strings.TrimRight(util.GetEnv("JELLYFIN_URL", ""), "/")
 	jellyfinAPIKey := util.GetEnv("JELLYFIN_API_KEY", "")
@@ -1174,7 +1159,11 @@ func main() {
 	}
 
 	state := &GuideState{}
-	state.Update(g)
+	initialFingerprint := ""
+	if configured {
+		initialFingerprint = config.Fingerprint()
+	}
+	state.UpdateForSource(g, initialFingerprint)
 	guideChannels, guidePrograms := 0, 0
 	if g != nil {
 		guideChannels = len(g.Channels)
@@ -1194,12 +1183,40 @@ func main() {
 		scrapeStatus:   guideStatus,
 		onProviderSaved: func(changed bool) {
 			if changed {
-				state.Update(nil)
+				state.UpdateForSource(nil, "")
 				invalidateCurrentGuideArtifacts()
 			}
 			guideStatus.queue("Guide build queued")
 			queueScrape(scrapeTrigger)
 		},
+	}
+	var marketService *lineupindex.Service
+	service, serviceErr := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path:            util.GetEnv("MARKET_INDEX_PATH", "market_index.json"),
+		Providers:       setupHandlers.providers,
+		Grids:           lineupindex.WebGridFetcher{},
+		CurrentStations: func() map[string][]string { return currentStationNames(state.Get()) },
+		ProviderDelay:   500 * time.Millisecond,
+		GridDelay:       5 * time.Second,
+	})
+	if serviceErr != nil {
+		log.Printf("Local lineup index is unavailable: %v", serviceErr)
+	} else {
+		marketService = service
+		log.Printf("Local lineup index ready")
+	}
+	nominatimURL := strings.TrimSpace(util.GetEnv("NOMINATIM_URL", geocode.DefaultNominatimURL))
+	var addressSearcher providerAddressSearcher
+	if !strings.EqualFold(nominatimURL, "off") && !strings.EqualFold(nominatimURL, "none") && nominatimURL != "" {
+		addressSearcher = geocode.NewNominatimClient(nil, nominatimURL)
+	}
+	aliasQueue := newAliasJobQueue(guideStatus, marketService)
+	lineuparrHandlers := &lineuparrServer{
+		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
+		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
+	}
+	if aliasQueue != nil {
+		go aliasQueue.Run(ctx)
 	}
 
 	// Start background scraper
@@ -1219,6 +1236,17 @@ func main() {
 	mux.HandleFunc("/api/setup/providers", setupHandlers.handleProviders)
 	mux.HandleFunc("/api/setup/provider", setupHandlers.handleProvider)
 	mux.HandleFunc("/api/setup/status", setupHandlers.handleScrapeStatus)
+	mux.HandleFunc("/lineuparr", lineuparrHandlers.handlePage)
+	mux.HandleFunc("/api/lineuparr/provider-address/config", lineuparrHandlers.handleProviderAddressConfig)
+	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
+	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
+	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
+	mux.HandleFunc("/api/lineuparr/remove-duplicates", lineuparrHandlers.handleRemoveDuplicates)
+	mux.HandleFunc("/api/lineuparr/restore-all", lineuparrHandlers.handleRestoreAll)
+	mux.HandleFunc("/api/lineuparr/export", lineuparrHandlers.handleExport)
+	mux.HandleFunc("/api/lineuparr/alias-index", lineuparrHandlers.handleAliasIndex)
+	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
+	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/xmlguide.xmltv", handleXMLTV(state))
 	mux.HandleFunc("/api/guide.json", handleGuideJSON(state))
 	mux.HandleFunc("/api/lineup.json", handleLineupJSON(state, configStore))
@@ -1246,6 +1274,9 @@ func main() {
 	// Wait for shutdown signal
 	<-ctx.Done()
 	log.Println("Shutting down...")
+	if marketService != nil {
+		marketService.Stop()
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -1391,43 +1422,6 @@ func fixDeadImageURLs(programs []guide.Program) {
 
 // resolves channel logos from the tv-logo/tv-logos repo,
 // replacing dead Gracenote icon URLs with verified GitHub-hosted PNGs.
-// rewriteImageURLs routes every image URL through the local /img proxy.
-func rewriteImageURLs(baseURL string, channels []guide.Channel, lineup []guide.LineupPosition, programs []guide.Program) {
-	proxy := strings.TrimRight(baseURL, "/") + "/img?url="
-	rewrite := func(u string) string {
-		if u == "" {
-			return ""
-		}
-		return proxy + neturl.QueryEscape(u)
-	}
-	for i := range channels {
-		channels[i].IconURL = rewrite(channels[i].IconURL)
-	}
-	for i := range lineup {
-		lineup[i].LogoURL = rewrite(lineup[i].LogoURL)
-	}
-	for i := range programs {
-		programs[i].IconSrc = rewrite(programs[i].IconSrc)
-		for j := range programs[i].Images {
-			programs[i].Images[j].URL = rewrite(programs[i].Images[j].URL)
-		}
-	}
-}
-
-// propagateChannelLogos copies each station's resolved icon onto every lineup
-// position carrying that station, so logo resolution stays keyed by station.
-func propagateChannelLogos(channels []guide.Channel, lineup []guide.LineupPosition) {
-	byStation := make(map[string]string, len(channels))
-	for _, ch := range channels {
-		byStation[ch.ID] = ch.IconURL
-	}
-	for i := range lineup {
-		if logo, ok := byStation[lineup[i].StationID]; ok {
-			lineup[i].LogoURL = logo
-		}
-	}
-}
-
 func enrichChannelIcons(client *tvlogo.Client, channels []guide.Channel) {
 	if client == nil {
 		return
