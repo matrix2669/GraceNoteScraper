@@ -37,3 +37,27 @@ func TestCategoryReviewRetainsOriginalProposal(t *testing.T) {
 		t.Fatal("review snapshot leaked mutable pointer")
 	}
 }
+
+func TestCategoryBatchRetainsReviewAcrossReopen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	store, err := LoadStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{store: store}
+	rows := []DraftChannel{{ID: "one", Category: "Movies", CategorySource: "tmdb-schedule", CategoryPriority: 4, NeedsCategoryReview: true}, {ID: "two", Category: "Sports", CategorySource: "official", CategoryPriority: 2}}
+	if err := service.UpdateReviewedCategories("provider", rows, "Entertainment"); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := LoadStateStore(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := reopened.Snapshot("provider")
+	if got["one"].CategoryReview == nil || got["one"].CategoryReview.Proposed != "Movies" || got["one"].CategoryReview.Chosen != "Entertainment" {
+		t.Fatal(got)
+	}
+	if got["two"].CategoryReview != nil || got["two"].Category != "Entertainment" {
+		t.Fatal(got)
+	}
+}

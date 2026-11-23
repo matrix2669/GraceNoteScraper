@@ -158,6 +158,10 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 				continue
 			}
 			categoryValue := fact.Value
+			// A miscellaneous provider bucket is not evidence of a service channel.
+			if fact.Value == channelcategory.Other && strings.EqualFold(strings.TrimSpace(fact.RawValue), "Other") {
+				continue
+			}
 			if strings.TrimSpace(fact.RawValue) != "" {
 				if remapped, ok := channelcategory.Resolve(fact.RawValue, identities...); ok {
 					categoryValue = remapped.Category
@@ -174,7 +178,7 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 			}
 			fact.Value = match.Category
 			priority := 2
-			if fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "priority-4") {
+			if fact.SourceID == "xfinity-official-lineup" || strings.Contains(fact.Method, "priority-4") || strings.Contains(fact.Method, channelcategory.MethodFuzzy) || strings.EqualFold(strings.TrimSpace(fact.RawValue), "Adult") {
 				priority = 4
 			}
 			if priority < bestPriority {

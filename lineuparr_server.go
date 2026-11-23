@@ -353,7 +353,7 @@ func (s *lineuparrServer) handleChannel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "The active provider changed; reload the builder before saving", http.StatusConflict)
 		return
 	}
-	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
+	writeLineuparrJSON(w, http.StatusOK, map[string]any{"saved": true, "categoryReview": body.Review})
 }
 
 func (s *lineuparrServer) handleCategories(w http.ResponseWriter, r *http.Request) {
@@ -406,8 +406,18 @@ func (s *lineuparrServer) handleCategories(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "select at least one channel", http.StatusBadRequest)
 		return
 	}
+	draft, _, _, ready := s.buildDraft(w, r)
+	if !ready {
+		return
+	}
+	selected := make([]lineuparrbuilder.DraftChannel, 0, len(channelIDs))
+	for _, channel := range draft.Channels {
+		if seen[channel.ID] {
+			selected = append(selected, channel)
+		}
+	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
-		return s.builder.UpdateChannelsCategory(config.Fingerprint(), channelIDs, body.Category)
+		return s.builder.UpdateReviewedCategories(config.Fingerprint(), selected, body.Category)
 	})
 	if err != nil {
 		http.Error(w, "Unable to save channel categories: "+err.Error(), http.StatusBadRequest)
@@ -696,7 +706,7 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 			}
 			if inputs[index].CategoryConflict {
 				providerConflicts[sourceID]++
-			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
+			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Priority == providerCategory.Priority && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
 				inputs[index].CategoryHint = nil
 				inputs[index].CategoryConflict = true
 				providerConflicts[sourceID]++
