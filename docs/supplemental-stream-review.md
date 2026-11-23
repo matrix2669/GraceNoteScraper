@@ -9,6 +9,15 @@ Retrieval requires the complete attributed service identity after bounded provid
 quality and presentation cleanup. Extra brand, event, ordinal or geographic words,
 foreign country contexts and playlist headers are rejected. Short labels such as
 MAX, NFL, ESPN and Movies cannot retrieve every stream containing that word.
+A repeated unknown provider prefix may be used only as supplemental retrieval
+evidence when the same account and known group contain at least five distinct
+service identities, at least three independently attributed target identities,
+and at least 80% of the group’s distinct quality-collapsed names share it.
+Ambiguous or missing group information does not establish a prefix. The full raw
+name remains visible and is the only name saved after an explicit choice. This
+retrieval evidence is not a LineupARR score and does not change primary matching,
+automatic exclusions, or decisions.
+
 The specific News 12 local-service/Plus, attributed Showtime truncation and WPIX
 Rewind review paths remain available. AccuWeather NY has its own complete,
 station-bound review descriptor; geographic suffixes are never removed generally.

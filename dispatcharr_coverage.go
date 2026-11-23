@@ -25,6 +25,11 @@ func streamInventoryDigest(streams []dispatcharr.Stream) string {
 	keys := make([]string, len(streams))
 	for i, s := range streams {
 		keys[i] = s.Fingerprint() + "\x00" + s.GroupName
+		if s.ChannelGroupID == nil {
+			keys[i] += "\x00missing"
+		} else {
+			keys[i] += fmt.Sprintf("\x00group:%d", *s.ChannelGroupID)
+		}
 	}
 	sort.Strings(keys)
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(strings.Join(keys, "\x00"))))
