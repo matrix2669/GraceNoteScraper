@@ -15,7 +15,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    for(const id of ['alias-panel','major-market-panel','tmdb-category-panel','category-review-panel','dispatch-panel'])if(!document.getElementById(id))add(id);
    window.els={exportOpen:document.getElementById('export-open')};
    window.draft={sourceFingerprint:'source',customizationSignature:'custom',exportSignatures:{included:'i',aliases:'a',categories:'c',rows:{}},channels:[{id:'one',included:true,category:'News',needsCategoryReview:true}]};
-   window.dispatchReviewEpoch=0;window.decisionRevision=0;window.dispatchBusy=false;window.dispatchConnectionError=false;window.pendingDecisions=new Set();
+   window.dispatchReviewEpoch=0;window.decisionRevision=0;window.dispatchBusy=false;window.dispatchConnectionError=false;window.pendingDecisions=new Set();window.matchReview={supplementalImpact:{state:'idle'}};
    window.saving=false;window.localExportChanges=new Set();window.workflowProgress={};window.workflowRemote={};window.workflowVector='';window.workflowInitialized=false;window.workflowRefreshTimer=0;window.workflowRefreshing=false;window.savedExport=null;window.savedExportDownload=null;window.exportSummaryRequest=0;
    window.responses={
     '/api/lineuparr/workflow':{},
@@ -37,7 +37,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
    window.showMessage=()=>{};
    (0,eval)(code+'\nwindow.arrangeLineuparrWorkflow=arrangeLineuparrWorkflow;window.loadWorkflowStatus=loadWorkflowStatus;window.renderGuidedWorkflow=renderGuidedWorkflow;window.refreshExportSummary=refreshExportSummary;');
    arrangeLineuparrWorkflow();
-  },{code:require('./review_fixture_helpers.cjs')(html)+html.slice(start,end)});
+  },{code:html.slice(html.indexOf('    let supplementalImpactRequest ='),html.indexOf('    function renderAutomaticExclusions('))+require('./review_fixture_helpers.cjs')(html)+html.slice(start,end)});
   await page.evaluate(()=>loadWorkflowStatus());
   const order=await page.locator('main > *').evaluateAll(nodes=>nodes.slice(-8).map(n=>n.id||'channels'));
   assert.deepEqual(order,['source-panel','alias-panel','major-market-panel','tmdb-category-panel','category-review-panel','channels','dispatch-panel','export-panel']);

@@ -42,7 +42,7 @@ async function transportCases(){
    window.candidate=(key,score=100)=>({key,channelId:key,reviewKind:score<95?'inclusion':'qualified',alias:key,streamNames:[key],streamCount:1,minimumScore:score,maximumScore:score,channelNumber:'1',channelName:'Fixture',reasons:[],alternatives:[]});
    window.matchReview={streamCount:21208,candidateCount:100,confirmedCount:722,deniedCount:0,candidates:Array.from({length:100},(_,i)=>candidate('row'+i)),decisions:Array.from({length:722},(_,i)=>({key:'old'+i,decision:'confirmed',streamName:'Saved '+i,channelName:'Fixture',streamCount:1,score:100})),automatic:{rows:Array.from({length:800},(_,i)=>({key:'auto'+i,exported:true,streamName:'Synthetic '+i,channelNumber:'1',channelName:'Fixture',reason:'identity fixture'}))}};
    window.loads=0;window.loadMatchReview=async()=>{loads++;recoverMatchActions.refreshAdmission=false;if(!matchReview.candidates.length&&matchReview.candidateCount>0)matchReview.candidates=[candidate('refilled')];renderMatchReview();};
-   (0,eval)(code+'\nwindow.cancelValidation=()=>clearTimeout(validationPollTimer);window.renderMatchReview=renderMatchReview;window.decideMatch=decideMatch;window.decideAlternative=decideAlternative;window.openMatchAlternatives=openMatchAlternatives;');renderMatchReview();
+   (0,eval)(code+'\nwindow.cancelValidation=()=>clearTimeout(validationPollTimer);window.renderMatchReview=renderMatchReview;window.setImpactOwner=()=>matchReviewImpactOwner=publicationViewSnapshot();window.decideMatch=decideMatch;window.decideAlternative=decideAlternative;window.openMatchAlternatives=openMatchAlternatives;');renderMatchReview();
   },code);
   await page.evaluate(()=>{
    const originalSetTimeout=window.setTimeout.bind(window);
@@ -75,8 +75,8 @@ async function transportCases(){
     clearTimeout(matchReconcileTimer);cancelValidation();
     matchActionState.states=new Map();pendingDecisions.clear();decisionSaveQueue=Promise.resolve();
     postBodies=[];late=[];receipts=0;loads=0;behavior='hang';receiptState='busy';recoverMatchActions.refreshAdmission=false;
-    matchReview={...matchReview,reviewStatus:'current',operationScope:'scope',decisionTokens:Object.fromEntries(keys.map(k=>[k,'op-'+k])),candidates:keys.map(k=>candidate(k)),decisions:[],candidateCount:keys.length,candidateStreamCount:keys.length,confirmedCount:0,deniedCount:0,supplementalImpact:{state:'idle'}};
-    draft.channels=keys.map(id=>({id,included:true}));renderMatchReview();
+    matchReview={...matchReview,reviewStatus:'current',operationScope:'scope',decisionTokens:Object.fromEntries(keys.map(k=>[k,'op-'+k])),candidates:keys.map(k=>candidate(k)),decisions:[],candidateCount:keys.length,candidateStreamCount:keys.length,confirmedCount:0,deniedCount:0,supplementalImpact:{id:'fixture-validation-'+keys.join('-'),state:'idle'}};
+    draft.channels=keys.map(id=>({id,included:true}));setImpactOwner();renderMatchReview();
    };
    resetFixture(['first','second','third']);
   });
@@ -195,7 +195,7 @@ async function transportCases(){
     return {step6:reviewStates().find(s=>s.step===6).complete,status:document.getElementById('supplemental-impact-status').textContent,findings:document.getElementById('supplemental-impact-results').textContent,reloadHidden:document.getElementById('match-reload').hidden,remaining:document.getElementById('match-candidates').textContent};
    },{html,state});
    assert.equal(active.step6,false,state+' must keep Step6 incomplete');
-   assert.equal(active.status,'Finishing review checks…',state+' should explain only the final validation blocker');
+   assert.equal(active.status,'Finishing review checks… Additional matches may appear.',state+' should explain pending validation at the empty-list boundary');
    assert.equal(active.remaining,'0');assert.equal(active.findings,'');assert.equal(active.reloadHidden,true);
    assert.equal(await page.locator('#supplemental-impact-status').isVisible(),true);
    assert.equal(await page.getByText('Validation details',{exact:true}).count(),0);
