@@ -23,7 +23,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 			Name:            channel.Name,
 			Number:          exportNumber(channel.Number),
 			Aliases:         append([]string(nil), channel.Aliases...),
-			ExcludedAliases: append([]string(nil), channel.ExcludedAliases...),
+			ExcludedAliases: literalExcludedAliases(channel.ExcludedAliases),
 			EPGIDs:          append([]string(nil), channel.EPGIDs...),
 		})
 	}
@@ -46,9 +46,23 @@ func ExportFromDraft(draft *Draft) ExportFile {
 		Date:        time.Now().UTC().Format("2006-01-02"),
 		Description: fmt.Sprintf("Lineuparr-compatible export for the active %s Gracenote lineup.", draft.ProviderName),
 		Source:      strings.Join(sourceNames, "; "),
-		Notes:       "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr names below 95% are exported as aliases; denied names at 95% or above are exported as excluded_aliases. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices.",
+		Notes:       "Use Lineuparr's Exact match sensitivity with this generated file. Confirmed Dispatcharr name groups below 95% are exported as aliases; distinct denied full names with independent name scores at 95% or above are exported as literal escaped excluded_aliases. Exclusions require Lineuparr PR #26 commit c766a6bb582ca8ef28ae9548d83af1e61f6cde5d or a verified compatible successor; published beta.4 does not support this contract. All channels were retained by default. Channel exclusions and duplicate-SD removals reflect explicit builder choices.",
 		Categories:  categories,
 	}
+}
+
+// Escape consumer pattern syntax exactly once at the export boundary. Drafts
+// and persisted decisions remain raw names; encoding/json handles JSON escaping.
+func literalExcludedAliases(names []string) []string {
+	if len(names) == 0 {
+		return nil
+	}
+	result := make([]string, len(names))
+	for i, name := range names {
+		name = strings.ReplaceAll(name, `\`, `\\`)
+		result[i] = strings.ReplaceAll(name, "*", `\*`)
+	}
+	return result
 }
 
 func ExportFilename(draft *Draft) string {
