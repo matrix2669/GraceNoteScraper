@@ -35,7 +35,7 @@ func TestGroupedDenialRetainsEveryNameAcrossRestartAndGroupUndo(t *testing.T) {
 	review := func() dispatcharrReviewResponse {
 		t.Helper()
 		w := httptest.NewRecorder()
-		server.handleReview(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review", nil))
+		server.handleReview(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/dispatcharr/review?refresh=true", nil))
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}

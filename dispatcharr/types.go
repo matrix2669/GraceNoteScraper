@@ -55,24 +55,26 @@ type Decision struct {
 }
 
 type Candidate struct {
-	Key             string   `json:"key"`
-	ChannelID       string   `json:"channelId"`
-	ChannelNumber   string   `json:"channelNumber"`
-	ChannelName     string   `json:"channelName"`
-	StreamID        int64    `json:"streamId"`
-	StreamKey       string   `json:"-"`
-	StreamName      string   `json:"streamName"`
-	TVGID           string   `json:"tvgId,omitempty"`
-	M3UAccountID    int64    `json:"m3uAccountId"`
-	ChannelGroupID  *int64   `json:"channelGroupId,omitempty"`
-	StreamChannelNo *float64 `json:"streamChannelNumber,omitempty"`
-	StreamHash      string   `json:"-"`
-	Source          string   `json:"-"`
-	Score           int      `json:"score"`
-	NameScore       int      `json:"-"`
-	Reason          string   `json:"reason"`
-	NormalizedAlias string   `json:"-"`
-	KnownEPGID      bool     `json:"-"`
+	ReviewGeneration string   `json:"-"`
+	MatcherVersion   string   `json:"-"`
+	Key              string   `json:"key"`
+	ChannelID        string   `json:"channelId"`
+	ChannelNumber    string   `json:"channelNumber"`
+	ChannelName      string   `json:"channelName"`
+	StreamID         int64    `json:"streamId"`
+	StreamKey        string   `json:"-"`
+	StreamName       string   `json:"streamName"`
+	TVGID            string   `json:"tvgId,omitempty"`
+	M3UAccountID     int64    `json:"m3uAccountId"`
+	ChannelGroupID   *int64   `json:"channelGroupId,omitempty"`
+	StreamChannelNo  *float64 `json:"streamChannelNumber,omitempty"`
+	StreamHash       string   `json:"-"`
+	Source           string   `json:"-"`
+	Score            int      `json:"score"`
+	NameScore        int      `json:"-"`
+	Reason           string   `json:"reason"`
+	NormalizedAlias  string   `json:"-"`
+	KnownEPGID       bool     `json:"-"`
 }
 
 // CandidateSet retains the current best proposal and every qualifying option
