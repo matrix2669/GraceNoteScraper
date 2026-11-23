@@ -103,6 +103,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
 | `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
+| `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, keyed by export filename | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
 | `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
 | `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
 | `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
@@ -157,9 +158,19 @@ Provider coverage is intentionally explicit about source limitations:
 
 ## Lineuparr JSON Builder
 
+Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
+
+The URL serves the **last explicitly exported version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while exporting the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; export again to create the descriptive URL.
+
+Use a scraper hostname and port that the Lineuparr host can reach. A compatible Lineuparr URL-import action can fetch the JSON using its normal lineup filename from the `Content-Disposition` header. The URL grants read access to the exported lineup to anyone who can reach the scraper. It contains no provider credentials or stream URLs. The existing `/api/lineuparr/export` endpoint remains a direct download of the live draft for older clients; it does not update the published snapshot.
+
 The builder at `/lineuparr` is an extension of the active scraper lineup rather than a second provider configuration. Gracenote remains authoritative for provider membership and channel numbers. Every raw provider position starts included, even when two positions point to the same station, so SD removal is an explicit and reversible choice.
 
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`. Runtime evidence is primary; configured optional sources may add attributable aliases and EPG identifiers. The builder applies only unique identity matches from:
+
+Both detailed and compact channel rows lead with the callsign and append the best distinct name from attributable affiliate, official-provider, or catalog evidence; punctuation-only, identifier, and channel-number duplicates are suppressed. The channel list opens with only included positions visible and can be sorted by channel number or name; excluded positions remain available through the visibility filter. Clicking the name opens the next 24 current or upcoming programmes from the selected guide to help identify an unfamiliar channel. **Batch categorize** can select every currently visible filtered row and apply one category atomically.
+
+The same GN brand mark shown in the page header is served as the SVG favicon for the guide, setup, and Lineuparr pages.
 
 - Supported public official sources for provider lineups returned for the configured ZIP. Device variants that share one Gracenote lineup ID remain distinct because their channel membership and station IDs can differ. Each source is first joined to its own Gracenote grid by exact provider channel number or unique exact identity; aliases and categories cross into the selected lineup through an identical Gracenote station ID or the separately confirmed weekday-EPG bridge. Providers without a runtime adapter still receive a Gracenote identity snapshot and remain visibly unresolved rather than borrowing another provider's channel numbers.
 - Optional matching provider/country catalogs from [Dispatcharr Lineuparr Plugin](https://github.com/matrix2669/Dispatcharr-Lineuparr-Plugin), enabled with `LINEUPARR_CATALOG_URLS`.
@@ -170,7 +181,7 @@ The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `
 
 User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 
-The optional **Remove suggested SD** action is conservative: it appears only when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export.
+The optional SD-duplicate action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD`, `SD`, or unnumbered broadcast `DT` suffix and have one unique strongest variant. It can also bridge different callsign spellings when exactly two positions share the same normalized, nonnumeric alias and both positions have attributable evidence. An explicitly marked SD position still requires the other position to share that alias through the same source. An unmarked lower-quality position may instead pair with an explicitly marked HD/digital position only when both share a non-schedule source or confirmed schedule evidence on one position references the opposite position's actual channel number. A pair such as `WCBS`/`WCBSDT` keeps the `DT` digital/HD position and proposes the otherwise identical base position for removal; `NWSNTSD`/`NEWSNTN` uses the shared exact `NewsNation` identity to propose the explicitly marked SD position; and `I24NWEN`/`I24NEHD` uses the exact normalized `i24 News` identity plus its cross-position evidence to keep the explicitly marked HD position. Quality-suffix and attributable-alias matching require a base of at least three alphanumeric characters where a suffix is interpreted, never strip numbered digital-subchannel suffixes such as `DT2` or `DT3`, reject schedule-only bridges to unrelated or self-referential positions, and suppress ambiguous groups or competing keep candidates. Clicking the action opens every proposed remove/keep pair for review; all safe proposals start selected, individual pairs can be unchecked, and only the confirmed subset is excluded. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export. The `Categorized` and `Needs category` header totals count only channels currently included in the draft.
 
 Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
@@ -194,9 +205,13 @@ Official provider sources use the active lineup ZIP and Gracenote location autom
 | `POST /api/lineuparr/alias-index/run` | Scan all providers in the configured ZIP, continue ranked markets, selectively refresh, or rebuild the on-demand index |
 | `POST /api/lineuparr/alias-index/stop` | Stop a running batch safely |
 | `POST /api/lineuparr/channel` | Include/exclude one channel or update its category |
-| `POST /api/lineuparr/remove-duplicates` | Exclude all current duplicate-SD suggestions |
+| `POST /api/lineuparr/categories` | Atomically apply one category to a validated channel selection |
+| `GET /api/lineuparr/channel-programs?channelId=<id>` | Return up to 24 current/upcoming programmes from the selected guide |
+| `POST /api/lineuparr/remove-duplicates` | Exclude the reviewed `channelIds` subset, or all current suggestions for backward-compatible requests without that field |
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
+| `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
+| `GET, HEAD /lineuparr/exports/{filename}` | Read the last explicitly exported JSON by its descriptive download filename, without rebuilding; `?download=1` requests an attachment |
 | `GET /xmlguide.xmltv` | XMLTV guide data (point your DVR here) |
 | `GET /api/guide.json` | Guide data as JSON |
 | `GET /` | The Grid — built-in web UI |

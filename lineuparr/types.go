@@ -117,6 +117,7 @@ type SourceMatch struct {
 }
 
 type Draft struct {
+	SourceFingerprint    string                `json:"sourceFingerprint"`
 	GeneratedAt          time.Time             `json:"generatedAt"`
 	Package              string                `json:"package"`
 	ProviderName         string                `json:"providerName"`

@@ -99,6 +99,24 @@ func (s *StateStore) SetIncluded(fingerprint string, channelIDs []string, includ
 	return s.saveLocked()
 }
 
+func (s *StateStore) SetCategory(fingerprint string, channelIDs []string, category string) error {
+	if fingerprint == "" {
+		return errors.New("source fingerprint is required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSourceLocked(fingerprint)
+	for _, channelID := range channelIDs {
+		if channelID == "" {
+			continue
+		}
+		override := s.state.Channels[channelID]
+		override.Category = category
+		s.state.Channels[channelID] = override
+	}
+	return s.saveLocked()
+}
+
 func (s *StateStore) RestoreAll(fingerprint string) error {
 	if fingerprint == "" {
 		return errors.New("source fingerprint is required")
