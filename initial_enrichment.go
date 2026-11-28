@@ -99,7 +99,7 @@ func rewriteGuideImageURLs(g *guide.TVGuide, baseURL string) {
 		return proxy + url.QueryEscape(value)
 	}
 	for i := range g.Channels {
-		g.Channels[i].IconURL = rewrite(g.Channels[i].IconURL)
+		g.Channels[i].IconURL = stationLogoForOutput(baseURL, g.Channels[i].ID, g.Channels[i].IconURL)
 	}
 	for i := range g.Programs {
 		g.Programs[i].IconSrc = rewrite(g.Programs[i].IconSrc)

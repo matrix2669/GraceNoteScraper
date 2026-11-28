@@ -1830,26 +1830,3 @@ func fixDeadImageURLs(programs []guide.Program) {
 		log.Printf("Fixed %d zap2it image URLs to use tmsimg.com", fixed)
 	}
 }
-
-// resolves channel logos from the tv-logo/tv-logos repo,
-// replacing dead Gracenote icon URLs with verified GitHub-hosted PNGs.
-func enrichChannelIcons(client *tvlogo.Client, channels []guide.Channel) {
-	if client == nil {
-		return
-	}
-
-	log.Printf("TV logos: resolving icons for %d channels", len(channels))
-
-	enriched := 0
-	for i := range channels {
-		logoURL := client.Resolve(channels[i].ID, channels[i].CallSign, channels[i].Affiliate, channels[i].ChannelNo)
-		if logoURL != "" {
-			channels[i].IconURL = logoURL
-			enriched++
-		} else {
-			channels[i].IconURL = ""
-		}
-	}
-
-	log.Printf("TV logos: enriched %d/%d channels", enriched, len(channels))
-}

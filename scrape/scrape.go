@@ -114,6 +114,7 @@ func Fetch(ctx context.Context, prefs web.Preferences, opts Options) (*guide.TVG
 	slots := Slots(opts.Now(), opts.Days)
 
 	channelIndex := make(map[string]int)
+	stationThumbnails := make(map[string]bool)
 	lineupIndex := make(map[string]struct{})
 	eventIndex := make(map[string]struct{})
 	var channels []guide.Channel
@@ -156,6 +157,20 @@ func Fetch(ctx context.Context, prefs web.Preferences, opts Options) (*guide.TVG
 					opts.ObserveChannel(ch, guide.ConvertChannel(ch))
 				}
 				position := guide.ConvertLineupPosition(ch)
+				// A later slot or placement can carry the first usable
+				// station thumbnail. Keep first-seen identity and ordering.
+				if !stationThumbnails[ch.ChannelID] {
+					thumbnail := guide.StationThumbnailURL(ch.ChannelID, ch.Thumbnail)
+					if thumbnail == "" {
+						// Also try the legacy-normalized form (scheme added,
+						// query stripped), equally for every observed row.
+						thumbnail = guide.StationThumbnailURL(ch.ChannelID, position.LogoURL)
+					}
+					if thumbnail != "" {
+						channels[channelIndex[ch.ChannelID]].IconURL = thumbnail
+						stationThumbnails[ch.ChannelID] = true
+					}
+				}
 				if _, seen := lineupIndex[position.Key()]; !seen {
 					lineupIndex[position.Key()] = struct{}{}
 					lineup = append(lineup, position)

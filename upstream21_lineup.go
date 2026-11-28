@@ -8,8 +8,6 @@ import (
 	"github.com/daniel-widrick/GraceNoteScraper/scrape"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 	"net/http"
-	"net/url"
-	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -168,22 +166,9 @@ func selectedRawPositions(in []guide.LineupPosition, allowed map[string]bool) []
 	return out
 }
 func prepareRawLineupLogos(g *guide.TVGuide, baseURL string) {
-	byStation := make(map[string]string)
-	for _, c := range g.Channels {
-		if c.IconURL != "" {
-			byStation[c.ID] = c.IconURL
-		}
-	}
+	propagateChannelLogos(g.Channels, g.Lineup)
 	for i := range g.Lineup {
 		p := &g.Lineup[i]
-		if icon := byStation[p.StationID]; icon != "" {
-			p.LogoURL = icon
-		}
-		if baseURL != "" && p.LogoURL != "" {
-			proxy := strings.TrimRight(baseURL, "/") + "/img?url="
-			if !strings.HasPrefix(p.LogoURL, proxy) {
-				p.LogoURL = proxy + url.QueryEscape(p.LogoURL)
-			}
-		}
+		p.LogoURL = stationLogoForOutput(baseURL, p.StationID, p.LogoURL)
 	}
 }
