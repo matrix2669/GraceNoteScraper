@@ -402,7 +402,7 @@ func attachDispatcharrAlternatives(primary, all []dispatcharr.CandidateGroup) []
 		if complete, ok := byKey[current.Key]; ok {
 			primary[index] = complete
 		}
-		if current.Tier != "fuzzy" {
+		if current.MinimumScore >= 95 {
 			continue
 		}
 		for _, alternate := range byAlias[current.NormalizedAlias] {

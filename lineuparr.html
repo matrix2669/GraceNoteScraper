@@ -288,6 +288,7 @@
     .export-dialog h2 { margin: 0 0 12px; font-size: 21px; }
     .export-dialog p { color: var(--muted); line-height: 1.5; }
     .export-dialog .export-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+    #export-copy-internal[hidden], #export-internal-result[hidden] { display: none; }
     .export-result { margin-top: 18px; min-width: 0; }
     .export-result label { display: block; margin-bottom: 8px; color: var(--muted); font-size: 12px; }
     .export-result input { font-family: ui-monospace, monospace; }
@@ -305,7 +306,9 @@
     .duplicate-review-header h2 { margin: 0; font-size: 19px; }
     .duplicate-review-header p { margin: 7px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
     .duplicate-review-list { display: grid; gap: 8px; overflow-y: auto; padding: 14px 20px; }
-    .duplicate-review-row { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,17,14,.48); }
+    .duplicate-review-row { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; align-items: center; padding: 11px; border: 1px solid var(--line); border-radius: 10px; background: rgba(7,17,14,.48); }
+    .duplicate-review-list fieldset { min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: grid; gap: 8px; }
+    .duplicate-review-list legend { overflow-wrap: anywhere; max-width: 100%; padding: 0 8px; }
     .duplicate-review-row input { width: 17px; height: 17px; accent-color: var(--accent); }
     .duplicate-review-copy { min-width: 0; }
     .duplicate-review-name { font-size: 12px; font-weight: 730; overflow-wrap: anywhere; }
@@ -461,6 +464,26 @@
       </div>
     </details>
 
+    <details class="panel alias-panel collapsible-panel" id="major-market-panel" data-section-key="major-market">
+      <summary class="panel-summary alias-header">
+        <span class="panel-summary-copy"><span class="eyebrow">Major-market enrichment</span><h2>Expand your station-name index</h2><span class="panel-help">Scan one ranked market at a time (experimental).</span></span>
+        <span class="panel-chevron" aria-hidden="true">›</span>
+      </summary>
+      <div class="panel-body">
+      <p>Scan one ranked market at a time using provider sources and weekday EPG comparison. Your selected guide stays unchanged. Address-required sources are skipped; your saved address is never reused.</p>
+      <p id="major-market-next">Loading market status…</p>
+      <div class="scan-progress">
+        <div class="progress-copy"><strong id="major-market-status" role="status"></strong><span id="major-market-progress-count"></span></div>
+        <div class="progress-track"><div class="progress-bar" id="major-market-progress-bar"></div></div>
+        <div class="action-row">
+          <button type="button" id="major-market-start" disabled>Scan next market</button>
+          <button class="secondary" type="button" id="major-market-stop" style="display:none">Stop market scan</button>
+        </div>
+      </div>
+      <div id="major-market-reports"></div>
+      <p>Provider counts include distinct lineup/device variants. “New families only” is a comparison using the same downloaded data, not a provider-skipping setting. Yield counts are new candidate facts, not guaranteed applied categories. The selected lineup remains available as an EPG comparison reference.</p>
+      </div>
+    </details>
     <details class="panel alias-panel collapsible-panel" id="alias-panel" data-section-key="alias-discovery" open>
       <summary class="panel-summary alias-header">
         <span class="panel-summary-copy">
@@ -673,11 +696,16 @@
     <div class="export-actions">
       <button type="button" class="export-button" id="export-download">Download JSON</button>
       <button type="button" id="export-copy">Copy URL</button>
+      <button type="button" id="export-copy-internal" hidden>Copy Docker-network URL</button>
       <button type="button" id="export-close">Cancel</button>
     </div>
     <div class="export-result" id="export-result" hidden>
       <label for="export-url">Published lineup URL</label>
       <input id="export-url" type="text" readonly spellcheck="false">
+      <div id="export-internal-result" hidden>
+        <label for="export-internal-url">Docker-network lineup URL (click to copy)</label>
+        <input id="export-internal-url" type="text" readonly spellcheck="false">
+      </div>
     </div>
     <p class="export-status" id="export-status" role="status" aria-live="polite"></p>
   </dialog>
@@ -693,8 +721,8 @@
   <dialog class="duplicate-review" id="duplicate-review">
     <form class="duplicate-review-form" id="duplicate-review-form">
       <header class="duplicate-review-header">
-        <h2>Review suggested SD duplicates</h2>
-        <p>Each checked channel will be excluded from the Lineuparr export while the retained channel stays included. Uncheck any pair you do not want to apply.</p>
+        <h2>Review duplicate channel groups</h2>
+        <p>Checked positions will be kept. SD removal is suggested; exact repeated positions stay checked until you choose which to remove. Keep at least one position in every group.</p>
       </header>
       <div class="duplicate-review-list" id="duplicate-review-list"></div>
       <div class="duplicate-review-actions">
@@ -721,6 +749,7 @@
       exportDownload: document.getElementById('export-download'), exportCopy: document.getElementById('export-copy'),
       exportClose: document.getElementById('export-close'), exportResult: document.getElementById('export-result'),
       exportURL: document.getElementById('export-url'), exportStatus: document.getElementById('export-status'),
+      exportInternalCopy: document.getElementById('export-copy-internal'), exportInternalResult: document.getElementById('export-internal-result'), exportInternalURL: document.getElementById('export-internal-url'),
       message: document.getElementById('message'), stats: document.getElementById('stats'),
       providerCard: document.getElementById('provider-card'), providerName: document.getElementById('provider-name'), providerMeta: document.getElementById('provider-meta'),
       sourcePanel: document.getElementById('source-panel'), sources: document.getElementById('sources'), toolbar: document.getElementById('toolbar'),
@@ -786,6 +815,8 @@
     let pendingChannelSaves = 0;
     let publishing = false;
     let publishedExport = null;
+    let internalExportBase = '';
+    let exportSettingsRequest = 0;
     let compact = localStorage.getItem('lineuparr-view') === 'compact';
     let batchMode = false;
     const selectedChannels = new Set();
@@ -916,7 +947,8 @@
     }
 
     function renderAliasIndex(data) {
-      const summary = data.summary || {}, job = data.job || {}, postalScan = data.postalScan;
+      const summary = data.summary || {}, sharedJob = data.job || {}, postalScan = data.postalScan;
+      const job = sharedJob.action === 'postal' ? sharedJob : {};
       const queue = data.queue || {};
       aliasQueue = queue;
       els.lineupsMetric.textContent = (summary.lineups || 0).toLocaleString();
@@ -926,18 +958,20 @@
       els.scanProgressCount.textContent = job.running ? `${job.completedCount} / ${job.totalCount} in this scan` : '';
       els.scanProgressBar.style.width = `${job.running && job.totalCount ? Math.min(100, Math.round(job.completedCount * 100 / job.totalCount)) : postalScan?.status === 'complete' ? 100 : 0}%`;
       els.scanStatus.textContent = job.running ? `Scanning ${job.currentProvider || job.currentMarket || 'provider lineups'}` : queue.queued ? 'Scan queued until the guide is ready' : 'Ready to scan provider lineups in the configured ZIP';
-      els.postalScan.disabled = !!job.running || scanStarting;
-      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : 'Scan providers in this ZIP';
+      els.postalScan.disabled = !!sharedJob.running || scanStarting;
+      els.postalScan.textContent = queue.queued ? 'Queued — click to cancel' : queue.guideBusy ? 'Queue provider scan' : postalScan?.status === 'complete' ? 'Rescan providers in this ZIP' : 'Scan providers in this ZIP';
       els.stopScan.hidden = !job.running;
-      const refreshed = postalScan?.completedAt || job.completedAt;
+      const refreshed = postalScan?.completedAt;
       const refreshLabel = document.getElementById('alias-last-refresh');
       if (refreshLabel) refreshLabel.textContent = refreshed ? `Last provider refresh: ${new Date(refreshed).toLocaleString()}` : 'Last provider refresh: never';
       if (scanRequestError) setMarketMessage(scanRequestError, 'error');
       else if (!job.running && (job.lastError || queue.lastError)) setMarketMessage(job.lastError || queue.lastError, 'error');
       else if (queue.queued) setMarketMessage('Scan queued. Click the queued button to cancel.');
-      else if (queue.guideBusy) setMarketMessage(queue.guideStatus || 'The guide is busy. A scan request will be queued.');
+      else if (queue.guideBusy) setMarketMessage('Guide preparation is busy. A local ZIP scan request will be queued.');
+      else if (sharedJob.running && !job.running) setMarketMessage('Another scan is running. Local ZIP progress is unchanged.');
       else if (!job.running && postalScan) setMarketMessage(`ZIP ${postalScan.postalCode}: ${postalScan.lineupsScanned} of ${postalScan.providerCount} lineups, ${postalScan.aliases} aliases and ${postalScan.categories} categories. ${postalScan.epgMatches || 0} weekday EPG pairs confirmed.`);
-      const polling = job.running || queue.queued || queue.guideBusy;
+      else setMarketMessage(job.running ? 'Local ZIP scan in progress. Completed checkpoints remain saved.' : '');
+      const polling = sharedJob.running || queue.queued || queue.guideBusy;
       if (polling && !marketPoll) marketPoll = setInterval(loadAliasIndex, 2500);
       if (!polling && marketPoll) { clearInterval(marketPoll); marketPoll = null; }
       if (marketWasRunning && !job.running) reloadDraft().catch(error => showMessage(error.message, true));
@@ -1228,7 +1262,7 @@
           method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({key, decision, tvgIds:[]})
         });
         if (decision === 'confirmed') await reloadDraft();
-        const alternatives = decision === 'denied' && candidate.tier === 'fuzzy' ? (candidate.alternatives || []) : [];
+        const alternatives = candidate.minimumScore < 95 ? (candidate.alternatives || []) : [];
         if (alternatives.length) {
           openMatchAlternatives(candidate);
           showMessage('Match denied. Review the other qualifying possibilities or close this list.');
@@ -1251,7 +1285,7 @@
 
     function openMatchAlternatives(candidate) {
       els.alternativeTitle.textContent = `Other matches for ${candidate.alias}`;
-      els.alternativeHelp.textContent = 'These channels also cleared the fuzzy-match threshold in the same scan. Confirm the right target, deny incorrect options, or close this list without deciding.';
+      els.alternativeHelp.textContent = 'These channels also qualified in the same scan. You can confirm multiple targets, including SD, HD or duplicate lineup channels. Deny incorrect options, or close without deciding.';
       renderMatchAlternatives(candidate);
       if (typeof els.alternativeDialog.showModal === 'function') els.alternativeDialog.showModal();
       else els.alternativeDialog.setAttribute('open', '');
@@ -1303,8 +1337,9 @@
         renderMatchReview();
         if (decision === 'confirmed') {
           await reloadDraft();
-          closeMatchAlternatives();
-          showMessage('Alternate match confirmed and aliases updated.');
+          card.remove();
+          if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
+          showMessage('Alternate match confirmed. Review any remaining targets or close this window.');
         } else {
           card.remove();
           if (!els.alternativeList.querySelector('.match-alternative-card')) els.alternativeList.append(emptyMessage('No other qualifying possibilities remain.'));
@@ -1394,9 +1429,9 @@
       els.aliases.textContent = draft.channels.reduce((sum, channel) => sum + (channel.aliases || []).length, 0).toLocaleString();
       els.categorized.textContent = categorized.toLocaleString();
       els.unresolved.textContent = (includedChannels.length - categorized).toLocaleString();
-      const count = remainingDuplicateSuggestions().length;
-      els.removeDuplicates.textContent = count ? `Review ${count} suggested SD duplicate${count === 1 ? '' : 's'}` : 'No SD duplicates suggested';
-      els.removeDuplicates.title = count ? 'Review the SD positions identified by exact shared-source evidence before excluding them.' : 'No SD/HD pair was identified by exact shared-source evidence in this lineup.';
+      const count = activeDuplicateGroups().length;
+      els.removeDuplicates.textContent = count ? `Review ${count} duplicate group${count === 1 ? '' : 's'}` : 'No duplicates suggested';
+      els.removeDuplicates.title = 'Review SD/HD groups and exact repeated positions. No channels change until you apply your choices.';
       els.removeDuplicates.disabled = saving || count === 0;
       els.restoreAll.disabled = saving || includedChannels.length === draft.channels.length;
       els.exportOpen.disabled = saving || pendingChannelSaves > 0;
@@ -1405,6 +1440,11 @@
     function remainingDuplicateSuggestions() {
       const included = new Set(draft.channels.filter(channel => channel.included).map(channel => channel.id));
       return (draft.duplicateSuggestions || []).filter(suggestion => included.has(suggestion.removeId));
+    }
+
+    function activeDuplicateGroups() {
+      const byID = new Map(draft.channels.filter(channel => channel.included).map(channel => [channel.id, channel]));
+      return (draft.duplicateGroups || []).map(group => ({...group, channels: group.channelIds.map(id => byID.get(id)).filter(Boolean)})).filter(group => group.channels.length > 1);
     }
 
     function renderSources() {
@@ -1616,7 +1656,7 @@
       meta.textContent = [channel.callSign && `Callsign ${channel.callSign}`, channel.stationId && `EPG ${channel.stationId}`, `Name: ${sourceLabel(channel.nameSource)} (${channel.nameMethod})`, `Category: ${sourceLabel(channel.categorySource)}${channel.categoryMethod ? ` (${channel.categoryMethod})` : ''}`].filter(Boolean).join(' · ');
       const badges = document.createElement('div'); badges.className = 'badges';
       if (channel.category === 'Uncategorized') badges.append(badge('Needs category', 'unresolved'));
-      if (channel.duplicateOf) badges.append(badge('Suggested SD duplicate', 'duplicate'));
+      if (channel.duplicateOf) badges.append(badge('Duplicate review available', 'duplicate'));
       for (const source of channel.matchedSources || []) if (source !== 'gracenote') badges.append(badge(sourceLabel(source)));
       copy.append(name, meta, badges);
       const actions = document.createElement('div'); actions.className = 'channel-actions';
@@ -1785,29 +1825,31 @@
     }
 
     function updateDuplicateReviewCount() {
-      const count = els.duplicateReviewList.querySelectorAll('input:checked').length;
-      els.duplicateReviewConfirm.textContent = count ? `Remove selected (${count})` : 'Select at least one match';
-      els.duplicateReviewConfirm.disabled = count === 0;
+      const count = els.duplicateReviewList.querySelectorAll('input:not(:checked)').length;
+      const invalid = [...els.duplicateReviewList.querySelectorAll('fieldset')].some(group => !group.querySelector('input:checked'));
+      els.duplicateReviewConfirm.textContent = invalid ? 'Keep at least one per group' : count ? `Remove unchecked (${count})` : 'Uncheck positions to remove';
+      els.duplicateReviewConfirm.disabled = count === 0 || invalid;
     }
 
     function openDuplicateReview() {
-      const suggestions = remainingDuplicateSuggestions();
-      if (!suggestions.length) return;
+      const groups = activeDuplicateGroups();
+      if (!groups.length) return;
       els.duplicateReviewList.replaceChildren();
-      for (const suggestion of suggestions) {
-        const row = document.createElement('label'); row.className = 'duplicate-review-row';
-        const input = document.createElement('input'); input.type = 'checkbox'; input.value = suggestion.removeId; input.checked = true;
-        input.addEventListener('change', updateDuplicateReviewCount);
-        const remove = document.createElement('div'); remove.className = 'duplicate-review-copy';
-        const removeName = document.createElement('div'); removeName.className = 'duplicate-review-name'; removeName.textContent = `${suggestion.removeNumber || '—'} · ${suggestion.removeName}`;
-        const removeMeta = document.createElement('div'); removeMeta.className = 'duplicate-review-meta'; removeMeta.textContent = 'Exclude this lower-quality position';
-        remove.append(removeName, removeMeta);
-        const arrow = document.createElement('div'); arrow.className = 'duplicate-review-arrow'; arrow.textContent = '→';
-        const keep = document.createElement('div'); keep.className = 'duplicate-review-copy';
-        const keepName = document.createElement('div'); keepName.className = 'duplicate-review-name'; keepName.textContent = `${suggestion.keepNumber || '—'} · ${suggestion.keepName}`;
-        const keepMeta = document.createElement('div'); keepMeta.className = 'duplicate-review-meta'; keepMeta.textContent = suggestion.reason || 'Keep this stronger position';
-        keep.append(keepName, keepMeta);
-        row.append(input, remove, arrow, keep); els.duplicateReviewList.append(row);
+      const sdRemovals = new Set((draft.duplicateSuggestions || []).filter(item => !item.exact).map(item => item.removeId));
+      for (const group of groups) {
+        const box = document.createElement('fieldset');
+        const title = document.createElement('legend'); title.textContent = `${group.channels[0].name} · ${group.channels.length} positions`;
+        box.append(title);
+        for (const channel of group.channels) {
+          const row = document.createElement('label'); row.className = 'duplicate-review-row';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = !sdRemovals.has(channel.id);
+          input.addEventListener('change', updateDuplicateReviewCount);
+          const copy = document.createElement('div'); copy.className = 'duplicate-review-copy';
+          const name = document.createElement('div'); name.className = 'duplicate-review-name'; name.textContent = `Keep ${channel.number || '—'} · ${channel.name}`;
+          const meta = document.createElement('div'); meta.className = 'duplicate-review-meta'; meta.textContent = `Callsign ${channel.callSign} · Gracenote ${channel.stationId || 'unknown'} · ${sdRemovals.has(channel.id) ? 'Lower-quality removal suggested' : 'Choose manually if this position is repeated'}`;
+          copy.append(name, meta); row.append(input, copy); box.append(row);
+        }
+        els.duplicateReviewList.append(box);
       }
       updateDuplicateReviewCount();
       els.duplicateReview.showModal();
@@ -1815,17 +1857,18 @@
 
     async function removeDuplicates(event) {
       event.preventDefault();
-      const ids = [...els.duplicateReviewList.querySelectorAll('input:checked')].map(input => input.value);
+      const ids = [...els.duplicateReviewList.querySelectorAll('input:not(:checked)')].map(input => input.value);
       if (!ids.length) return;
-      els.duplicateReview.close();
-      saving = true; renderSummary(); showMessage('Applying the duplicate-SD suggestions…');
+      if ([...els.duplicateReviewList.querySelectorAll('fieldset')].some(group => !group.querySelector('input:checked'))) return;
+      saving = true; els.duplicateReviewConfirm.disabled = true; renderSummary(); showMessage('Applying duplicate choices…');
       try {
         await api('/api/lineuparr/remove-duplicates', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({channelIds:ids})});
         const selected = new Set(ids);
         for (const channel of draft.channels) if (selected.has(channel.id)) channel.included = false;
-        showMessage(`${selected.size} suggested SD channel${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
+        els.duplicateReview.close();
+        showMessage(`${selected.size} duplicate position${selected.size === 1 ? '' : 's'} removed. You can restore them at any time.`);
       } catch (error) { showMessage(error.message, true); }
-      finally { saving = false; renderSummary(); renderChannels(); }
+      finally { saving = false; updateDuplicateReviewCount(); renderSummary(); renderChannels(); }
     }
 
     async function restoreAll() {
@@ -1857,7 +1900,7 @@
       }
     }
 
-    function openExport() {
+    async function openExport() {
       if (!draft || saving || pendingChannelSaves) return;
       publishedExport = null;
       els.exportResult.hidden = true;
@@ -1866,23 +1909,39 @@
       els.exportStatus.className = 'export-status';
       els.exportClose.textContent = 'Cancel';
       els.exportDialog.showModal();
+      internalExportBase = '';
+      els.exportInternalCopy.hidden = els.exportInternalResult.hidden = true;
+      els.exportInternalURL.value = '';
+      const request = ++exportSettingsRequest;
+      try {
+        const settings = await api('/api/setup/share-links');
+        if (request !== exportSettingsRequest) return;
+        internalExportBase = settings.internalBaseURL || '';
+        els.exportInternalCopy.hidden = !internalExportBase;
+        if (publishedExport && internalExportBase) {
+          els.exportInternalURL.value = new URL(publishedExport.path, internalExportBase).href;
+          els.exportInternalResult.hidden = false;
+        }
+      } catch (_) { /* Optional settings do not block normal exports. */ }
     }
 
-    async function copyExportURL() {
+    async function copyExportURL(input = els.exportURL) {
       if (navigator.clipboard && window.isSecureContext) {
-        try { await navigator.clipboard.writeText(els.exportURL.value); return true; }
+        try { await navigator.clipboard.writeText(input.value); return true; }
         catch (_) { /* Try the local HTTP fallback, then leave the URL selected. */ }
       }
-      els.exportURL.focus();
-      els.exportURL.select();
+      input.focus();
+      input.select();
       try { return document.execCommand('copy'); }
       catch (_) { return false; }
     }
 
     async function exportLineup(action) {
       if (publishing || !draft || saving || pendingChannelSaves) return;
+      if (action === 'copy-internal' && !internalExportBase) return;
       publishing = true;
       els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = true;
+      els.exportInternalCopy.disabled = true;
       els.exportStatus.className = 'export-status';
       els.exportStatus.textContent = 'Preparing your export…';
       try {
@@ -1892,11 +1951,13 @@
             body: JSON.stringify({sourceFingerprint: draft.sourceFingerprint})
           });
           els.exportURL.value = new URL(publishedExport.path, window.location.href).href;
+          els.exportInternalURL.value = internalExportBase ? new URL(publishedExport.path, internalExportBase).href : '';
+          els.exportInternalResult.hidden = !internalExportBase;
           els.exportResult.hidden = false;
           els.exportClose.textContent = 'Close';
         }
-        if (action === 'copy') {
-          const copied = await copyExportURL();
+        if (action === 'copy' || action === 'copy-internal') {
+          const copied = await copyExportURL(action === 'copy-internal' ? els.exportInternalURL : els.exportURL);
           els.exportStatus.textContent = copied ? 'URL copied. Export again to publish later changes.' : 'Export saved. Copy the selected URL manually, or click Copy URL again.';
           els.exportStatus.classList.toggle('error', !copied);
         } else {
@@ -1915,6 +1976,7 @@
       } finally {
         publishing = false;
         els.exportCopy.disabled = els.exportDownload.disabled = els.exportClose.disabled = false;
+        els.exportInternalCopy.disabled = false;
       }
     }
 
@@ -1924,6 +1986,12 @@
     els.exportClose.addEventListener('click', () => els.exportDialog.close());
     els.exportDialog.addEventListener('cancel', event => { if (publishing) event.preventDefault(); });
     els.exportURL.addEventListener('click', () => els.exportURL.select());
+    els.exportInternalCopy.addEventListener('click', () => exportLineup('copy-internal'));
+    els.exportInternalURL.addEventListener('click', async () => {
+      if (!els.exportInternalURL.value) return;
+      const copied = await copyExportURL(els.exportInternalURL);
+      els.exportStatus.textContent = copied ? 'Docker-network URL copied.' : 'Select and copy the Docker-network URL manually.';
+    });
 
     let searchTimer;
     els.search.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderChannels, 100); });
@@ -1940,6 +2008,10 @@
     els.batchClear.addEventListener('click', clearBatchSelection);
     els.batchApply.addEventListener('click', applyBatchCategory);
     els.programClose.addEventListener('click', closeProgramDialog);
+    els.programDialog.addEventListener('click', event => {
+      const box = els.programDialog.getBoundingClientRect();
+      if (event.target === els.programDialog && (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom)) closeProgramDialog();
+    });
     els.removeDuplicates.addEventListener('click', openDuplicateReview);
     els.duplicateReviewForm.addEventListener('submit', removeDuplicates);
     els.duplicateReviewCancel.addEventListener('click', () => els.duplicateReview.close());
@@ -1972,6 +2044,64 @@
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();
     loadDraft();
+    const marketStart = document.getElementById('major-market-start');
+    const marketStatus = document.getElementById('major-market-status');
+    let majorMarketPoll;
+    let majorMarketWasRunning = false;
+    async function loadMajorMarkets() {
+      clearTimeout(majorMarketPoll);
+      try {
+        const view = await api('/api/lineuparr/markets');
+        marketStart.disabled = !!view.job.running || !view.next;
+        document.getElementById('major-market-stop').style.display = view.job.running && view.job.action === 'market' ? '' : 'none';
+        document.getElementById('major-market-next').textContent = view.next ? `Next: #${view.next.rank} ${view.next.name}, ZIP ${view.next.postalCode} — ranked list ${view.catalog.asOf}` : 'All ranked markets completed.';
+        const ownJob = view.job.action === 'market' ? view.job : {};
+        if (majorMarketWasRunning && !ownJob.running) reloadDraft().catch(error => showMessage(error.message, true));
+        majorMarketWasRunning = !!ownJob.running;
+        const progress = ownJob.running && ownJob.totalCount ? Math.max(0, Math.min(100, Math.round(ownJob.completedCount * 100 / ownJob.totalCount))) : 0;
+        document.getElementById('major-market-progress-count').textContent = ownJob.running ? `${ownJob.completedCount} / ${ownJob.totalCount} in this scan` : '';
+        document.getElementById('major-market-progress-bar').style.width = `${progress}%`;
+        marketStatus.textContent = ownJob.running ? `Scanning ${ownJob.currentProvider || 'market provider lineups'}` : view.job.running ? 'Another scan is running. Market scan is waiting.' : (ownJob.lastError || 'Ready. One click starts one market only.');
+        const reports = document.getElementById('major-market-reports'); reports.replaceChildren();
+        for (const scan of view.scans) {
+          const section = document.createElement('details');
+          const summary = document.createElement('summary');
+          const rows = scan.providerAudit || [];
+          const count = status => rows.filter(row => row.access === status).length;
+          summary.textContent = `#${scan.marketRank} ZIP ${scan.postalCode}: ${scan.status} — ${scan.discoveredCount} discovered entries, ${scan.providerCount} eligible lineups / ${scan.providerFamilies} families, ${count('enriched')} enriched, ${count('address-required')} need an address, ${count('unsupported')} unsupported, ${count('error')} source failures, ${count('empty')} no source matches`;
+          section.append(summary);
+          const rescan = document.createElement('button');
+          rescan.type = 'button'; rescan.className = 'secondary';
+          rescan.textContent = `Rescan ZIP ${scan.postalCode}`; rescan.disabled = !!view.job.running;
+          rescan.addEventListener('click', async () => {
+            rescan.disabled = true; marketStart.disabled = true;
+            try {
+              await api('/api/lineuparr/markets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({rank:scan.marketRank})});
+              await loadAliasIndex(); await loadMajorMarkets();
+            } catch (error) { marketStatus.textContent = error.message; rescan.disabled = false; marketStart.disabled = false; }
+          });
+          section.append(rescan);
+          const yieldText = value => `${value.aliases} aliases, ${value.categories} categories, ${value.currentStations} current station IDs`;
+          const totals = document.createElement('p');totals.textContent = `All providers: ${yieldText(scan.allProviderYield)}. New families only: ${yieldText(scan.newFamilyYield)}.`;section.append(totals);
+          for (const row of rows) {
+            const p = document.createElement('p');p.style.overflowWrap='anywhere';
+            p.textContent = `${row.provider}: ${row.access} · grid ${row.gridStatus}${row.repeatedFamily ? ' · previously scanned family' : ' · new family'} · ${yieldText(row.yield)}`;section.append(p);
+          }
+          reports.append(section);
+        }
+        if (view.job.running) majorMarketPoll = setTimeout(loadMajorMarkets, 5000);
+      } catch (error) {marketStatus.textContent = error.message;}
+    }
+    marketStart.addEventListener('click', async () => {
+      marketStart.disabled = true;
+      try {await api('/api/lineuparr/markets', {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});await loadAliasIndex();await loadMajorMarkets();}
+      catch (error) {marketStatus.textContent=error.message;marketStart.disabled=false;}
+    });
+    loadMajorMarkets();
+    document.getElementById('major-market-stop').addEventListener('click', async () => {
+      try {await api('/api/lineuparr/alias-index/stop',{method:'POST'});marketStatus.textContent='Stop requested; completed evidence remains saved.';await loadMajorMarkets();}
+      catch(error){marketStatus.textContent=error.message;}
+    });
   </script>
 </body>
 </html>

@@ -1,7 +1,6 @@
 package lineupindex
 
-// Legacy catalog descriptors are retained only to decode existing evidence.
-// This package has no ranked ZIP list, catalog loader, or market scanner.
+// Catalog descriptors decode the versioned, fixed ranked-market discovery list.
 type SeedCatalog struct {
 	SchemaVersion   int          `json:"schemaVersion"`
 	Name            string       `json:"name"`

@@ -226,6 +226,17 @@ func TestDispatcharrReviewLimitAndFuzzyAlternatives(t *testing.T) {
 	}
 }
 
+func TestAlternativeThresholdIncludesSimilarButNot95(t *testing.T) {
+	for _, score := range []int{94, 95, 98} {
+		primary := []dispatcharr.CandidateGroup{{Key: "primary", NormalizedAlias: "same", Tier: "similar", MinimumScore: score, MaximumScore: 98}}
+		all := append(append([]dispatcharr.CandidateGroup{}, primary...), dispatcharr.CandidateGroup{Key: "other", NormalizedAlias: "same"})
+		got := attachDispatcharrAlternatives(primary, all)
+		if (len(got[0].Alternatives) > 0) != (score < 95) {
+			t.Fatalf("score %d: %+v", score, got)
+		}
+	}
+}
+
 func TestDispatcharrCachedAlternateDecisionDoesNotReloadStreams(t *testing.T) {
 	server, fake := newDispatcharrTestServer(t, true)
 	dispatchConfig, _ := server.config.Get()
