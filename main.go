@@ -1401,10 +1401,10 @@ func rewriteImageURLs(baseURL string, channels []guide.Channel, lineup []guide.L
 		return proxy + neturl.QueryEscape(u)
 	}
 	for i := range channels {
-		channels[i].IconURL = rewrite(channels[i].IconURL)
+		channels[i].IconURL = stationLogoForOutput(baseURL, channels[i].ID, channels[i].IconURL)
 	}
 	for i := range lineup {
-		lineup[i].LogoURL = rewrite(lineup[i].LogoURL)
+		lineup[i].LogoURL = stationLogoForOutput(baseURL, lineup[i].StationID, lineup[i].LogoURL)
 	}
 	for i := range programs {
 		programs[i].IconSrc = rewrite(programs[i].IconSrc)
@@ -1412,39 +1412,4 @@ func rewriteImageURLs(baseURL string, channels []guide.Channel, lineup []guide.L
 			programs[i].Images[j].URL = rewrite(programs[i].Images[j].URL)
 		}
 	}
-}
-
-// propagateChannelLogos copies each station's resolved icon onto every lineup
-// position carrying that station, so logo resolution stays keyed by station.
-func propagateChannelLogos(channels []guide.Channel, lineup []guide.LineupPosition) {
-	byStation := make(map[string]string, len(channels))
-	for _, ch := range channels {
-		byStation[ch.ID] = ch.IconURL
-	}
-	for i := range lineup {
-		if logo, ok := byStation[lineup[i].StationID]; ok {
-			lineup[i].LogoURL = logo
-		}
-	}
-}
-
-func enrichChannelIcons(client *tvlogo.Client, channels []guide.Channel) {
-	if client == nil {
-		return
-	}
-
-	log.Printf("TV logos: resolving icons for %d channels", len(channels))
-
-	enriched := 0
-	for i := range channels {
-		logoURL := client.Resolve(channels[i].ID, channels[i].CallSign, channels[i].Affiliate, channels[i].ChannelNo)
-		if logoURL != "" {
-			channels[i].IconURL = logoURL
-			enriched++
-		} else {
-			channels[i].IconURL = ""
-		}
-	}
-
-	log.Printf("TV logos: enriched %d/%d channels", enriched, len(channels))
 }
