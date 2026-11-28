@@ -973,7 +973,6 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 	categoryHints := s.weekdayCategoryHints(g, config)
 	tmdbCategories := s.builder.TMDBCategoryScan(config.Fingerprint()).Categories
 	inputs := make([]lineuparrbuilder.InputChannel, 0, len(channels))
-	seenKeys := make(map[string]int)
 	for _, channel := range channels {
 		input := lineupInput(channel)
 		input.CategoryHint = categoryHints[channel.ID]
@@ -981,12 +980,11 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 			copy := hint
 			input.CategoryHint = &copy
 		}
-		baseKey := strings.TrimSpace(input.Key)
-		if count := seenKeys[baseKey]; count > 0 {
-			input.Key = fmt.Sprintf("%s-%d", baseKey, count+1)
-		}
-		seenKeys[baseKey]++
 		inputs = append(inputs, input)
+	}
+	if err := s.builder.StabilizePlacementKeys(config.Fingerprint(), inputs); err != nil {
+		http.Error(w, "Unable to save ambiguous LineupARR placement keys", http.StatusInternalServerError)
+		return appconfig.Config{}, nil, false
 	}
 	return config, inputs, true
 }

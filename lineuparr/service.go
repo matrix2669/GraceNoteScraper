@@ -83,6 +83,12 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		Matched: len(channels),
 		Message: "Authoritative lineup membership, channel numbers, callsigns, station IDs, and affiliate names",
 	}}
+	for _, input := range inputs {
+		if input.AmbiguousLegacyPlacement {
+			statuses[0].Message += ". Shared legacy placement IDs are held for review; earlier saved choices were not copied."
+			break
+		}
+	}
 	statuses = append(statuses, lineup.AdditionalSources...)
 
 	for _, source := range s.fetchSources(ctx, lineup) {

@@ -549,7 +549,20 @@ func TestLineuparrDuplicatePlacementKeysRemainEditable(t *testing.T) {
 		t.Fatalf("duplicate placement IDs were not made unique: %+v", draft.Channels)
 	}
 
-	payload := `{"channelId":"repeat-2","included":false}`
+	var target string
+	for _, row := range draft.Channels {
+		if row.Number == "3" {
+			target = row.ID
+		}
+	}
+	if !strings.HasPrefix(target, "position:v1:") {
+		t.Fatalf("unstable duplicate key %q", target)
+	}
+	requestBody, err := json.Marshal(map[string]any{"channelId": target, "included": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(requestBody)
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/channel", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()

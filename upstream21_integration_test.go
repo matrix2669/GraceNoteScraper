@@ -42,11 +42,14 @@ func TestPR21ForkAdapterPreservesRawAndLegacyContracts(t *testing.T) {
 	if e != nil || g == nil {
 		t.Fatalf("scrape %v %v", g, e)
 	}
-	if len(g.Channels) != 1 || len(g.Lineup) != 2 || len(g.LineupChannels) != 1 || len(g.Programs) != 1 || f.count != 4 || called != 1 {
+	if len(g.Channels) != 1 || len(g.Lineup) != 2 || len(g.LineupChannels) != 2 || len(g.Programs) != 1 || f.count != 4 || called != 1 {
 		t.Fatalf("guide=%+v fetches=%d saved=%d", g, f.count, called)
 	}
 	if g.Lineup[0].ChannelNo != "2.1" || g.Lineup[1].ChannelNo != "1002" || g.Source.LineupID != "L" {
 		t.Fatalf("positions/source: %+v %+v", g.Lineup, g.Source)
+	}
+	if len(g.LineupChannels[0].EventCallSigns) != 1 || g.LineupChannels[0].EventCallSigns[0] != "FIRST" || len(g.LineupChannels[1].EventCallSigns) != 1 || g.LineupChannels[1].EventCallSigns[0] != "SECOND" {
+		t.Fatalf("cross-position event evidence: %+v", g.LineupChannels)
 	}
 	filtered := filterGuideChannels(g, map[string]bool{"2.1": true})
 	if len(filtered.Lineup) != 1 || len(g.Lineup) != 2 {

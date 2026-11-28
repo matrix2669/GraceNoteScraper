@@ -11,7 +11,7 @@ import (
 
 func ExportFromDraft(draft *Draft) ExportFile {
 	categories := make(map[string][]ExportChannel)
-	for _, channel := range draft.Channels {
+	for _, channel := range shareCollapsedPlacementRules(draft.Channels) {
 		if !channel.Included {
 			continue
 		}
@@ -35,6 +35,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 		})
 	}
 
+	orderCollapsedPlacementRows(categories, draft.Channels)
 	sourceNames := make([]string, 0, len(draft.Sources))
 	for _, source := range draft.Sources {
 		if source.ID == "gracenote" || source.Matched > 0 {

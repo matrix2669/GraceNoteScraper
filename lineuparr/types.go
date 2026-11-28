@@ -19,17 +19,18 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key              string
-	StationID        string
-	PlacementID      string
-	Number           string
-	CallSign         string
-	Affiliate        string
-	EventCallSigns   []string
-	PreferredName    *AttributedAlias
-	CategoryHint     *AttributedCategory
-	CategoryConflict bool
-	ExternalAliases  []AttributedAlias
+	AmbiguousLegacyPlacement bool
+	Key                      string
+	StationID                string
+	PlacementID              string
+	Number                   string
+	CallSign                 string
+	Affiliate                string
+	EventCallSigns           []string
+	PreferredName            *AttributedAlias
+	CategoryHint             *AttributedCategory
+	CategoryConflict         bool
+	ExternalAliases          []AttributedAlias
 }
 
 type AttributedAlias struct {
@@ -198,12 +199,13 @@ type MatchDecision struct {
 }
 
 type State struct {
-	TMDBCategoryScan  TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
-	Version           int                        `json:"version"`
-	SourceFingerprint string                     `json:"sourceFingerprint"`
-	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
-	MatchDecisions    map[string]MatchDecision   `json:"matchDecisions,omitempty"`
-	Workflow          WorkflowProgress           `json:"workflow,omitempty"`
+	PlacementCollisions map[string]map[string]bool `json:"placementCollisions,omitempty"`
+	TMDBCategoryScan    TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
+	Version             int                        `json:"version"`
+	SourceFingerprint   string                     `json:"sourceFingerprint"`
+	Channels            map[string]ChannelOverride `json:"channels,omitempty"`
+	MatchDecisions      map[string]MatchDecision   `json:"matchDecisions,omitempty"`
+	Workflow            WorkflowProgress           `json:"workflow,omitempty"`
 }
 
 type WorkflowProgress struct {

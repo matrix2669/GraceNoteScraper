@@ -292,7 +292,12 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	opts := newScrapeOptions(pref)
 	opts.ObserveChannel = func(ch web.JSONChannel, converted guide.Channel) {
 		lineupKey := converted.PlacementID
-		if lineupKey == "" {
+		if strings.TrimSpace(converted.ID) != "" && strings.TrimSpace(converted.ChannelNo) != "" {
+			// Separate provider placements without changing the raw ID carried
+			// to the builder; its persistent guard owns any decision-key split.
+			encoded, _ := json.Marshal([]string{strings.TrimSpace(converted.ID), strings.TrimSpace(converted.ChannelNo)})
+			lineupKey = string(encoded)
+		} else if lineupKey == "" {
 			lineupKey = strings.Join([]string{converted.ID, converted.ChannelNo, converted.CallSign}, "|")
 		}
 		if existing, exists := lineupMap[lineupKey]; exists {
@@ -327,7 +332,10 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		if lineupChannels[i].ChannelNo != lineupChannels[j].ChannelNo {
 			return channelNumberLess(lineupChannels[i].ChannelNo, lineupChannels[j].ChannelNo)
 		}
-		return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+		if lineupChannels[i].PlacementID != lineupChannels[j].PlacementID {
+			return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+		}
+		return lineupChannels[i].ID < lineupChannels[j].ID
 	})
 
 	logoClient := tvlogo.NewClient(pref.Country, "tvlogo_cache.json")

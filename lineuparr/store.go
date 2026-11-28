@@ -309,10 +309,11 @@ func (s *StateStore) ensureSourceLocked(fingerprint string) {
 		return
 	}
 	s.state = State{
-		Version:           CurrentStateVersion,
-		SourceFingerprint: fingerprint,
-		Channels:          make(map[string]ChannelOverride),
-		MatchDecisions:    make(map[string]MatchDecision),
+		PlacementCollisions: s.state.PlacementCollisions,
+		Version:             CurrentStateVersion,
+		SourceFingerprint:   fingerprint,
+		Channels:            make(map[string]ChannelOverride),
+		MatchDecisions:      make(map[string]MatchDecision),
 	}
 }
 
