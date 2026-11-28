@@ -198,3 +198,69 @@ func TestSupplementalSuppressionRestartRestoreAndNegativeIndependence(t *testing
 		t.Fatal("Undo retained exclusion")
 	}
 }
+
+func TestSupplementalSaveRejectsStaleSameNameOfferWithoutRewritingHistory(t *testing.T) {
+	for _, choice := range []string{"confirmed", "denied"} {
+		t.Run(choice, func(t *testing.T) {
+			svc := newTestService(t, "", "")
+			d := supplementalFixture()
+			d.Decision = choice
+			input := svc.ReviewInputToken()
+			guard := func(f func() error) error { return f() }
+			if err := svc.SaveSupplementalDecisions("source", input, []SupplementalDecision{d}, false, guard); err != nil {
+				t.Fatal(err)
+			}
+			// Same exact admitted operation is an idempotent retry.
+			if err := svc.SaveSupplementalDecisions("source", input, []SupplementalDecision{d}, true, guard); err != nil {
+				t.Fatal(err)
+			}
+			replacement := d
+			replacement.StreamID++
+			replacement.StreamFingerprint = "replacement"
+			replacement.StreamName = "  " + strings.ToLower(d.StreamName) + "  "
+			replacement.OperationID = "older-offer"
+			replacement.GroupKey = "other-group"
+			replacement.Key = SupplementalKey(replacement)
+			if choice == "confirmed" {
+				replacement.Decision = "denied"
+			} else {
+				replacement.Decision = "confirmed"
+			}
+			if err := svc.SaveSupplementalDecisions("source", input, []SupplementalDecision{replacement}, false, guard); !errors.Is(err, ErrStaleReview) {
+				t.Fatalf("stale offer: %v", err)
+			}
+			saved := svc.SupplementalDecisions("source")
+			if len(saved) != 1 || saved[d.Key].StreamFingerprint != d.StreamFingerprint || saved[d.Key].Decision != choice {
+				t.Fatalf("history changed: %+v", saved)
+			}
+		})
+	}
+}
+
+func TestSupplementalConcurrentSameNameOffersSettleOnce(t *testing.T) {
+	svc := newTestService(t, "", "")
+	first := supplementalFixture()
+	second := first
+	second.StreamID++
+	second.StreamFingerprint = "other"
+	second.OperationID = "other"
+	second.GroupKey = "other"
+	second.Key = SupplementalKey(second)
+	second.Decision = "denied"
+	token := svc.ReviewInputToken()
+	result := make(chan error, 2)
+	guard := func(f func() error) error { return f() }
+	go func() {
+		result <- svc.SaveSupplementalDecisions("source", token, []SupplementalDecision{first}, false, guard)
+	}()
+	go func() {
+		result <- svc.SaveSupplementalDecisions("source", token, []SupplementalDecision{second}, false, guard)
+	}()
+	a, b := <-result, <-result
+	if !((a == nil && errors.Is(b, ErrStaleReview)) || (b == nil && errors.Is(a, ErrStaleReview))) {
+		t.Fatalf("results %v, %v", a, b)
+	}
+	if len(svc.SupplementalDecisions("source")) != 1 {
+		t.Fatal("both offers saved")
+	}
+}

@@ -261,6 +261,7 @@ type MatchDecision struct {
 
 type State struct {
 	PlacementCollisions   map[string]map[string]bool      `json:"placementCollisions,omitempty"`
+	Lifecycle             *LifecycleState                 `json:"lifecycle,omitempty"`
 	SupplementalDecisions map[string]SupplementalDecision `json:"supplementalDecisions,omitempty"`
 	ResetGeneration       uint64                          `json:"resetGeneration,omitempty"`
 	PublicationGeneration uint64                          `json:"publicationGeneration,omitempty"`

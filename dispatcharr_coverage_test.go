@@ -71,7 +71,7 @@ func TestKnownInventoryDriftFencesExportLease(t *testing.T) {
 
 func TestUnsupportedConfirmationsAreFlaggedWithoutOverwriting(t *testing.T) {
 	history := []dispatcharrReviewDecision{{Key: "old", Decision: "confirmed", ChannelID: "one", StreamNames: []string{"US: Service East", "US| Service East"}}, {Key: "other", Decision: "denied", ChannelID: "two", StreamNames: []string{"Denied"}}}
-	annotateUnsupportedConfirmations(history, []dispatcharr.Candidate{{ChannelID: "one", StreamName: "US: Service East"}})
+	annotateUnsupportedConfirmations(history, []dispatcharr.Candidate{{ChannelID: "one", StreamName: "US: Service East"}}, []dispatcharr.IdentityStream{{Name: "US: Service East"}})
 	if !history[0].NeedsReview || history[0].Decision != "confirmed" || history[0].Key != "old" || history[1].NeedsReview {
 		t.Fatal(history)
 	}

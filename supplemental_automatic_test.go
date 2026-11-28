@@ -153,43 +153,25 @@ func TestSupplementalAutomaticUndoRetiresDependentOffersBeforeAndAfterRead(t *te
 		dispatcharr.Stream{ID: 3, Name: "US: HBO 2 HD", M3UAccountID: 3})
 	saved := seedSupplementalAutomaticHistory(t, s, "confirmed")
 	r := automaticReview(t, s)
-	var dependent, unknown supplementalGroup
-	for _, g := range r.Supplemental.Candidates {
-		if g.StreamName == saved.StreamName {
-			dependent = g
-		} else {
-			unknown = g
-		}
+	if r.Supplemental.CandidateCount != 1 || r.Supplemental.Candidates[0].StreamName == saved.StreamName {
+		t.Fatal("saved literal name should cover the other account; unknown remains", r.Supplemental)
 	}
-	if dependent.Key == "" || unknown.Key == "" || dependent.StreamCount != 1 {
-		t.Fatal("expected current conflict and unknown proposals", r.Supplemental)
-	}
-	body := supplementalSaveBody(r, dependent)
+	unknown := r.Supplemental.Candidates[0]
 	if w := supplementalRequest(t, s, "DELETE", "/decision", map[string]string{"key": saved.Key}); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	for i := 0; i < 2; i++ {
-		if w := supplementalRequest(t, s, "POST", "/decision", body); w.Code != 409 {
-			t.Fatal("old dependent offer bypassed restored constraint", i, w.Code)
-		}
 		after := automaticReview(t, s)
 		if after.Supplemental.CandidateCount != 1 || after.Supplemental.Candidates[0].Key != unknown.Key {
-			t.Fatal("filter failed to retain only unknown feed", after.Supplemental)
+			t.Fatal("undo failed to restore automatic constraint", after.Supplemental)
 		}
 	}
-	if _, ok := s.supplementalAdmission.groups[dependent.Key]; ok {
-		t.Fatal("filtered group remains admitted")
-	}
-	if receiptFor(t, s, body["operation"])["state"] != "superseded" {
-		t.Fatal("removed offer receipt not retired")
-	}
 	if w := supplementalRequest(t, s, "POST", "/decision", supplementalSaveBody(r, unknown)); w.Code != 200 {
-		t.Fatal("unrelated unknown offer invalidated", w.Code, w.Body.String())
+		t.Fatal("unrelated offer invalidated", w.Code, w.Body.String())
 	}
-	// Read hides the saved group but must preserve its idempotent durable retry.
 	_ = automaticReview(t, s)
 	if w := supplementalRequest(t, s, "POST", "/decision", supplementalSaveBody(r, unknown)); w.Code != 200 {
-		t.Fatal("saved retry lost on filtered read", w.Code)
+		t.Fatal("saved retry lost", w.Code)
 	}
 }
 

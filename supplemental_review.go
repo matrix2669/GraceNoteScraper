@@ -66,6 +66,18 @@ type supplementalAdmission struct {
 func supplementalLiteral(s string) string {
 	return strings.ToLower(strings.Join(strings.Fields(s), " "))
 }
+
+// sameSupplementalScope deliberately excludes physical stream identity: the
+// user's literal-name choice survives inventory ID changes, not target changes.
+func sameSupplementalScope(a, b builder.SupplementalDecision) bool {
+	return a.SourceFingerprint == b.SourceFingerprint && a.DispatcharrFingerprint == b.DispatcharrFingerprint &&
+		a.ChannelID == b.ChannelID && a.StationID == b.StationID && a.PlacementID == b.PlacementID && a.RawCallSign == b.RawCallSign
+}
+
+func supplementalChoiceCovers(saved, candidate builder.SupplementalDecision) bool {
+	return sameSupplementalScope(saved, candidate) && supplementalLiteral(saved.StreamName) != "" && supplementalLiteral(saved.StreamName) == supplementalLiteral(candidate.StreamName)
+}
+
 func supplementalHash(value any) string {
 	data, _ := json.Marshal(value)
 	return fmt.Sprintf("%x", sha256.Sum256(data))
@@ -78,6 +90,11 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 	if old.snapshot == key && old.inputs == inputs {
 		return old.candidates, old.complete
 	}
+	candidates, complete := s.prepareSupplementalUncached(draft, config, snapshot)
+	s.supplementalPreparation = supplementalPreparation{inputs, key, candidates, complete}
+	return candidates, complete
+}
+func (s *dispatcharrServer) prepareSupplementalUncached(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot) ([]dispatcharr.SupplementalCandidate, bool) {
 	feeds, _ := stationFeedCatalog(draft, config)
 	targets := []dispatcharr.SupplementalTarget{}
 	for _, c := range draft.Channels {
@@ -108,7 +125,6 @@ func (s *dispatcharrServer) prepareSupplemental(draft *builder.Draft, config app
 		targets = append(targets, dispatcharr.SupplementalTarget{ID: c.ID, StationID: c.StationID, PlacementID: c.PlacementID, Number: c.Number, Name: c.Name, CallSign: c.CallSign, Country: affiliateCountry(config.Gracenote.Country), Labels: labels, Feed: feeds[c.ID]})
 	}
 	candidates, complete := dispatcharr.RetrieveSupplemental(targets, snapshot.identityStreams, snapshot.candidates)
-	s.supplementalPreparation = supplementalPreparation{inputs, key, candidates, complete}
 	return candidates, complete
 }
 func supplementalDecision(c dispatcharr.SupplementalCandidate, source, connection, snapshot string) builder.SupplementalDecision {
@@ -203,9 +219,12 @@ func filterSupplementalAutomatic(candidates []dispatcharr.SupplementalCandidate,
 }
 
 func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int) (supplementalReview, []supplementalGroup) {
+	return s.buildSupplementalReviewFrom(draft, config, snapshot, inputs, automatic, valid, limit, s.lineup.builder)
+}
+func (s *dispatcharrServer) buildSupplementalReviewFrom(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, inputs reviewInputsRevision, automatic dispatcharr.AutomaticResult, valid bool, limit int, reader builder.ReviewProjection) (supplementalReview, []supplementalGroup) {
 	response := supplementalReview{Status: "refresh-required", Revision: dispatcharr.SupplementalRevision, Candidates: []supplementalGroup{}, Decisions: []supplementalGroup{}, Message: "Supplemental retrieval has no LineupARR score. Review raw/account constituents, validation runs automatically in the background. Full names can expand to extra streams; identical names share all-account export outcomes. Future inventory requires another check."}
-	stored := s.lineup.builder.SupplementalDecisions(config.Fingerprint())
-	primary := s.lineup.builder.MatchDecisions(config.Fingerprint())
+	stored := reader.SupplementalDecisions(config.Fingerprint())
+	primary := reader.MatchDecisions(config.Fingerprint())
 	history := []builder.SupplementalDecision{}
 	for _, d := range stored {
 		history = append(history, d)
@@ -226,6 +245,13 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		d := g.Constituents[0]
 		c := current[d.ChannelID]
 		g.ChannelDisplayName, g.ChannelCallSign = reviewDisplayName(c), c.CallSign
+		for _, other := range stored {
+			if supplementalChoiceCovers(other, d) && other.Decision != d.Decision {
+				g.NeedsReview = true
+				g.ReviewWarning = "Opposing saved decisions share this literal name. Review the preserved history; the export cannot represent both outcomes."
+				break
+			}
+		}
 		for _, old := range primary {
 			if old.ChannelID == d.ChannelID && (old.StreamFingerprint == d.StreamFingerprint || supplementalLiteral(old.StreamName) == supplementalLiteral(d.StreamName)) {
 				g.NeedsReview = true
@@ -241,7 +267,13 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 	if !valid || snapshot.warning != "" || !supplementalEvidenceCurrent(snapshot, inputs) {
 		return response, nil
 	}
-	candidates, complete := s.prepareSupplemental(draft, config, snapshot, inputs)
+	var candidates []dispatcharr.SupplementalCandidate
+	var complete bool
+	if reader == s.lineup.builder {
+		candidates, complete = s.prepareSupplemental(draft, config, snapshot, inputs)
+	} else {
+		candidates, complete = s.prepareSupplementalUncached(draft, config, snapshot)
+	}
 	candidates = append(append([]dispatcharr.SupplementalCandidate(nil), candidates...), s.impactExtraCandidates(draft, snapshot, inputs)...)
 	candidates = filterSupplementalAutomatic(candidates, automatic)
 	response.Complete = complete
@@ -260,7 +292,16 @@ func (s *dispatcharrServer) buildSupplementalReview(draft *builder.Draft, config
 		}
 		seen[d.Key] = true
 		descriptors[d.Key] = c.Descriptor
-		if _, settled := stored[d.Key]; settled {
+		// A saved literal-name choice carries across replacement stream IDs,
+		// but only within the same source, connection and target identity.
+		settled := false
+		for _, old := range stored {
+			if supplementalChoiceCovers(old, d) {
+				settled = true
+				break
+			}
+		}
+		if settled {
 			continue
 		}
 		reviewed := false
