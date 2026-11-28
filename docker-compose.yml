@@ -1,6 +1,7 @@
 services:
   gracenotescraper:
-    build: .
+    image: ghcr.io/matrix2669/gracenotescraper:${GRACENOTESCRAPER_IMAGE_TAG:-dev-test}
+    pull_policy: always
     ports:
       - "8080:8080"
     env_file:
