@@ -8,18 +8,15 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/daniel-widrick/GraceNoteScraper/tmdb"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
 type TVGuide struct {
-	// Channels is the XMLTV view: one entry per Gracenote station.
+	Lineup   []LineupPosition
+	Source   Source
 	Channels []Channel
 	Programs []Program
-	// Lineup retains every provider position, so a station carried at two
-	// channel numbers appears twice. It is never collapsed.
-	Lineup []LineupPosition
-	// Source records which provider lineup produced this guide.
-	Source Source
 }
 
 // Source identifies the Gracenote lineup a guide was built from.
@@ -111,15 +108,15 @@ func SortLineup(positions []LineupPosition) {
 }
 
 type Channel struct {
+	PlacementID       string
+	AffiliateCallSign string
+	Filters           []string
 	ID                string
 	DisplayNames      []DisplayName
 	IconURL           string
-	CallSign          string   // internal, not in template
-	Affiliate         string   // internal, not in template
-	ChannelNo         string   // internal, not in template
-	PlacementID       string   // internal, not in template; Gracenote row id, not a stable key
-	AffiliateCallSign string   // internal, not in template
-	Filters           []string // internal, not in template; Gracenote station filters, prefix stripped
+	CallSign          string // internal, not in template
+	Affiliate         string // internal, not in template
+	ChannelNo         string // internal, not in template
 }
 
 type DisplayName struct {
@@ -127,6 +124,10 @@ type DisplayName struct {
 }
 
 type Program struct {
+	Filters         []string
+	TMSID           string
+	ReleaseYear     string
+	Generic         bool
 	Start           string
 	Stop            string
 	Channel         string
@@ -144,10 +145,6 @@ type Program struct {
 	Country         string
 	EpisodeNumbers  []EpisodeNumber
 	Categories      []Category
-	Filters         []string // internal, not in template; raw Gracenote event filters, prefix stripped
-	TMSID           string   // internal, not in template
-	ReleaseYear     string   // internal, not in template
-	Generic         bool     // internal, not in template
 	New             bool
 	Premiere        bool
 	PreviouslyShown bool
@@ -198,64 +195,66 @@ func formatXMLTVTime(iso string) string {
 	return s
 }
 
-// gracenoteIconURL builds an absolute icon URL from a Gracenote thumbnail
-// path: strip leading slashes, strip query params, prepend http://
-func gracenoteIconURL(thumbnail string) string {
-	if thumbnail == "" {
-		return ""
+// appendCanonicalCategory adds a category case-insensitively. When the same
+// category already came from Gracenote, its spelling is normalized to the
+// requested canonical form instead of adding a duplicate.
+func appendCanonicalCategory(categories []Category, name, lang string) []Category {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return categories
 	}
-	raw := thumbnail
-	if idx := strings.Index(raw, "?"); idx >= 0 {
-		raw = raw[:idx]
+	for i := range categories {
+		if strings.EqualFold(strings.TrimSpace(categories[i].Name), name) {
+			categories[i].Name = name
+			if categories[i].Lang == "" {
+				categories[i].Lang = lang
+			}
+			return categories
+		}
 	}
-	raw = strings.TrimLeft(raw, "/")
-	if raw == "" {
-		return ""
-	}
-	return "http://" + raw
+	return append(categories, Category{Name: name, Lang: lang})
 }
 
 // converts a JSON channel to a template Channel struct.
 func ConvertChannel(ch web.JSONChannel) Channel {
-	iconURL := gracenoteIconURL(ch.Thumbnail)
+	// Register whether this channel remains in the guide but should be excluded
+	// from TMDB enrichment. This does not alter the returned channel or events.
+	tmdb.RegisterChannelEligibility(ch.ChannelID, ch.CallSign, ch.AffiliateName, ch.ChannelNo)
+
+	// Dedicated news and sports networks add an XMLTV category to each of their
+	// programmes. This classification is independent of enrichment eligibility.
+	tmdb.RegisterChannelProgramCategories(ch.ChannelID, ch.CallSign, ch.AffiliateName, ch.ChannelNo)
+
+	// Build icon URL: strip leading slashes, strip query params, prepend http://
+	iconURL := ""
+	if ch.Thumbnail != "" {
+		raw := ch.Thumbnail
+		// Strip query string
+		if idx := strings.Index(raw, "?"); idx >= 0 {
+			raw = raw[:idx]
+		}
+		raw = strings.TrimLeft(raw, "/")
+		if raw != "" {
+			iconURL = "http://" + raw
+		}
+	}
 
 	return Channel{
-		ID: ch.ChannelID,
+		AffiliateCallSign: normalizeNull(ch.AffiliateCallSign),
+		Filters:           stripFilterPrefixes(ch.StationFilters),
+		PlacementID:       ch.ID,
+		ID:                ch.ChannelID,
 		DisplayNames: []DisplayName{
 			{Name: xmlEscape(ch.ChannelNo + " " + ch.CallSign)},
 			{Name: xmlEscape(ch.ChannelNo)},
 			{Name: xmlEscape(ch.CallSign)},
 			{Name: xmlEscape(titleCase(ch.AffiliateName))},
 		},
-		IconURL:           iconURL,
-		CallSign:          ch.CallSign,
-		Affiliate:         ch.AffiliateName,
-		ChannelNo:         ch.ChannelNo,
-		PlacementID:       ch.ID,
-		AffiliateCallSign: normalizeNull(ch.AffiliateCallSign),
-		Filters:           stripFilterPrefixes(ch.StationFilters),
+		IconURL:   iconURL,
+		CallSign:  ch.CallSign,
+		Affiliate: ch.AffiliateName,
+		ChannelNo: ch.ChannelNo,
 	}
-}
-
-// normalizeNull maps Gracenote's literal "null" string to an empty value.
-func normalizeNull(s string) string {
-	if strings.EqualFold(strings.TrimSpace(s), "null") {
-		return ""
-	}
-	return s
-}
-
-// stripFilterPrefixes turns Gracenote filter tags such as "filter-sports" into
-// "sports". A nil input stays nil so callers can distinguish absent from empty.
-func stripFilterPrefixes(filters []string) []string {
-	if filters == nil {
-		return nil
-	}
-	out := make([]string, 0, len(filters))
-	for _, f := range filters {
-		out = append(out, strings.TrimPrefix(f, "filter-"))
-	}
-	return out
 }
 
 // converts a JSON event to a template Program struct.
@@ -295,15 +294,27 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 	// URL
 	programURL := "https://tvlistings.gracenote.com//overview.html?programSeriesId=" + ev.SeriesID + "&amp;tmsId=" + ev.Program.ID
 
-	// Raw Gracenote filters, kept separately so consumers can tell them apart
-	// from the Series and Finale labels added below.
-	filters := stripFilterPrefixes(ev.Filter)
-
 	// Categories from filter array (strip "filter-" prefix)
 	var categories []Category
-	for _, name := range filters {
+	isMovie := false
+	for _, f := range ev.Filter {
+		name := strings.TrimPrefix(f, "filter-")
 		categories = append(categories, Category{Name: name, Lang: lang})
+		if name == "movie" {
+			isMovie = true
+		}
 	}
+
+	// XMLTV categories belong to programmes, so programmes on dedicated news or
+	// sports networks inherit the channel's canonical category. The channel
+	// remains eligible for TMDB enrichment and is never removed from the guide.
+	for _, category := range tmdb.ChannelProgramCategories(channelID) {
+		categories = appendCanonicalCategory(categories, category, lang)
+	}
+
+	// Record whether this title occurs in a TMDB-eligible context. Categories
+	// affect only this programme/title lookup and never classify its channel.
+	tmdb.RegisterProgramEligibility(ev.Program.Title, isMovie, channelID, ev.Filter)
 
 	// Episode numbers
 	var episodeNumbers []EpisodeNumber
@@ -386,6 +397,10 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 	}
 
 	p := Program{
+		Filters:         stripFilterPrefixes(ev.Filter),
+		TMSID:           ev.Program.TmsID,
+		ReleaseYear:     string(ev.Program.ReleaseYear),
+		Generic:         bool(ev.Program.IsGeneric),
 		Start:           formatXMLTVTime(ev.StartTime),
 		Stop:            formatXMLTVTime(ev.EndTime),
 		Channel:         channelID,
@@ -401,10 +416,6 @@ func ConvertEvent(ev web.JSONEvent, channelID, lang, country string) Program {
 		Country:         country,
 		EpisodeNumbers:  episodeNumbers,
 		Categories:      categories,
-		Filters:         filters,
-		TMSID:           ev.Program.TmsID,
-		ReleaseYear:     string(ev.Program.ReleaseYear),
-		Generic:         bool(ev.Program.IsGeneric),
 		New:             isNew,
 		Premiere:        isPremiere,
 		PreviouslyShown: !isNew,
@@ -428,3 +439,42 @@ func titleCase(s string) string {
 		return r
 	}, s)
 }
+
+func gracenoteIconURL(thumbnail string) string {
+	if thumbnail == "" {
+		return ""
+	}
+	raw := thumbnail
+	if idx := strings.Index(raw, "?"); idx >= 0 {
+		raw = raw[:idx]
+	}
+	raw = strings.TrimLeft(raw, "/")
+	if raw == "" {
+		return ""
+	}
+	return "http://" + raw
+}
+
+// converts a JSON channel to a template Channel struct.
+
+func normalizeNull(s string) string {
+	if strings.EqualFold(strings.TrimSpace(s), "null") {
+		return ""
+	}
+	return s
+}
+
+// stripFilterPrefixes turns Gracenote filter tags such as "filter-sports" into
+// "sports". A nil input stays nil so callers can distinguish absent from empty.
+func stripFilterPrefixes(filters []string) []string {
+	if filters == nil {
+		return nil
+	}
+	out := make([]string, 0, len(filters))
+	for _, f := range filters {
+		out = append(out, strings.TrimPrefix(f, "filter-"))
+	}
+	return out
+}
+
+// converts a JSON event to a template Program struct.
