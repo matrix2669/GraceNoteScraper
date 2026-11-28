@@ -11,7 +11,10 @@ import (
 	"unicode"
 )
 
-const minimumCandidateScore = 78
+// minimumReviewCandidateScore bounds the operator's review queue. It is
+// deliberately independent from Lineuparr Exact's 95% export boundary: an
+// operator confirms sub-95 names specifically so they can be emitted as aliases.
+const minimumReviewCandidateScore = 70
 
 type preparedIdentity struct {
 	compact string
@@ -114,7 +117,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			}
 		}
 		for index := range gramCandidates {
-			if score := identitiesSingleTypoScore(streamIdentities, prepared[index].identities); !indexes[index] && score >= minimumCandidateScore {
+			if score := identitiesSingleTypoScore(streamIdentities, prepared[index].identities); !indexes[index] && score >= minimumReviewCandidateScore {
 				indexes[index] = true
 				typoScores[index] = score
 			}
@@ -138,7 +141,7 @@ func MatchStreamCandidates(sourceFingerprint string, channels []MatchChannel, st
 			if tvgID := strings.ToLower(strings.TrimSpace(stream.TVGID)); tvgID != "" && prepared[index].epgIDs[tvgID] {
 				score, reason = 100, "Exact EPG ID"
 			}
-			if score < minimumCandidateScore {
+			if score < minimumReviewCandidateScore {
 				continue
 			}
 			if denied[decisionPairKey(streamHash, channel.ID)] || deniedAliases[aliasDecisionKey(normalizedAlias, channel.ID)] {
@@ -250,7 +253,7 @@ func GroupCandidates(candidates []Candidate) []CandidateGroup {
 		if normalized == "" {
 			continue
 		}
-		key := candidateGroupKey(candidate.Source, candidate.ChannelID, normalized)
+		key := candidateGroupKey(candidate.Source+candidate.ReviewGeneration, candidate.ChannelID, normalized)
 		group := groups[key]
 		if group == nil {
 			group = &CandidateGroup{
@@ -548,19 +551,17 @@ func scoreStreamName(stream Stream, streamIdentities []preparedIdentity, channel
 			}
 		}
 	}
-	if sameNumber && bestScore >= 60 {
-		bestScore = min(99, bestScore+4)
-		bestReason += " + channel number"
-	}
+	// Channel numbers can help the operator understand a candidate, but they
+	// are not part of the name score used by the Lineuparr export decision.
 	return bestScore, bestReason
 }
 
 func identityScore(left, right preparedIdentity, allowBroadContainment bool) (int, string) {
 	if left.compact == right.compact {
 		if right.primary {
-			return 99, "Exact normalized channel name"
+			return 100, "Exact normalized channel name"
 		}
-		return 98, "Exact normalized name or alias"
+		return 99, "Exact normalized name or alias"
 	}
 	if qualifiedIdentityContained(left, right) || qualifiedIdentityContained(right, left) {
 		return 88, "Qualified contained name"
@@ -645,7 +646,10 @@ func prepareIdentities(values []string) []preparedIdentity {
 	seen := make(map[string]bool)
 	result := make([]preparedIdentity, 0, len(values)*2)
 	for _, value := range values {
-		for _, stripQuality := range []bool{false, true} {
+		// Lineuparr normalizes provider decoration and standalone quality tags
+		// before comparing names.  Keeping a second raw identity here created
+		// false "exact" matches such as TMCHD -> TMC HD that Lineuparr rejects.
+		for _, stripQuality := range []bool{true} {
 			tokens := normalizedTokens(value, stripQuality)
 			compact := strings.Join(tokens, "")
 			if len(compact) < 3 || seen[compact] {
@@ -694,6 +698,12 @@ func normalizedTokens(value string, stripQuality bool) []string {
 	value = stripDelimitedProviderPrefix(strings.TrimSpace(value))
 	var builder strings.Builder
 	for _, r := range strings.ToLower(value) {
+		if r == '+' {
+			// Plus is semantic in names such as Disney+ and Nickelodeon+1; treating
+			// it as decoration incorrectly turns those into their base channels.
+			builder.WriteString(" plus ")
+			continue
+		}
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			builder.WriteRune(r)
 		} else {
@@ -702,7 +712,7 @@ func normalizedTokens(value string, stripQuality bool) []string {
 	}
 	tokens := strings.Fields(builder.String())
 	if !stripQuality {
-		return tokens
+		return normalizeNumberWords(tokens)
 	}
 	result := tokens[:0]
 	for _, token := range tokens {
@@ -711,10 +721,55 @@ func normalizedTokens(value string, stripQuality bool) []string {
 		}
 		result = append(result, token)
 	}
-	return result
+	return normalizeNumberWords(result)
+}
+
+func normalizeNumberWords(tokens []string) []string {
+	// Do not collapse a one-word callsign such as "TWO" into a one-character
+	// token. Number-word equivalence matters in compound names (BBC One/BBC 1),
+	// while a standalone callsign remains its own identity.
+	if len(tokens) < 2 {
+		return tokens
+	}
+	for index, token := range tokens {
+		switch token {
+		case "zero":
+			tokens[index] = "0"
+		case "one":
+			tokens[index] = "1"
+		case "two":
+			tokens[index] = "2"
+		case "three":
+			tokens[index] = "3"
+		case "four":
+			tokens[index] = "4"
+		case "five":
+			tokens[index] = "5"
+		case "six":
+			tokens[index] = "6"
+		case "seven":
+			tokens[index] = "7"
+		case "eight":
+			tokens[index] = "8"
+		case "nine":
+			tokens[index] = "9"
+		}
+	}
+	return tokens
 }
 
 func stripDelimitedProviderPrefix(value string) string {
+	fields := strings.Fields(value)
+	if len(fields) > 1 {
+		country := strings.ToLower(fields[0])
+		if country == "usa" && strings.EqualFold(fields[1], "network") {
+			return value
+		}
+		switch country {
+		case "us", "uk", "ca", "au", "fr", "de", "mx", "mex", "fra", "ger", "usa":
+			return strings.Join(fields[1:], " ")
+		}
+	}
 	lower := strings.ToLower(value)
 	for _, prefix := range []string{"prime", "tubi", "roku", "usa", "can", "go", "us", "ca", "uk", "gb"} {
 		if !strings.HasPrefix(lower, prefix) || len(value) <= len(prefix) {
