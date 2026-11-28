@@ -651,15 +651,11 @@
           <div class="match-stat"><strong id="match-denied">—</strong><span>Denied</span></div>
         </div>
         <div class="match-status" id="match-status"></div>
-        <button type="button" id="affiliate-preview">Review affiliate exclusions</button>
-        <details id="affiliate-review" hidden>
-          <summary>Affiliate exclusions preview</summary>
-          <p>Only clear callsign differences scoring at least 95% are suggested. All raw variants in a review group stay together. Ambiguous names and confirmed choices remain for manual review. Nothing is saved until you confirm. Saved denials can be undone in Reviewed matches.</p>
-          <p id="affiliate-count" role="status"></p>
-          <button type="button" id="affiliate-select-all">Select all suggested groups</button>
-          <button type="button" id="affiliate-select-none">Clear selection</button>
-          <div id="affiliate-rows"></div>
-          <button type="button" id="affiliate-apply" class="deny-button" disabled>Confirm selected exclusions</button>
+        <details id="automatic-exclusions">
+          <summary>Automatic identity exclusions <span id="automatic-count"></span></summary>
+          <p id="automatic-message">Refresh streams to derive current exclusions.</p>
+          <p>These are derived rules, separate from your saved Deny decisions. Clear callsign or opposing-feed conflicts are excluded automatically. Uncertain feed names remain below for Confirm/Deny and unresolved names are withheld from JSON until confirmed. Saved confirmations are preserved and conflicts are flagged. Changes recompute the list; restart requires Refresh streams.</p>
+          <div id="automatic-rows"></div>
         </details>
         <div class="match-list" id="match-list"></div>
         <details id="decision-history">
@@ -1088,6 +1084,7 @@
     }
 
     function invalidateDispatchReview() {
+      renderAutomaticExclusions(null);
       ++dispatchReviewEpoch;
       ++matchReviewRequest;
       matchReview = null;
@@ -1296,68 +1293,25 @@
       }
     }
 
-    let affiliatePreview = null;
-    function clearAffiliatePreview() {
-      affiliatePreview = null;
-      document.getElementById('affiliate-review').hidden = true;
-      document.getElementById('affiliate-rows').replaceChildren();
-    }
-    function affiliateSelection() {
-      return Array.from(document.querySelectorAll('#affiliate-rows input')).filter(input => input.checked).map(input => input.value);
-    }
-    function updateAffiliateSelection() {
-      const count = affiliateSelection().length;
-      const button = document.getElementById('affiliate-apply');
-      button.textContent = `Confirm selected exclusions (${count})`;
-      button.disabled = dispatchBusy || !count || !affiliatePreview;
-    }
-    async function previewAffiliateExclusions() {
-      if (dispatchBusy) return;
-      const epoch = dispatchReviewEpoch;
-      clearAffiliatePreview();
-      dispatchBusy = true; setDispatchControls();
-      try {
-        const preview = await api('/api/lineuparr/dispatcharr/affiliate-exclusions');
-        if (epoch !== dispatchReviewEpoch) return;
-        affiliatePreview = preview;
-        const panel = document.getElementById('affiliate-review'); panel.hidden = false; panel.open = true;
-        document.getElementById('affiliate-count').textContent = `${preview.rows.length} stream/channel exclusions suggested; ${preview.manualCount} candidates remain manual. Select groups to deny.`;
-        const rows = document.getElementById('affiliate-rows');
-        for (const row of preview.rows) {
-          const label = document.createElement('label'); label.className = 'decision-row';
-          const check = document.createElement('input'); check.type = 'checkbox'; check.value = row.key; check.dataset.group = row.group;
-          check.addEventListener('change', () => {
-            for (const sibling of rows.querySelectorAll('input')) if (sibling.dataset.group === check.dataset.group) sibling.checked = check.checked;
-            updateAffiliateSelection();
-          });
-          const text = document.createElement('span');
-          text.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}. ${row.reason}`;
-          label.append(check, text); rows.append(label);
-        }
-      } catch (error) { clearAffiliatePreview(); showMessage(error.message, true); }
-      finally { dispatchBusy = false; setDispatchControls(); updateAffiliateSelection(); }
-    }
-    async function applyAffiliateExclusions() {
-      const keys = affiliateSelection();
-      if (dispatchBusy || !affiliatePreview || !keys.length) return;
-      if (!window.confirm(`Save ${keys.length} individual channel-scoped exclusions? You can undo these denials in Reviewed matches.`)) return;
-      const token = affiliatePreview.token;
-      const epoch = dispatchReviewEpoch;
-      dispatchBusy = true; setDispatchControls(); updateAffiliateSelection();
-      try {
-        const result = await api('/api/lineuparr/dispatcharr/affiliate-exclusions', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({token, keys})});
-        if (epoch !== dispatchReviewEpoch) return;
-        ++decisionRevision; ++dispatchReviewEpoch;
-        clearAffiliatePreview();
-        await loadMatchReview(false, false);
-        await loadDraft();
-        showMessage(`Saved ${result.saved} stream/channel exclusions. Undo is available in Reviewed matches.`);
-      } catch (error) { clearAffiliatePreview(); showMessage(error.message, true); }
-      finally { dispatchBusy = false; setDispatchControls(); updateAffiliateSelection(); }
+    function renderAutomaticExclusions(view) {
+      const rows = view?.rows || [];
+      const exported = rows.filter(row => row.exported).length;
+      const pending = rows.filter(row => row.pendingReview && !row.conflict && row.manualDecision !== 'denied').length;
+      const conflicts = rows.filter(row => row.conflict).length;
+      document.getElementById('automatic-count').textContent = `(${exported} exclusions, ${pending} manual, ${conflicts} confirmation conflicts)`;
+      document.getElementById('automatic-message').textContent = view?.message || 'Refresh streams to derive current exclusions. Saved manual decisions remain unchanged.';
+      const container = document.getElementById('automatic-rows'); container.replaceChildren();
+      for (const row of rows.slice(0, 200)) {
+        const item = document.createElement('p'); item.className = 'channel-meta';
+        const state = row.conflict ? 'Saved confirmation preserved' : row.manualDecision === 'denied' ? 'Saved denial preserved; automatic constraint active' : row.pendingReview ? 'Manual review required' : 'Automatically excluded';
+        item.textContent = `${row.channelNumber} · ${row.channelName} ← ${row.streamName} · account ${row.accountId}: ${state}. ${row.reason}`;
+        container.append(item);
+      }
+      if (rows.length > 200) container.append(emptyMessage(`Showing 200 of ${rows.length} derived rows. All eligible names are included in JSON; no selection is needed.`));
     }
 
     function renderMatchReview() {
-      clearAffiliatePreview();
+      renderAutomaticExclusions(matchReview?.automatic);
       if (!matchReview) return;
       els.matchReview.hidden = false;
       els.dispatchLoading.replaceChildren();
@@ -1601,7 +1555,7 @@
       els.dispatchUser.disabled = dispatchBusy || !passwordAuth;
       els.dispatchPassword.disabled = dispatchBusy || !passwordAuth;
       els.dispatchAPIKey.disabled = dispatchBusy || passwordAuth;
-      for (const control of document.querySelectorAll('#affiliate-preview, #affiliate-review button, #affiliate-review input, .match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
+      for (const control of document.querySelectorAll('.match-buttons button, .decision-row button, .match-load-more, .match-dialog button')) control.disabled = dispatchBusy;
     }
 
     function showConfirmedMatches() {
@@ -1671,7 +1625,7 @@
           matchReview = {...matchReview, candidates, candidateCount:candidates.length,
             candidateStreamCount:candidates.reduce((sum,c) => sum+c.streamCount,0)};
         } else {
-          matchReview = {...matchReview, reviewStatus:'refresh-required', streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
+          matchReview = {...matchReview, automatic:{status:'refresh-required',rows:[]}, reviewStatus:'refresh-required', streamCount:0, candidateCount:0, candidateStreamCount:0, fetchedAt:null, candidates:[],
             warning:'Refresh required to match streams to the included channels. Press Refresh streams.'};
         }
         closeMatchAlternatives();
@@ -2751,15 +2705,9 @@
     initProviderAddress();
     els.dispatchForm.addEventListener('submit', saveDispatch);
     els.dispatchAuth.addEventListener('change', renderDispatchAuthFields);
-    document.getElementById('affiliate-preview').addEventListener('click', previewAffiliateExclusions);
-    document.getElementById('affiliate-apply').addEventListener('click', applyAffiliateExclusions);
-    for (const [id, checked] of [['affiliate-select-all', true], ['affiliate-select-none', false]]) document.getElementById(id).addEventListener('click', () => {
-      for (const input of document.querySelectorAll('#affiliate-rows input')) input.checked = checked;
-      updateAffiliateSelection();
-    });
     els.matchConfirmedJump.addEventListener('click', showConfirmedMatches);
     els.alternativeClose.addEventListener('click', closeMatchAlternatives);
-    els.dispatchRefresh.addEventListener('click', () => loadMatchReview(true));
+    els.dispatchRefresh.addEventListener('click', async () => { if (await loadMatchReview(true)) await reloadDraft(); });
     els.dispatchDisconnect.addEventListener('click', disconnectDispatch);
     loadDispatchConfig();
     document.getElementById('customization-complete').addEventListener('click', completeCustomizationWorkflow);

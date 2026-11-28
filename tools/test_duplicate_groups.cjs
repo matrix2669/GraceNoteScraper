@@ -17,7 +17,15 @@ assert.equal(context.activeDuplicateGroups()[0].channels.length,2);
 assert.equal(context.duplicateDefaultKeepID(context.activeDuplicateGroups()[0]),'b');
 context.draft.channels[2].included=false;
 assert.equal(context.activeDuplicateGroups().length,0);
-assert.ok(script.includes('input.checked = channel.id === defaultKeepID'));
+// The current identity workflow preserves reviewed multiple keepers.
+vm.runInContext(declaration('duplicateInitialKeeps'),context);
+const group={channels:[{id:'a',included:true},{id:'b',included:true}],keepId:'a'};
+assert.deepEqual(Array.from(context.duplicateInitialKeeps(group)),['a']);
+group.channels[1].inclusionChoice=true;
+assert.deepEqual(Array.from(context.duplicateInitialKeeps(group)),['b']);
+group.channels[0].inclusionChoice=true;
+assert.deepEqual(Array.from(context.duplicateInitialKeeps(group)),['a','b']);
+assert.ok(script.includes('input.checked = initialKeeps.has(channel.id)'));
 context.els={duplicateReviewList:{querySelectorAll(selector){return selector==='fieldset'?[{querySelector(){return context.keep}}]:[{}]}},duplicateReviewConfirm:{}};
 vm.runInContext(declaration('updateDuplicateReviewCount'),context);
 context.keep=null;context.updateDuplicateReviewCount();assert.equal(context.els.duplicateReviewConfirm.disabled,true);
