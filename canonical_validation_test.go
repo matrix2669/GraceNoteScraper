@@ -390,3 +390,65 @@ func TestCanonicalBackgroundCancellationReleasesRefresh(t *testing.T) {
 		t.Fatal("cancelled proof changed snapshot")
 	}
 }
+
+func TestCanonicalAttestedHBOFeedLabelsReachActualExport(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 required for unchanged consumer")
+	}
+	s, f := newDispatcharrTestServer(t, true)
+	cfg, _, _ := s.lineup.store.Get()
+	s.lineup.state.UpdateForSource(&guide.TVGuide{LineupChannels: []guide.Channel{
+		{ID: "59368", PlacementID: "east", ChannelNo: "800", CallSign: "HBOHTHD"},
+		{ID: "59355", PlacementID: "west", ChannelNo: "801", CallSign: "HBOHHDP"},
+		{ID: "53158", PlacementID: "local", ChannelNo: "2.1", CallSign: "WKTVDT", Affiliate: "NATIONAL BROADCASTING COMPANY"},
+		{ID: "other", PlacementID: "subchannel", ChannelNo: "2.2", CallSign: "WKTVDT2", Affiliate: "NATIONAL BROADCASTING COMPANY"},
+	}}, cfg.Fingerprint())
+	f.streams = []dispatcharr.Stream{
+		{ID: 1, M3UAccountID: 11, Name: "HBOHTHD", GroupName: "US"},
+		{ID: 2, M3UAccountID: 11, Name: "HBO Hits - West", GroupName: "US"},
+		{ID: 3, M3UAccountID: 11, Name: "WKTVDT", GroupName: "US"},
+		{ID: 4, M3UAccountID: 11, Name: "WKTVDT2", GroupName: "US"},
+	}
+	s.matcher = dispatcharr.MatchStreamCandidatesWithLineuparr
+	s.lineup.automaticProjection = s.projectAutomaticExclusions
+	s.lineup.derivedRevision = s.derivedRevision
+	w := httptest.NewRecorder()
+	if _, ok := s.buildReview(w, httptest.NewRequest("GET", "/review", nil), true); !ok {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	before, initial := canonicalNames(t, s)
+	if initial["east"] != "HBOHTHD" || initial["west"] != "HBOHHDP" {
+		t.Fatalf("label escaped validation: %v", initial)
+	}
+	state := s.lineup.builder.ReviewStateToken()
+	s.validateCanonicalNames(context.Background())
+	after, names := canonicalNames(t, s)
+	if !reflect.DeepEqual(names, map[string]string{"east": "HBO Hits", "west": "HBO Hits - West", "local": "WKTVDT", "subchannel": "WKTVDT2"}) {
+		t.Fatalf("unexpected effective labels: %v (reasons: %v)", names, s.canonical.reasons)
+	}
+	if got := s.lineup.builder.ReviewStateToken(); got != state {
+		t.Fatal("validation changed saved choices")
+	}
+	req, b, p, err := canonicalRequest(before, after, s.canonical.base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actual, err := dispatcharr.CheckSupplementalImpact(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]builder.DraftChannel{}
+	for _, c := range before.Channels {
+		targets[c.ID] = c
+	}
+	conn, _ := s.config.Get()
+	deltas, err := canonicalImpactDeltas(b, p, actual, s.snapshot.identityStreams, targets, cfg.Fingerprint(), conn.Fingerprint(), nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for id, d := range deltas {
+		if len(d.Added)+len(d.Lost) != 0 {
+			t.Fatalf("unexpected renamed export stream effect for %s: %+v", id, d)
+		}
+	}
+}

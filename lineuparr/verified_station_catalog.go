@@ -117,8 +117,8 @@ func applyVerifiedStationCatalogs(inputs []InputChannel, includeCategories bool)
 				inputs[i].ExternalAliases = append(inputs[i].ExternalAliases, AttributedAlias{Value: alias, Source: row.SourceID, Method: method, Identity: proof})
 				// Only the attributable row descriptor, not an arbitrary alias, can
 				// nominate a canonical display name. The same owner census applies.
-				if strings.EqualFold(strings.TrimSpace(alias), strings.TrimSpace(row.Name)) {
-					inputs[i].CanonicalNameCandidates = append(inputs[i].CanonicalNameCandidates, AttributedAlias{Value: row.Name, Source: row.SourceID, Method: method, Identity: proof})
+				if label := canonicalStationDescriptor(row, alias); label != "" {
+					inputs[i].CanonicalNameCandidates = append(inputs[i].CanonicalNameCandidates, AttributedAlias{Value: label, Source: row.SourceID, Method: method, Identity: proof})
 				}
 			}
 			if includeCategories && row.Attestation != "USER-ATTESTED" {
@@ -131,6 +131,30 @@ func applyVerifiedStationCatalogs(inputs []InputChannel, includeCategories bool)
 		categoryStatus = "reviewed category enrichment is enabled"
 	}
 	return []SourceStatus{{ID: "verified-station-catalogs", Label: "Station alias catalogs (PrismCast, PBS and user attestations)", Status: "embedded", Matched: matched, Ambiguous: ambiguous, Message: fmt.Sprintf("%d exact station-ID matches; provider channel numbers are never join keys; shared aliases and ambiguous bindings are withheld; %s", matched, categoryStatus)}}
+}
+
+// An attested rename supplies a service name and an independently bound feed.
+// Accept only its explicit catalog spelling, never a generated or legacy alias.
+// West needs its qualifier; the canonical collector can remove default East.
+func canonicalStationDescriptor(row verifiedStationRow, alias string) string {
+	name := strings.TrimSpace(row.Name)
+	if name == "" {
+		return ""
+	}
+	if row.SourceID == "user-attested-renames" && row.Attestation == "USER-ATTESTED" {
+		switch row.Feed {
+		case "east":
+			name += " - East"
+		case "west":
+			name += " - West"
+		default:
+			return ""
+		}
+	}
+	if strings.EqualFold(strings.TrimSpace(alias), name) {
+		return name
+	}
+	return ""
 }
 
 func applyVerifiedCategory(input *InputChannel, row verifiedStationRow) {
