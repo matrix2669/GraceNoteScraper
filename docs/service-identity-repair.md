@@ -4,7 +4,7 @@ Duplicate identity is independent of HD/SD quality. Exact station repeats and ve
 
 Provider catalog alignment is necessary but insufficient for number recovery. A contradictory row cannot override an identity elsewhere in the catalog or grid. Xfinity address responses lack a verified Gracenote headend binding and therefore contribute exact identity matches only. Frontier Fios does not route through the Verizon adapter. Other adequately aligned, noncontradictory provider-number recovery remains available.
 
-`provider-identity-v1` carries row, root station/source and typed station-pair provenance through schedule propagation. A verified schedule does not upgrade an unsafe provider alias. `provider-evidence-quarantine-v1` excludes unsafe historical Xfinity number joins, Verizon-on-Frontier origins and their attributable derived evidence from the active view. Legacy reciprocal confirmed schedule transfers can be re-evaluated without new scans. Unproven legacy evidence remains unavailable rather than becoming authoritative.
+`provider-identity-v1` carries row, root station/source and typed station-pair provenance through schedule propagation. A verified schedule does not upgrade an unsafe provider alias. `provider-evidence-quarantine-v2` excludes unsafe historical Xfinity number joins, Verizon-on-Frontier origins and their attributable derived evidence from the active view. Legacy reciprocal confirmed schedule transfers can be re-evaluated without new scans. Unproven legacy evidence remains unavailable rather than becoming authoritative.
 
 ## Dry run and deployment proposal
 
@@ -44,3 +44,20 @@ station-pair proof. Neither seasonal schedule absence nor unknown quality rules
 out identity, but the actual row applicability and station joins must be justified
 independently before promoting that relationship. This repair performs no scans,
 retained-record migration or implicit alias/category promotion.
+
+
+The versioned adjudicated-assignment ledger also excludes one user-rejected,
+unsupported provider-row binding using its complete original source/row/root
+lineup/root station tuple. Audit payload preserves original assertion values and
+revision independently of mutable facts; a context SHA256 commitment avoids
+committing private postal configuration. Runtime audits verify observed context.
+Revision/method changes, missing context or disappearing direct records cannot
+reactivate that tuple. Direct and derived alias/category support and transient
+EPG seeds use the same predicate; unrelated rows, roots and independently supported
+same-text evidence retain ordinary eligibility. This is not a name blacklist.
+
+`station-evidence-eligibility-v2` invalidates old-policy saved exports for active
+serving while retaining their exact bytes. Explicit regeneration is required;
+Keep does not bypass evidence eligibility. No automatic live refresh, export,
+publication or deployment is part of this local correction. Matcher/profile,
+thresholds, reviewed choices and valid provider-identity-v1 proofs remain intact.

@@ -140,7 +140,7 @@ func TestExportSummaryRetainsButDoesNotServeLegacyPolicyRecord(t *testing.T) {
 	config, _, _ := server.store.Get()
 	filename := lineuparrbuilder.ExportFilenameForSource(config.Gracenote.Country, config.Gracenote.ProviderName, config.Gracenote.PostalCode)
 	legacy := publishedLineuparr{
-		Version: 1, Filename: filename,
+		Version: 1, Filename: filename, SourceFingerprint: config.Fingerprint(), EvidencePolicy: "station-evidence-eligibility-v1",
 		Data: json.RawMessage(`{"categories":{"News":[{"name":"NEWS","number":2,"aliases":["News HD"]}]}}`),
 	}
 	if err := savePublishedLineuparr(server.exportDir, legacy); err != nil {
@@ -160,6 +160,11 @@ func TestExportSummaryRetainsButDoesNotServeLegacyPolicyRecord(t *testing.T) {
 	server.handleExportSummary(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/export-summary", nil))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"requiresRegeneration":true`) || !strings.Contains(w.Body.String(), `"retained":true`) {
 		t.Fatalf("legacy summary = %d %s", w.Code, w.Body.String())
+	}
+	// Only an explicit isolated generation restores active serving.
+	publishLineuparrForTest(t, server)
+	if readLineuparrExport(server, http.MethodGet, lineuparrPublishedPrefix+filename).Code != 200 {
+		t.Fatal("explicit current-policy generation not served")
 	}
 }
 

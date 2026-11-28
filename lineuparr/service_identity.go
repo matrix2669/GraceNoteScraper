@@ -62,7 +62,7 @@ func serviceCompatible(a, b DraftChannel) bool {
 	return x == "" || y == "" || x == y
 }
 func safeIdentityProof(c DraftChannel, p ServiceIdentityEvidence) bool {
-	if serviceKey(p.Value) == "" || p.SourceID == "" || (p.Policy != "provider-identity-v1" && p.Policy != "provider-evidence-quarantine-v1-reevaluated") {
+	if serviceKey(p.Value) == "" || p.SourceID == "" || (p.Policy != "provider-identity-v1" && p.Policy != "provider-evidence-quarantine-v2-reevaluated") {
 		return false
 	}
 	// Explicit suppression remains authoritative for grouping as well as export.

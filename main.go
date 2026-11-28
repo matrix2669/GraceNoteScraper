@@ -1524,6 +1524,8 @@ func main() {
 	lineuparrHandlers.commitDraft = dispatcharrHandlers.commitAutomaticDraft
 	lineuparrHandlers.derivedRevision = dispatcharrHandlers.derivedRevision
 	lineuparrHandlers.afterBuilderReset = dispatcharrHandlers.clearCandidateCache
+	dispatcharrHandlers.startImpactCoordinator(ctx)
+	defer dispatcharrHandlers.stopImpactCoordinator()
 
 	// Start background scraper
 	if configured && nextScrapeIn < time.Second {
@@ -1569,6 +1571,7 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleConfig))
 	mux.HandleFunc("/api/lineuparr/dispatcharr/review", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleReview))
 	mux.HandleFunc("/api/lineuparr/dispatcharr/progress", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleProgress))
+	mux.HandleFunc("/api/lineuparr/dispatcharr/supplemental-impact", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleSupplementalImpact))
 	mux.HandleFunc("/api/lineuparr/dispatcharr/decision", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleDecision))
 	mux.HandleFunc("/api/lineuparr/dispatcharr/affiliate-exclusions", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleAffiliateExclusions))
 	mux.HandleFunc("/api/lineuparr/dispatcharr/automatic-exclusions", lineuparrHandlers.guardBuilder(dispatcharrHandlers.handleAutomaticExclusions))
@@ -1587,7 +1590,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:    ":" + port,
-		Handler: mux,
+		Handler: dispatcharrHandlers.observeReviewMutations(mux),
 	}
 
 	// Start server in background

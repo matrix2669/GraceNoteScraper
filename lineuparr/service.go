@@ -75,6 +75,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		}
 		seenKeys[baseKey]++
 		work := newChannelWork(input)
+		work.draft.SupplementalEvidence = append([]ServiceIdentityEvidence(nil), input.SupplementalEvidence...)
 		if input.CategoryConflict && strings.TrimSpace(input.CategoryEvidenceMethod) != "" {
 			work.draft.CategoryMethod = appendCategoryMethod(work.draft.CategoryMethod, "provider review evidence: "+input.CategoryEvidenceMethod)
 		}
@@ -96,7 +97,11 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	}
 	statuses = append(statuses, lineup.AdditionalSources...)
 
-	for _, source := range s.fetchSources(ctx, lineup) {
+	sourceCapture := lineup.capturedSources
+	if sourceCapture == nil {
+		sourceCapture = captureSources(s.fetchSources(ctx, lineup), lineup.AdditionalSources)
+	}
+	for _, source := range sourceCapture.sources {
 		status := SourceStatus{
 			ID:      source.ID,
 			Label:   source.Label,
@@ -284,6 +289,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	populateSourceMatches(statuses, resultChannels)
 
 	draft := &Draft{
+		SourceCapture:        sourceCapture,
 		GeneratedAt:          time.Now().UTC(),
 		Package:              packageName(lineup),
 		ProviderName:         lineup.ProviderName,

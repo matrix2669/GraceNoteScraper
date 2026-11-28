@@ -1,3 +1,15 @@
+### Supplemental stream review
+
+After Refresh streams, separately labelled supplemental candidates can be reviewed
+with Confirm, Deny and Undo. Retrieval rank is not a LineupARR score. Confirm saves
+a detailed raw-name alias; Deny saves a channel-specific literal exclusion. Use
+**Check supplemental export impact** after a batch to inspect extra, missing and
+protected matches against the same captured inventory. Generation remains
+available with unresolved or stale impact. Equal names cannot split account
+outcomes, and future streams need another check. See
+[the review guide](docs/supplemental-stream-review.md) for identity safeguards,
+user-attested HBO/Cinemax historical aliases and consumer-profile limits.
+
 # GraceNote XMLTV Scraper
 
 ### Experimental category evidence and review
