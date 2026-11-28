@@ -147,6 +147,8 @@ type StationFact struct {
 	SourceURL       string   `json:"sourceUrl,omitempty"`
 	Method          string   `json:"method"`
 	LineupKeys      []string `json:"lineupKeys"`
+	StationBound    bool     `json:"stationBound,omitempty"`
+	SourceRevision  string   `json:"sourceRevision,omitempty"`
 }
 
 // ProviderEvidenceFetcher converts an official provider listing and its
@@ -157,10 +159,14 @@ type ProviderEvidenceFetcher interface {
 
 type ProviderEvidenceRequest struct {
 	AllowChannelNumbers bool
-	Provider            web.Provider
-	LineupKey           string
-	Country             string
-	PostalCode          string
+	// NationalOnly restricts an adapter to provider-independent national evidence.
+	NationalOnly bool
+	// EvidenceRunID scopes source reuse to a single explicit scan.
+	EvidenceRunID string `json:"-"`
+	Provider      web.Provider
+	LineupKey     string
+	Country       string
+	PostalCode    string
 	// ServiceAddress is an in-memory copy for an approved address-required provider. It must not
 	// be persisted in the index, snapshots, logs, source URLs, or API views.
 	ServiceAddress ProviderAddress `json:"-"`
@@ -183,8 +189,13 @@ type ProviderEvidenceResult struct {
 	// IdentityFacts are exact provider identities that may be shared by more
 	// than one Gracenote station ID. They are used only to form pair-level EPG
 	// candidates and are never persisted or applied to a lineup on their own.
-	IdentityFacts []ProviderFact
-	Sources       []EvidenceSourceRecord
+	IdentityFacts      []ProviderFact
+	Sources            []EvidenceSourceRecord
+	SnapshotComplete   bool
+	SnapshotSourceID   string
+	SnapshotRevision   string
+	SnapshotStationIDs []string
+	SnapshotFacts      []ProviderFact
 }
 
 type ProviderFact struct {
@@ -198,6 +209,8 @@ type ProviderFact struct {
 	SourceLabel     string
 	SourceURL       string
 	Method          string
+	StationBound    bool
+	SourceRevision  string
 }
 
 type EvidenceSourceRecord struct {
@@ -281,6 +294,7 @@ type RunRequest struct {
 	comparison             *LineupRecord
 	priorFamilies          map[string]bool
 	priorFacts             map[string]bool
+	evidenceRunID          string
 	Action                 string `json:"action"`
 	BatchSize              int    `json:"batchSize,omitempty"`
 	Ranks                  []int  `json:"ranks,omitempty"`

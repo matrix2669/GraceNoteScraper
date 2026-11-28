@@ -55,7 +55,7 @@ type Definition struct {
 var definitions = []definition{
 	{name: LocalPublic, aliases: []string{
 		"local", "local channels", "broadcast", "broadcast channels", "ota", "over the air",
-		"affiliate", "network affiliates", "public", "public access", "peg", "government",
+		"broadcaster", "broadcasters", "affiliate", "network affiliates", "public", "public access", "peg", "government",
 		"government access", "educational access", "community access", "community television",
 	}},
 	{name: NewsWeather, aliases: []string{
@@ -86,7 +86,7 @@ var definitions = []definition{
 		"music radio", "music and radio", "radio", "music choice", "musique", "musica",
 	}},
 	{name: Faith, aliases: []string{
-		"religious", "religion", "inspirational", "spiritual", "worship",
+		"inspiration", "religious", "religion", "inspirational", "spiritual", "worship",
 	}},
 	{name: International, aliases: []string{
 		"foreign", "world", "international channels", "spanish", "latino", "internacional",

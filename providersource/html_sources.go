@@ -25,7 +25,6 @@ const (
 	optimumLineupURL   = "https://static.suddenlink.com/live-channel-lineup/services/rest/RestChannelLineupService/getServiceabilityDetailLineup"
 	xfinityGuideURL    = "https://www.xfinity.com/support/local-channel-lineup"
 	xfinityLineupURL   = "https://api.sc.xfinity.com/channels/lineup"
-	spectrumGuideURL   = "https://www.spectrum.com/cable-tv/channel-lineup"
 )
 
 var (
@@ -266,22 +265,7 @@ func parseXfinity(data []byte) ([]catalogEntry, error) {
 }
 
 func (s *Service) fetchSpectrum(ctx context.Context) providerResult {
-	source := catalogSource{
-		ID: "spectrum-official-lineup", Label: "Spectrum official lineup", URL: spectrumGuideURL,
-		Method: "exact Spectrum channel number from public channel data embedded in the official page",
-	}
-	data, err := s.fetchBytes(ctx, spectrumGuideURL, "text/html", source.Label, maxHTMLBytes, false)
-	if err != nil {
-		return sourceFailure(source, err)
-	}
-	entries := parseEmbeddedChannelJSON(data)
-	if len(entries) == 0 {
-		source.Status = "login-required"
-		source.Message = "Spectrum does not expose a stable no-login residential lineup in this response; account automation is intentionally disabled"
-		return providerResult{source: source}
-	}
-	source.Entries = entries
-	return requireEntries(source)
+	return s.fetchSpectrumCatalog(ctx)
 }
 
 func parseEmbeddedChannelJSON(data []byte) []catalogEntry {

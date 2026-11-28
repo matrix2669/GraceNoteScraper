@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-08-28",
+  "asOf": "2026-09-11",
   "providers": [
     {"id":"verizon-fios","names":["verizon","fios"],"label":"Verizon FiOS","url":"https://www.verizon.com/home/fios-tv/channel-lineup/","access":"public-location","locationMode":"postal-code"},
     {"id":"optimum","names":["optimum","cablevision"],"label":"Optimum","url":"https://www.optimum.com/tvlineup","access":"public-address","locationMode":"address","routes":[{"url":"https://www.optimum.net/pages/channel-lineups.html","access":"public-market-list","locationMode":"market-list","postalPrefixRanges":[{"start":"060","end":"069"},{"start":"070","end":"089"},{"start":"100","end":"149"},{"start":"150","end":"196"}],"locations":["Hendersonville","West Jefferson"]}]},
@@ -7,7 +7,7 @@
     {"id":"dish","names":["dish"],"label":"DISH","url":"https://my.dish.com/cms-files/channelcards/2026/0219/Channel_Lineup.pdf","access":"public-pdf"},
     {"id":"att-uverse","names":["u-verse","uverse","at&t"],"label":"AT&T U-verse","url":"https://www.att.com/idpassets/pdfs/channel_lineups/Uverse_Channel_Lineup.pdf","access":"public-pdf"},
     {"id":"xfinity","names":["xfinity","comcast"],"label":"Xfinity","url":"https://www.xfinity.com/support/local-channel-lineup/","access":"public-address","locationMode":"address"},
-    {"id":"spectrum","names":["spectrum","charter","time warner cable"],"label":"Spectrum","url":"https://www.spectrum.com/cable-tv/channel-lineup","access":"public-page-no-login","locationMode":"postal-code"},
+    {"id":"spectrum","names":["spectrum","charter","time warner cable"],"label":"Spectrum","url":"https://www.spectrum.com/cable-tv/channel-lineup","access":"public-national-tms-catalog"},
     {"id":"broadstar","names":["broadstar","broadstream"],"label":"BroadStar","url":"https://www.broadstar.com/wp-content/uploads/2026/04/BDYWN_AmFav.pdf","access":"public-pdf"}
   ],
   "renames": [
