@@ -91,9 +91,13 @@ var hdSuffixRe = regexp.MustCompile(`(?i)(hdp|hp|hd[234]|hd|sd|dt2|dt|p)$`)
 // matches dash-separated station suffixes like -TV, -DT, -HD, -LD, -DT2.
 var dashSuffixRe = regexp.MustCompile(`(?i)-(tv|dt|hd|ld|dt2|hd2|hd3)$`)
 
-// Bump when matching logic changes. Cache entries below this version with
-// empty results are re-checked on next access (matched entries are preserved).
-const matcherVersion = 2
+// A numbered US local digital service has its own identity; treating it as
+// an ordinary quality suffix can select the primary station's logo.
+var numberedLocalServiceRe = regexp.MustCompile(`(?i)^([kw][a-z]{2,3}[[:space:]-]*(?:dt|ld)[0-9]+)(?:[[:space:]-]*(?:hdp|hp|hd[234]?|sd|p))*$`)
+
+// Bump when matching logic changes. Older misses are retried; Resolve also
+// rechecks older hits for identities affected by this version.
+const matcherVersion = 3
 
 // localAffiliateDir is the tv-logos repo subdirectory holding US local station
 // logos. It is prepended to local-affiliate slugs so buildURL resolves e.g.
@@ -319,7 +323,8 @@ var callsignSlugs = map[string]string{
 	"mgmmr":  "mgm-plus-marquee",
 	"mgmw":   "mgm-plus",
 	// Military
-	"mil": "military-history",
+	"mil":  "military-history",
+	"milh": "military-history",
 	// Me-TV / MyNetwork
 	"metvn": "me-tv",
 	"metv":  "me-tv",
@@ -480,23 +485,43 @@ func (c *Client) Resolve(channelID, callSign, affiliateName, channelNo string) s
 	}
 
 	key := "channelId:" + channelID
-	if entry, ok := c.cache.Get(key); ok {
+	if entry, ok := c.cache.Get(key); ok && !retryOlderMatch(entry, callSign) {
 		return entry.LogoURL
 	}
 
 	candidates := c.generateCandidates(callSign, affiliateName, channelNo)
 
-	logoURL := ""
+	definitive := true
 	for _, slug := range candidates {
 		u := baseRawURL + "/" + c.country.Dir + "/" + slug + c.country.Suffix + ".png"
-		if c.checkURL(u) {
-			logoURL = u
-			break
+		exists, checked := c.checkURL(u)
+		if exists {
+			// A higher-priority candidate may be temporarily unavailable.
+			// Use this verified fallback now, but resolve again next time.
+			if definitive {
+				c.cache.Set(key, CacheEntry{LogoURL: u})
+			}
+			return u
 		}
+		definitive = definitive && checked
 	}
 
-	c.cache.Set(key, CacheEntry{LogoURL: logoURL})
-	return logoURL
+	// Transport errors, rate limits and server errors do not prove a missing
+	// logo. Retrying on the next resolution is safer than a cached 30-day miss.
+	if definitive {
+		c.cache.Set(key, CacheEntry{})
+	}
+	return ""
+}
+
+// Preserve unrelated successful matches. A numbered local service may have
+// cached its parent logo, and a newly confirmed callsign may have cached a guess.
+func retryOlderMatch(entry CacheEntry, callSign string) bool {
+	if entry.MatcherVersion >= 3 {
+		return false
+	}
+	call := strings.ToLower(strings.TrimSpace(callSign))
+	return numberedLocalServiceRe.MatchString(call) || bareCallSign(call) == "milh"
 }
 
 // returns an ordered list of slugs to try.
@@ -548,8 +573,14 @@ func (c *Client) generateCandidates(callSign, affiliateName, channelNo string) [
 	// 4. Full affiliate slug — no stripping; matches "action-channel", "history-channel", etc.
 	add(slugify(affiliate))
 
-	// 5. Bare callsign alone — matches standalone entries like "wjxt", "wlny"
+	// 5. Bare callsign alone — matches standalone entries like "wjxt", "wlny".
 	add(bare)
+
+	// 6. Try a terminal "Network" as a descriptive suffix only after exact
+	// candidates; brands such as "Cartoon Network" keep their full name.
+	if shorter, ok := strings.CutSuffix(slugify(affiliate), "-network"); ok {
+		add(shorter)
+	}
 
 	// 7. Affiliate without leading "the" — "The Weather Channel" → "weather-channel"
 	if after, ok := strings.CutPrefix(affiliate, "the "); ok {
@@ -583,9 +614,13 @@ func normalizeAffiliate(name string) string {
 }
 
 // returns the bare callsign with dash-separated and inline HD/SD/DT/Plus suffixes
-// removed. Strips iteratively so compound suffixes like "HDP" or "HD2" collapse all the
-// way (e.g., MAXHDP → MAXHD → MAX). Stops if the result would be shorter than 2 chars.
+// removed, except for the identity of a numbered local digital service. For
+// other callsigns, strips iteratively (e.g., MAXHDP → MAXHD → MAX) and stops if
+// the result would be shorter than two characters.
 func bareCallSign(call string) string {
+	if service := numberedLocalServiceRe.FindStringSubmatch(call); service != nil {
+		return slugify(service[1])
+	}
 	s := dashSuffixRe.ReplaceAllString(call, "")
 	for {
 		next := hdSuffixRe.ReplaceAllString(s, "")
@@ -616,22 +651,30 @@ func slugify(s string) string {
 	return result
 }
 
-// sends an HTTP HEAD request and returns true if the server responds 200.
-func (c *Client) checkURL(url string) bool {
+// checkURL returns whether the logo exists and whether the result is
+// definitive. Only an explicit 404 or 410 proves that a logo is missing.
+func (c *Client) checkURL(url string) (exists, definitive bool) {
 	c.rateWait()
 
 	req, err := http.NewRequest("HEAD", url, nil)
 	if err != nil {
-		return false
+		return false, false
 	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return false
+		return false, false
 	}
 	resp.Body.Close()
 
-	return resp.StatusCode == http.StatusOK
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return true, true
+	case http.StatusNotFound, http.StatusGone:
+		return false, true
+	default:
+		return false, false
+	}
 }
 
 // enforces a minimum delay between HTTP requests.
