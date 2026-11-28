@@ -45,7 +45,14 @@ func collectCanonicalNameProposals(result []DraftChannel, work []*channelWork, o
 			if suppressed {
 				continue
 			}
-			key := strings.ToLower(strings.Join(strings.Fields(a.Value), " "))
+			descriptor := a.Value
+			// The exact attested East spelling corroborates an existing
+			// unqualified source descriptor when they yield the same label.
+			// Do not coalesce competing unqualified and West descriptors.
+			if p.BindingKind == "user-attested-station-v1" && p.Feed == "east" {
+				descriptor = name
+			}
+			key := canonicalCollisionKey(descriptor)
 			if key != "" {
 				options[key] = append(options[key], a)
 			}
@@ -56,6 +63,12 @@ func collectCanonicalNameProposals(result []DraftChannel, work []*channelWork, o
 		for _, v := range options {
 			sort.Slice(v, func(i, j int) bool {
 				a, b := v[i], v[j]
+				exactFeed := func(item AttributedAlias) bool {
+					return item.Identity.BindingKind == "user-attested-station-v1" && item.Identity.Feed != ""
+				}
+				if exactFeed(a) != exactFeed(b) {
+					return exactFeed(a)
+				}
 				return a.Source+"\x00"+a.Identity.SourceRevision+"\x00"+a.Identity.SourceRowID+"\x00"+a.Value < b.Source+"\x00"+b.Identity.SourceRevision+"\x00"+b.Identity.SourceRowID+"\x00"+b.Value
 			})
 			a := v[0]

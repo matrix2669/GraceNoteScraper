@@ -180,3 +180,61 @@ func TestCanonicalValidationCopyChangesOnlyProspectiveExport(t *testing.T) {
 		t.Fatal("proposal changed aliases")
 	}
 }
+
+func TestCanonicalAttestedRenamesNominateOnlyTheBoundFeed(t *testing.T) {
+	inputs := []InputChannel{
+		{Key: "hits-east", StationID: "59368", CallSign: "HBOHTHD", Number: "800"},
+		{Key: "hits-west", StationID: "59355", CallSign: "HBOHHDP", Number: "801"},
+		{Key: "drama-east", StationID: "59363", CallSign: "HBODRHD", Number: "802"},
+		{Key: "drama-west", StationID: "59366", CallSign: "HBODHDP", Number: "803"},
+		{Key: "movies-east", StationID: "59845", CallSign: "HBOMVHD", Number: "804"},
+		{Key: "movies-west", StationID: "59847", CallSign: "HBOMHDP", Number: "805"},
+		{Key: "cinemax-east", StationID: "59373", CallSign: "CINEHHD", Number: "806"},
+		{Key: "cinemax-west", StationID: "59375", CallSign: "CINHHDP", Number: "807"},
+		{Key: "wrong-callsign", StationID: "59375", CallSign: "WRONG", Number: "809"},
+		{Key: "review-only", StationID: "66077", CallSign: "NEWS12", Number: "810"},
+	}
+	want := map[string]string{
+		"hits-east": "HBO Hits", "hits-west": "HBO Hits - West",
+		"drama-east": "HBO Drama", "drama-west": "HBO Drama - West",
+		"movies-east": "HBO Movies", "movies-west": "HBO Movies - West",
+		"cinemax-east": "Cinemax Hits", "cinemax-west": "Cinemax Hits - West",
+	}
+	ApplyVerifiedStationCatalogs(inputs)
+	d := canonicalBuild(t, inputs)
+	if got := len(d.CanonicalNameProposals); got != len(want) {
+		t.Fatalf("got %d canonical proposals; want %d exact-station feed descriptors: %+v", got, len(want), d.CanonicalNameProposals)
+	}
+	selected := map[string]bool{}
+	for _, p := range d.CanonicalNameProposals {
+		if p.Status != "pending" || p.ProposedName != want[p.TargetID] || p.Source != "user-attested-renames" ||
+			p.Proof.Feed == "" || !strings.HasSuffix(p.Descriptor, " - "+map[string]string{"east": "East", "west": "West"}[p.Proof.Feed]) {
+			t.Fatalf("unexpected proposal: %+v", p)
+		}
+		selected[p.Hash] = true
+	}
+	// Nothing has yet passed the unchanged-consumer gate.
+	for _, c := range d.Channels {
+		if c.Name != c.CallSign {
+			t.Fatalf("unvalidated label leaked: %+v", c)
+		}
+	}
+	// This function stages a candidate export for validation; it does not
+	// admit any label on its own. Verify actual serialized names and aliases.
+	if err := ApplyCanonicalProposalsForValidation(d, selected); err != nil {
+		t.Fatal(err)
+	}
+	export := ExportFromDraft(d)
+	byID := map[string]ExportChannel{}
+	for _, rows := range export.Categories {
+		for _, row := range rows {
+			byID[row.ChannelID] = row
+		}
+	}
+	for _, input := range inputs[:8] {
+		row := byID[input.Key]
+		if row.Name != want[input.Key] || !containsFold(row.Aliases, input.CallSign) {
+			t.Fatalf("unexpected staged label or existing callsign missing: %+v", row)
+		}
+	}
+}
