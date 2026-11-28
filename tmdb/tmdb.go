@@ -13,13 +13,15 @@ import (
 	"sync"
 	"time"
 	"unicode"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const (
-	baseURL   = "https://api.themoviedb.org"
-	imageBase = "https://image.tmdb.org/t/p/w500"
+	baseURL      = "https://api.themoviedb.org"
+	imageBase    = "https://image.tmdb.org/t/p/w500"
 	backdropBase = "https://image.tmdb.org/t/p/w780"
-	rateDelay = 250 * time.Millisecond // ~4 req/sec
+	rateDelay    = 250 * time.Millisecond // ~4 req/sec
 )
 
 type Client struct {
@@ -85,20 +87,20 @@ type searchResponse struct {
 }
 
 type searchResult struct {
-	ID               int      `json:"id"`
-	Title            string   `json:"title"`
-	OriginalTitle    string   `json:"original_title"`
-	Name             string   `json:"name"`
-	OriginalName     string   `json:"original_name"`
-	PosterPath       *string  `json:"poster_path"`
-	BackdropPath     *string  `json:"backdrop_path"`
-	VoteAverage      float64  `json:"vote_average"`
-	VoteCount        int      `json:"vote_count"`
-	Popularity       float64  `json:"popularity"`
-	Overview         string   `json:"overview"`
-	OriginalLanguage string   `json:"original_language"`
-	FirstAirDate     string   `json:"first_air_date"`
-	ReleaseDate      string   `json:"release_date"`
+	ID               int     `json:"id"`
+	Title            string  `json:"title"`
+	OriginalTitle    string  `json:"original_title"`
+	Name             string  `json:"name"`
+	OriginalName     string  `json:"original_name"`
+	PosterPath       *string `json:"poster_path"`
+	BackdropPath     *string `json:"backdrop_path"`
+	VoteAverage      float64 `json:"vote_average"`
+	VoteCount        int     `json:"vote_count"`
+	Popularity       float64 `json:"popularity"`
+	Overview         string  `json:"overview"`
+	OriginalLanguage string  `json:"original_language"`
+	FirstAirDate     string  `json:"first_air_date"`
+	ReleaseDate      string  `json:"release_date"`
 }
 
 type genre struct {
@@ -110,20 +112,20 @@ type namedValue struct {
 }
 
 type detailsResponse struct {
-	ID               int          `json:"id"`
-	Title            string       `json:"title"`
-	Name             string       `json:"name"`
-	PosterPath       *string      `json:"poster_path"`
-	BackdropPath     *string      `json:"backdrop_path"`
-	VoteAverage      float64      `json:"vote_average"`
-	VoteCount        int          `json:"vote_count"`
-	Overview         string       `json:"overview"`
-	OriginalLanguage string       `json:"original_language"`
-	ReleaseDate      string       `json:"release_date"`
-	FirstAirDate     string       `json:"first_air_date"`
-	Runtime          int          `json:"runtime"`
-	EpisodeRunTime   []int        `json:"episode_run_time"`
-	Genres           []genre      `json:"genres"`
+	ID               int     `json:"id"`
+	Title            string  `json:"title"`
+	Name             string  `json:"name"`
+	PosterPath       *string `json:"poster_path"`
+	BackdropPath     *string `json:"backdrop_path"`
+	VoteAverage      float64 `json:"vote_average"`
+	VoteCount        int     `json:"vote_count"`
+	Overview         string  `json:"overview"`
+	OriginalLanguage string  `json:"original_language"`
+	ReleaseDate      string  `json:"release_date"`
+	FirstAirDate     string  `json:"first_air_date"`
+	Runtime          int     `json:"runtime"`
+	EpisodeRunTime   []int   `json:"episode_run_time"`
+	Genres           []genre `json:"genres"`
 	ExternalIDs      struct {
 		IMDbID string `json:"imdb_id"`
 		TVDBID int    `json:"tvdb_id"`
@@ -144,7 +146,7 @@ type detailsResponse struct {
 	} `json:"credits"`
 	ReleaseDates struct {
 		Results []struct {
-			ISO31661    string `json:"iso_3166_1"`
+			ISO31661     string `json:"iso_3166_1"`
 			ReleaseDates []struct {
 				Certification string `json:"certification"`
 			} `json:"release_dates"`
@@ -171,7 +173,7 @@ func (c *Client) search(title string, isMovie bool) CacheEntry {
 
 	var sr searchResponse
 	if err := c.getJSON(path, url.Values{"query": {title}}, &sr); err != nil {
-		log.Printf("tmdb: search failed for %q: %v", title, err)
+		applog.Errorf("tmdb search failed for %q: %v", title, err)
 		return CacheEntry{}
 	}
 
@@ -189,7 +191,7 @@ func (c *Client) search(title string, isMovie bool) CacheEntry {
 	params := url.Values{"append_to_response": {"credits,external_ids,keywords,release_dates,content_ratings"}}
 	var details detailsResponse
 	if err := c.getJSON(detailPath, params, &details); err != nil {
-		log.Printf("tmdb: detail lookup failed for %q (id=%d): %v", title, selected.ID, err)
+		applog.Warnf("tmdb detail lookup failed for %q (id=%d): %v", title, selected.ID, err)
 		return entry
 	}
 

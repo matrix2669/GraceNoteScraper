@@ -7,6 +7,12 @@ tmdb_cache.json
 tvlogo_cache.json
 guide_cache.json
 grid_cache/
+market_index.json
+market_index.json.bak
+lineuparr_state.json
+lineuparr_source_cache/
+lineuparr_exports/
+dispatcharr_config.json
 image_cache/
 demo.gif
 

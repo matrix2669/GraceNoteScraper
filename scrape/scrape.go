@@ -59,12 +59,13 @@ type Progress struct {
 
 // Options tunes a Fetch. The zero value is the production configuration.
 type Options struct {
-	Days      int              // days of listings to fetch; default DefaultDays
-	SlotDelay time.Duration    // pause between slots; default DefaultSlotDelay (tests use a negative value for none)
-	Fetcher   GridFetcher      // grid source; default web.NewClient(prefs)
-	Now       func() time.Time // clock; default time.Now
-	Progress  func(Progress)   // optional per-slot callback
-	Logger    *log.Logger      // default log.Default()
+	ObserveChannel func(web.JSONChannel, guide.Channel)
+	Days           int              // days of listings to fetch; default DefaultDays
+	SlotDelay      time.Duration    // pause between slots; default DefaultSlotDelay (tests use a negative value for none)
+	Fetcher        GridFetcher      // grid source; default web.NewClient(prefs)
+	Now            func() time.Time // clock; default time.Now
+	Progress       func(Progress)   // optional per-slot callback
+	Logger         *log.Logger      // default log.Default()
 }
 
 // NoDelay is a SlotDelay value that disables the inter-slot pause.
@@ -146,7 +147,13 @@ func Fetch(ctx context.Context, prefs web.Preferences, opts Options) (*guide.TVG
 			for _, ch := range grid.Channels {
 				if _, seen := channelIndex[ch.ChannelID]; !seen {
 					channelIndex[ch.ChannelID] = len(channels)
-					channels = append(channels, guide.ConvertChannel(ch))
+					converted := guide.ConvertChannel(ch)
+					channels = append(channels, converted)
+					if opts.ObserveChannel != nil {
+						opts.ObserveChannel(ch, converted)
+					}
+				} else if opts.ObserveChannel != nil {
+					opts.ObserveChannel(ch, guide.ConvertChannel(ch))
 				}
 				position := guide.ConvertLineupPosition(ch)
 				if _, seen := lineupIndex[position.Key()]; !seen {

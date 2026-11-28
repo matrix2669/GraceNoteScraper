@@ -13,6 +13,7 @@ import (
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
+	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
@@ -22,6 +23,12 @@ type fakeProviderFinder struct {
 	country  string
 	postal   string
 	language string
+}
+
+type fakeMarketGridFetcher struct{}
+
+func (fakeMarketGridFetcher) FetchGrid(_ context.Context, _ web.Preferences, _ int64) (*web.GridResponse, error) {
+	return &web.GridResponse{}, nil
 }
 
 type fakeProviderChannelCounter struct {
@@ -180,6 +187,71 @@ func TestSetupScrapeStatus(t *testing.T) {
 	}
 }
 
+func TestLineuparrAliasIndexFlow(t *testing.T) {
+	service, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: &fakeProviderFinder{response: &web.ProviderResponse{}},
+		Grids:     fakeMarketGridFetcher{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &lineuparrServer{marketIndex: service}
+	for _, action := range []string{"continue", "refresh", "rebuild"} {
+		request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias-index/run", strings.NewReader(`{"action":"`+action+`"}`))
+		request.Header.Set("Content-Type", "application/json")
+		recorder := httptest.NewRecorder()
+		server.handleAliasIndexRun(recorder, request)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("%s status=%d body=%s", action, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestLineuparrPostalScanUsesConfiguredLocation(t *testing.T) {
+	finder := &fakeProviderFinder{response: &web.ProviderResponse{Providers: []web.Provider{}}}
+	service, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path:      filepath.Join(t.TempDir(), "market_index.json"),
+		Providers: finder,
+		Grids:     fakeMarketGridFetcher{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := appconfig.LoadStore(filepath.Join(t.TempDir(), "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Save(appconfig.Config{
+		Version: appconfig.CurrentVersion,
+		Gracenote: appconfig.GracenoteConfig{
+			Country: "USA", PostalCode: "11743", Language: "en-us", ProviderType: "CABLE",
+			Device: "X", LineupID: "USA-TEST", ProviderName: "Test Cable", HeadendID: "TEST",
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	server := &lineuparrServer{marketIndex: service, store: store}
+	request := httptest.NewRequest(http.MethodPost, "/api/lineuparr/alias-index/run", strings.NewReader(`{"action":"postal","country":"CAN","postalCode":"M5V"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	server.handleAliasIndexRun(recorder, request)
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("postal run status = %d, body = %s", recorder.Code, recorder.Body.String())
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if current := service.SnapshotForPostal("USA", "11743"); !current.Job.Running && current.PostalScan != nil {
+			if finder.country != "USA" || finder.postal != "11743" || finder.language != "en-us" {
+				t.Fatalf("lookup = %q/%q/%q", finder.country, finder.postal, finder.language)
+			}
+			return
+		}
+	}
+	t.Fatalf("postal scan did not finish: %+v", service.SnapshotForPostal("USA", "11743").Job)
+}
+
 func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
 	store, _ := appconfig.LoadStore(filepath.Join(t.TempDir(), "config.json"))
 	request := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -216,32 +288,186 @@ func TestGuideRedirectsToSetupUntilConfigured(t *testing.T) {
 
 func TestGuideCacheRequiresMatchingSource(t *testing.T) {
 	t.Chdir(t.TempDir())
-	want := &guide.TVGuide{}
-	saveGuideCache(want, "source-one")
-
-	if _, _, ok := loadGuideCache(time.Hour, "source-two"); ok {
-		t.Fatal("cache loaded for a different source")
+	want := &guide.TVGuide{LineupChannels: []guide.Channel{{ID: "station", PlacementID: "position", ChannelNo: "10", CallSign: "TEST"}}}
+	if err := saveGuideCache(want, "source-one"); err != nil {
+		t.Fatalf("saveGuideCache() error = %v", err)
 	}
-	got, _, ok := loadGuideCache(time.Hour, "source-one")
-	if !ok || got == nil {
-		t.Fatal("cache did not load for matching source")
+
+	mismatch := loadGuideCache("source-two")
+	if mismatch.Status != guideCacheSourceChanged || mismatch.Guide != nil {
+		t.Fatalf("mismatched cache = %+v", mismatch)
+	}
+	got := loadGuideCache("source-one")
+	if got.Status != guideCacheReady || got.Guide == nil {
+		t.Fatalf("matching cache = %+v", got)
+	}
+	if len(got.Guide.LineupChannels) != 1 || got.Guide.LineupChannels[0].PlacementID != "position" {
+		t.Fatalf("cached provider positions = %+v", got.Guide.LineupChannels)
+	}
+	if matches, err := filepath.Glob("guide-cache-*.tmp"); err != nil || len(matches) != 0 {
+		t.Fatalf("temporary cache files = %v, error = %v", matches, err)
 	}
 }
 
-func TestGuideCacheRequiresCurrentSchemaVersion(t *testing.T) {
+func TestLoadGuideCacheReportsMissingAndCorrupt(t *testing.T) {
 	t.Chdir(t.TempDir())
 
-	// A cache written by an older build has no version field.
-	legacy := []byte(`{"saved_at":"` + time.Now().UTC().Format(time.RFC3339) + `","source_fingerprint":"src","guide":{"Channels":[],"Programs":[]}}`)
-	if err := os.WriteFile(guideCachePath, legacy, 0644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, ok := loadGuideCache(time.Hour, "src"); ok {
-		t.Fatal("legacy cache without a version loaded")
+	missing := loadGuideCache("source-one")
+	if missing.Status != guideCacheMissing || missing.Err != nil {
+		t.Fatalf("missing cache = %+v", missing)
 	}
 
-	saveGuideCache(&guide.TVGuide{}, "src")
-	if _, _, ok := loadGuideCache(time.Hour, "src"); !ok {
-		t.Fatal("current-version cache did not load")
+	if err := os.WriteFile(guideCachePath, []byte("not-json"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	corrupt := loadGuideCache("source-one")
+	if corrupt.Status != guideCacheCorrupt || corrupt.Err == nil {
+		t.Fatalf("corrupt cache = %+v", corrupt)
+	}
+
+	if err := os.Remove(guideCachePath); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if err := os.Mkdir(guideCachePath, 0755); err != nil {
+		t.Fatalf("Mkdir() error = %v", err)
+	}
+	unreadable := loadGuideCache("source-one")
+	if unreadable.Status != guideCacheUnreadable || unreadable.Err == nil {
+		t.Fatalf("unreadable cache = %+v", unreadable)
+	}
+	if strings.Contains(unreadable.Err.Error(), "not-json") {
+		t.Fatalf("unreadable cache retained stale parse error: %v", unreadable.Err)
+	}
+}
+
+func TestPlanGuideStartupUsesFreshCacheForRemainingInterval(t *testing.T) {
+	want := &guide.TVGuide{}
+	plan := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    3 * time.Hour,
+		Status: guideCacheReady,
+	}, nil)
+
+	if plan.Guide != want {
+		t.Fatal("fresh cache guide was not retained")
+	}
+	if plan.NextScrapeIn != 21*time.Hour {
+		t.Fatalf("next scrape = %s, want 21h", plan.NextScrapeIn)
+	}
+	if plan.Warn || plan.InvalidateArtifacts || !strings.Contains(plan.Message, "fresh") {
+		t.Fatalf("fresh plan = %+v", plan)
+	}
+}
+
+func TestPlanGuideStartupServesStaleCacheDuringRefresh(t *testing.T) {
+	want := &guide.TVGuide{}
+	plan := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    25 * time.Hour,
+		Status: guideCacheReady,
+	}, nil)
+
+	if plan.Guide != want {
+		t.Fatal("stale cache guide was not retained")
+	}
+	if plan.NextScrapeIn != immediateGuideRefreshWait {
+		t.Fatalf("next scrape = %s, want %s", plan.NextScrapeIn, immediateGuideRefreshWait)
+	}
+	if plan.Warn || plan.InvalidateArtifacts || !strings.Contains(plan.Message, "stale") {
+		t.Fatalf("stale plan = %+v", plan)
+	}
+}
+
+func TestPlanGuideStartupRejectsUnservableOrWrongSourceCache(t *testing.T) {
+	want := &guide.TVGuide{}
+	missingXML := planGuideStartup(guideCacheLoadResult{
+		Guide:  want,
+		Age:    time.Hour,
+		Status: guideCacheReady,
+	}, &os.PathError{Op: "stat", Path: "xmlguide.xmltv", Err: os.ErrNotExist})
+	if missingXML.Guide != nil || !missingXML.Warn || missingXML.InvalidateArtifacts {
+		t.Fatalf("missing XMLTV plan = %+v", missingXML)
+	}
+	if !strings.Contains(missingXML.Message, "xmlguide.xmltv is missing") {
+		t.Fatalf("missing XMLTV message = %q", missingXML.Message)
+	}
+
+	wrongSource := planGuideStartup(guideCacheLoadResult{Status: guideCacheSourceChanged}, nil)
+	if wrongSource.Guide != nil || wrongSource.Warn || !wrongSource.InvalidateArtifacts {
+		t.Fatalf("wrong-source plan = %+v", wrongSource)
+	}
+	if wrongSource.NextScrapeIn != immediateGuideRefreshWait {
+		t.Fatalf("wrong-source next scrape = %s", wrongSource.NextScrapeIn)
+	}
+}
+
+func TestRestoreMissingGuideFileFromCache(t *testing.T) {
+	t.Chdir(t.TempDir())
+	want := &guide.TVGuide{}
+	cache := guideCacheLoadResult{
+		Guide:  want,
+		Age:    2 * time.Hour,
+		Status: guideCacheReady,
+	}
+
+	xmltvErr, rebuilt := restoreMissingGuideFile(cache, &os.PathError{
+		Op:   "stat",
+		Path: "xmlguide.xmltv",
+		Err:  os.ErrNotExist,
+	})
+	if xmltvErr != nil || !rebuilt {
+		t.Fatalf("restoreMissingGuideFile() error = %v, rebuilt = %v", xmltvErr, rebuilt)
+	}
+	data, err := os.ReadFile("xmlguide.xmltv")
+	if err != nil {
+		t.Fatalf("ReadFile(xmlguide.xmltv) error = %v", err)
+	}
+	if !strings.Contains(string(data), "<tv") {
+		t.Fatalf("rebuilt XMLTV does not contain a tv root: %q", data)
+	}
+
+	plan := planGuideStartup(cache, xmltvErr)
+	if plan.Guide != want || plan.NextScrapeIn != 22*time.Hour {
+		t.Fatalf("restored startup plan = %+v", plan)
+	}
+}
+
+func TestGuideFilterPreservesFullProviderLineup(t *testing.T) {
+	g := &guide.TVGuide{
+		Channels: []guide.Channel{
+			{ID: "one", ChannelNo: "1", DisplayNames: []guide.DisplayName{{Name: "1 ONE"}, {Name: "1"}, {Name: "ONE"}}},
+			{ID: "two", ChannelNo: "2", DisplayNames: []guide.DisplayName{{Name: "2 TWO"}, {Name: "2"}, {Name: "TWO"}}},
+		},
+		Programs:       []guide.Program{{Channel: "one"}, {Channel: "two"}},
+		LineupChannels: []guide.Channel{{PlacementID: "one-sd"}, {PlacementID: "one-hd"}, {PlacementID: "two"}},
+	}
+	filtered := filterGuideChannels(g, map[string]bool{"1": true})
+	if len(filtered.Channels) != 1 || len(filtered.Programs) != 1 {
+		t.Fatalf("filtered guide = %+v", filtered)
+	}
+	if len(filtered.LineupChannels) != 3 {
+		t.Fatalf("provider lineup was filtered with the guide: %+v", filtered.LineupChannels)
+	}
+}
+
+func TestGuideStateRequiresMatchingSource(t *testing.T) {
+	state := &GuideState{}
+	g := &guide.TVGuide{LineupChannels: []guide.Channel{{PlacementID: "position"}}}
+	state.UpdateForSource(g, "source-one")
+	if state.GetForSource("source-one") != g {
+		t.Fatal("matching source did not return guide")
+	}
+	if state.GetForSource("source-two") != nil {
+		t.Fatal("guide leaked to a different source")
+	}
+}
+
+func TestMergeLineupChannelCollectsEventCallsigns(t *testing.T) {
+	merged := mergeLineupChannel(
+		guide.Channel{ID: "one", EventCallSigns: []string{"ONE"}},
+		guide.Channel{ID: "one", PlacementID: "position", ChannelNo: "1", CallSign: "ONE", EventCallSigns: []string{"one", "ONEDT"}},
+	)
+	if merged.PlacementID != "position" || len(merged.EventCallSigns) != 2 || merged.EventCallSigns[1] != "ONEDT" {
+		t.Fatalf("merged channel = %+v", merged)
 	}
 }

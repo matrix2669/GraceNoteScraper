@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/daniel-widrick/GraceNoteScraper/internal/applog"
 )
 
 const (
@@ -66,7 +68,7 @@ func LoadCache(path string) *Cache {
 	}
 
 	if err := json.Unmarshal(data, &c.entries); err != nil {
-		log.Printf("tmdb: cache file corrupt, starting fresh: %v", err)
+		applog.Warnf("tmdb cache file is corrupt, starting fresh: %v", err)
 		c.entries = make(map[string]CacheEntry)
 	}
 	return c
@@ -172,11 +174,11 @@ func (c *Cache) save(force bool) {
 
 	data, err := json.MarshalIndent(snapshot, "", "  ")
 	if err != nil {
-		log.Printf("tmdb: failed to marshal cache: %v", err)
+		applog.Errorf("tmdb failed to marshal cache: %v", err)
 		return
 	}
 	if err := writeFileAtomic(c.path, data, 0644); err != nil {
-		log.Printf("tmdb: failed to write cache file: %v", err)
+		applog.Errorf("tmdb failed to write cache file: %v", err)
 		return
 	}
 

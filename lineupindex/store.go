@@ -22,10 +22,26 @@ func loadIndex(path string, catalog SeedCatalog, now time.Time) (Index, error) {
 	if err := json.Unmarshal(data, &index); err != nil {
 		return Index{}, fmt.Errorf("decoding market index: %w", err)
 	}
-	if index.SchemaVersion != CurrentIndexVersion {
+	initializeIndexMaps(&index)
+	if index.SchemaVersion == 1 {
+		if err := writeIndex(path+".schema-1.bak", index); err != nil {
+			return Index{}, fmt.Errorf("backing up market index before evidence migration: %w", err)
+		}
+		migrateIndexV1(&index, now)
+		if err := writeIndex(path, index); err != nil {
+			return Index{}, fmt.Errorf("saving migrated market index: %w", err)
+		}
+	} else if index.SchemaVersion == 2 {
+		if err := writeIndex(path+".schema-2.bak", index); err != nil {
+			return Index{}, fmt.Errorf("backing up market index before provider-evidence migration: %w", err)
+		}
+		migrateIndexV2(&index, now)
+		if err := writeIndex(path, index); err != nil {
+			return Index{}, fmt.Errorf("saving migrated market index: %w", err)
+		}
+	} else if index.SchemaVersion != CurrentIndexVersion {
 		return Index{}, fmt.Errorf("unsupported market index schema %d", index.SchemaVersion)
 	}
-	initializeIndexMaps(&index)
 	for _, market := range index.Markets {
 		if market.Status == StatusRunning {
 			market.Status = StatusPending
@@ -38,9 +54,55 @@ func loadIndex(path string, catalog SeedCatalog, now time.Time) (Index, error) {
 			lineup.LastError = "Interrupted before completion"
 		}
 	}
-	index.SeedDigest = catalog.Digest
-	index.SeedAsOf = catalog.AsOf
+	for _, postal := range index.PostalScans {
+		if postal.Status == StatusRunning {
+			postal.Status = StatusPending
+			postal.LastError = "Interrupted before completion"
+		}
+	}
+	// Preserve legacy catalog metadata when loading without a ranked catalog.
+	if catalog.Digest != "" {
+		index.SeedDigest = catalog.Digest
+	}
+	if catalog.AsOf != "" {
+		index.SeedAsOf = catalog.AsOf
+	}
 	return index, nil
+}
+
+func migrateIndexV1(index *Index, now time.Time) {
+	index.SchemaVersion = 2
+	index.UpdatedAt = now.UTC().Format(time.RFC3339)
+	for _, market := range index.Markets {
+		market.Status = StatusPending
+		market.LastError = "Refresh required for event-callsign alias evidence"
+	}
+	for _, lineup := range index.Lineups {
+		lineup.Status = StatusPending
+		lineup.LastError = "Refresh required for event-callsign alias evidence"
+	}
+	for _, station := range index.Stations {
+		for nameIndex := range station.Names {
+			if len(station.Names[nameIndex].ObservedAs) == 0 {
+				station.Names[nameIndex].ObservedAs = []string{station.Names[nameIndex].Kind}
+			}
+		}
+	}
+	index.Batches = []BatchReport{}
+	migrateIndexV2(index, now)
+}
+
+func migrateIndexV2(index *Index, now time.Time) {
+	index.SchemaVersion = CurrentIndexVersion
+	index.UpdatedAt = now.UTC().Format(time.RFC3339)
+	if index.PostalScans == nil {
+		index.PostalScans = make(map[string]*PostalScanRecord)
+	}
+	for _, station := range index.Stations {
+		if station.Facts == nil {
+			station.Facts = []StationFact{}
+		}
+	}
 }
 
 func newIndex(catalog SeedCatalog, now time.Time) Index {
@@ -52,6 +114,7 @@ func newIndex(catalog SeedCatalog, now time.Time) Index {
 		CreatedAt:     timestamp,
 		UpdatedAt:     timestamp,
 		Markets:       make(map[string]*MarketRecord),
+		PostalScans:   make(map[string]*PostalScanRecord),
 		Lineups:       make(map[string]*LineupRecord),
 		Stations:      make(map[string]*Station),
 		Batches:       []BatchReport{},
@@ -64,6 +127,9 @@ func initializeIndexMaps(index *Index) {
 	}
 	if index.Lineups == nil {
 		index.Lineups = make(map[string]*LineupRecord)
+	}
+	if index.PostalScans == nil {
+		index.PostalScans = make(map[string]*PostalScanRecord)
 	}
 	if index.Stations == nil {
 		index.Stations = make(map[string]*Station)
