@@ -4,6 +4,8 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 
 ## Features
 
+Once an address is saved, its section shows only the provider, saved address and Forget address button. Forget reopens the full form only after successful removal; a failed removal preserves the saved address. Enrichment-source informational popups close when clicking outside their box.
+
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
 - Enriches programs with TMDB poster images, ratings, descriptions, and release dates
 - Enriches channel icons via the [tv-logo/tv-logos](https://github.com/tv-logo/tv-logos) project
@@ -11,7 +13,7 @@ Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Ple
 - First-run ZIP/postal-code setup with cable, satellite, and over-the-air lineup selection
 - On-demand alias and category discovery across every provider and Gracenote device variant in the configured ZIP
 - Lineuparr JSON builder for the active provider, with attributable aliases, category review, per-channel inclusion, and optional duplicate-SD cleanup
-- No-key OpenStreetMap/Nominatim service-address search for official provider sources that cannot localize from ZIP alone
+- No-key Google Maps lookup link, illustrated copy/paste instructions, and provider address testing for sources that cannot localize from ZIP alone
 - Optional Dispatcharr M3U matching with explicit confirm/deny review and reversible alias cleanup
 - Guide data cached on disk — fast restarts without re-scraping, with stale-guide fallback during background refresh
 - Automatic XMLTV file rotation with 7-day retention
@@ -40,6 +42,8 @@ The base guide stays usable if enrichment is interrupted. A source-matching pend
 This publish-first behavior applies only to the initial/missing guide. Regular scheduled refreshes with a usable guide and `--guide-only` still finish enrichment before publishing. Without `TMDB_TOKEN`, there is no TMDB background work. The configured worker limit and shared request rate are unchanged. With the background-aware provider-scan coordinator, local scans and enabled enrichment-source downloads can run during background TMDB after the base guide is published. Ordinary guide download/enrichment and final saving remain gated; the separate coordinator retains one scan at a time and existing source rate limits.
 
 ## Quick Start (Docker Compose)
+
+On the Lineuparr page, Enrichment sources starts collapsed on every visit. Expand it to review source evidence. Required provider addresses are entered in Alias discovery above the scan controls. Other sections retain their saved expansion preferences.
 
 1. Clone the repo:
    ```sh
@@ -82,7 +86,7 @@ docker compose up -d --build
 
 - Docker and Docker Compose, **or** Go 1.27+ for building from source
 - (Optional) A [TMDB API read access token](https://www.themoviedb.org/settings/api) for poster images and metadata
-- Internet access to the public Nominatim search service, or an optional hosted/self-managed Nominatim endpoint, for provider address lookup
+- Browser access to Google Maps for manual address lookup; no Google API key or billing account is required
 
 ## Building from Source
 
@@ -118,7 +122,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
 | `LINEUPARR_IPTV_ORG_URL` | Optional public channel database URL | disabled |
 | `LINEUPARR_REFERENCE_CATALOGS` | Set to `on` to enable bundled provider, PrismCast, and PBS snapshots as supplemental evidence | disabled |
-| `NOMINATIM_URL` | OpenStreetMap/Nominatim search service. Set to a hosted/self-managed endpoint, or `off` to disable provider-address search. | `https://nominatim.openstreetmap.org` |
+| `NOMINATIM_URL` | Legacy API-only Nominatim search endpoint. Not used by the Google Maps copy/paste UI. Set to `off` to disable the legacy endpoint. | `https://nominatim.openstreetmap.org` |
 | `DISPATCHARR_CONFIG_PATH` | Separate owner-only Dispatcharr connection file saved from the builder | `dispatcharr_config.json` |
 | `GN_HEADEND` | Legacy/bootstrap GraceNote headend ID; use with `GN_LINEUP` and `GN_ZIPCODE` | — |
 | `GN_LINEUP` | Legacy/bootstrap full lineup string | — |
@@ -144,7 +148,9 @@ The Alias discovery section on `/lineuparr` builds a local station-name index on
 
 - **Scan providers in this ZIP** discovers every unique Gracenote lineup returned for the active setup ZIP and joins supported live official provider sources to their own provider grids. Exact station IDs are reused directly. Different station IDs become alias/category bridges only after independent pair-level identity evidence and matching weekday schedules satisfy the rules below.
 - Every successfully downloaded lineup produces its own schema-versioned JSON file under `LINEUP_SNAPSHOT_DIR`. It contains provider positions, Gracenote station IDs, identity aliases, normalized category evidence, source URLs, match methods, and fuzzy confidence, but never programme events, credentials, service addresses, or stream URLs.
-- Runtime adapters now cover Verizon FiOS, Optimum, DIRECTV, DISH, AFN, Glorystar, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set.
+- Runtime adapters cover Verizon FiOS, Optimum, DIRECTV, DISH, AT&T U-verse, Xfinity, Spectrum, and BroadStar. Every adapter parses the provider's public source at scan time; reviewed compatibility snapshots remain disabled unless `LINEUPARR_REFERENCE_CATALOGS=on` is explicitly set. AFN and Glorystar are excluded from enrichment scans and source listings, but remain selectable as the main guide provider. Existing index files are not deleted; their direct provider facts and provider-only names are ignored.
+When initial-guide background TMDB enrichment is enabled, local lineup scans may start as soon as the usable base guide reaches the background-enrichment stage. This includes enabled provider/source downloads and alias/category processing; they do not wait for TMDB. Already queued scans start automatically on the next queue check (within approximately one second). Guide downloading, logo processing, ordinary scheduled enrichment and final guide saving remain gated. Only one local scan runs at a time, and source rate limits and cancellation are unchanged.
+
 - Provider results are deduplicated by lineup ID before grid retrieval. Gracenote's postal-specific OTA placeholder is keyed by ZIP so different local broadcast lineups remain distinct.
 - Every lineup first uses a Tuesday prime-time grid in its local Gracenote timezone. Only plausible cross-ID pairs fetch a Wednesday afternoon block. A Thursday prime-time or Friday afternoon fallback is fetched only when the corresponding primary block has less than 80 percent meaningful coverage. Grid starts remain spaced by five seconds.
 - A cross-ID pair requires a shared normalized callsign, non-generic affiliate/network, exact position within the same provider family, or attributable official provider name. Schedule-only collisions never create aliases. Both selected six-hour blocks must have at least 80 percent meaningful coverage and at least 80 percent matching coverage. Confirmation requires six matched programme occurrences across the blocks, or the long-form exception of two titles and ten matched hours.
@@ -161,10 +167,10 @@ Provider coverage is intentionally explicit about source limitations:
 | Optimum | NY/NJ/CT/PA/selected-NC market PDFs or the public address-qualified Suddenlink/Optimum services | Eastern PDFs contribute their explicit section categories by exact channel number, including column continuations and compact ranges; western service areas require a user-selected address for an exact local lineup |
 | DIRECTV | Channel data embedded in the official lineup page | National names/categories are available without login; local/RSN selection remains Gracenote-owned |
 | DISH | Public channel-lineup JSON service | Provider category labels are normalized conservatively |
-| AFN | Official guide PDF format | AFN's CDN may reject automated downloads; that source reports an isolated error when unavailable |
-| Glorystar | Public channel table | The provider is faith-focused, so its published channel rows map to `Faith` |
 | AT&T U-verse | Official public PDF | AT&T's current download URL serves a document marked effective February 2023 and is reported as limited |
-| Xfinity | Public address-qualified channel API | Requires a user-selected address for the active Xfinity lineup |
+| Xfinity | Public address-qualified channel API | Uses `genreName`, feed-local names/callsign and explicit PPV flags. Unknown genres stay unresolved; linked SD/HD names are not mixed. Xfinity station IDs are not Gracenote IDs. Requires a saved service address. |
+
+Source matched counts represent selected-lineup channels with attributable alias/category evidence, including corroboration of an already-known alias. They are not counts of newly added alias strings; ZIP-wide joins remain separately described. After upgrading the parser, run the ZIP scan again to obtain new categories. Xfinity itself labels many records `Unknown`, so this source cannot categorize every channel.
 | Spectrum | Public lineup page | No stable no-login residential payload is currently exposed; account/login automation is intentionally disabled |
 | BroadStar | Official public PDF | Categories are used only where the provider document has explicit Sports, Premium, Music, or service sections |
 
@@ -198,11 +204,19 @@ User categories take precedence. For channels that remain unresolved, a conserva
 
 The optional SD-duplicate action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD`, `SD`, or unnumbered broadcast `DT` suffix and have one unique strongest variant. It can also bridge different callsign spellings when exactly two positions share the same normalized, nonnumeric alias and both positions have attributable evidence. An explicitly marked SD position still requires the other position to share that alias through the same source. An unmarked lower-quality position may instead pair with an explicitly marked HD/digital position only when both share a non-schedule source or confirmed schedule evidence on one position references the opposite position's actual channel number. A pair such as `WCBS`/`WCBSDT` keeps the `DT` digital/HD position and proposes the otherwise identical base position for removal; `NWSNTSD`/`NEWSNTN` uses the shared exact `NewsNation` identity to propose the explicitly marked SD position; and `I24NWEN`/`I24NEHD` uses the exact normalized `i24 News` identity plus its cross-position evidence to keep the explicitly marked HD position. Quality-suffix and attributable-alias matching require a base of at least three alphanumeric characters where a suffix is interpreted, never strip numbered digital-subchannel suffixes such as `DT2` or `DT3`, reject schedule-only bridges to unrelated or self-referential positions, and suppress ambiguous groups or competing keep candidates. Clicking the action opens every proposed remove/keep pair for review; all safe proposals start selected, individual pairs can be unchecked, and only the confirmed subset is excluded. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export. The `Categorized` and `Needs category` header totals count only channels currently included in the draft.
 
-Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run only during an on-demand ZIP scan. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
+Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run during an on-demand ZIP scan or an explicit Save & test address lookup. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
 The enrichment-source panel consolidates registration, capture, and derived-category reports for the same provider into one row. Direct PDF sources open the captured lineup document; other source names and every available matched count open a searchable evidence view of the exact selected-lineup channels, identities, categories, aliases, IDs, and methods contributed by that source. Alias discovery also shows the local date and time of the last configured-ZIP provider refresh.
 
-Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. When the resolved provider source requires a precise service address, `/lineuparr` offers an explicit OpenStreetMap/Nominatim search restricted to the active lineup ZIP. The shared public service is limited to one request per second and is not used for live autocomplete; repeated searches are cached in browser memory. The selected structured address is passed in memory only to the active provider's adapter and is not persisted in scraper configuration, Lineuparr state, source caches, logs, snapshots, or exports. Public-service searches may be logged, so use a hosted/self-managed `NOMINATIM_URL` for private addresses. GraceNoteScraper does not invent a generic address, collect provider-account logins, or use Dispatcharr group names as category evidence. See `THIRD_PARTY_NOTICES.md` for optional embedded catalog attribution and licenses.
+Official provider sources use the active lineup ZIP and Gracenote location automatically. Optimum lineups in NY, NJ, CT, PA, Hendersonville, NC, and West Jefferson, NC use Optimum's regional market list; its other service areas use the address-qualified public lineup services. Alias discovery checks every provider in the ZIP. If any source requires an address, use the address section above the scan controls:
+
+1. Enter your street and click **Find in Google Maps**. The lineup ZIP is included in a new browser tab; Google receives this query only when you click.
+2. Select the correct result and copy the address beside the map-pin icon in its details—not the search-box text, place name, Plus Code, or Share link. **Show instructions and example** displays an annotated screenshot.
+3. Paste the full street, city, state and ZIP, retaining unit details and the displayed street spelling. Do not universally replace directional words such as Northeast with NE. US state names or abbreviations are accepted and state names are converted to their two-letter form. The pasted ZIP must match the lineup (matching ZIP+4 is accepted).
+4. Click **Save & test**. Each address-required provider family is tested once, without downloading Gracenote grids or changing guide/draft/export data. Only a response containing usable channel records is marked provider-verified; this is not USPS verification or proof that every returned channel matches your lineup. Tests are limited to one per minute per running scraper. Failures remain visible and the address stays editable; scanning with a saved address is still allowed, although failed sources may contribute nothing.
+5. Click **Scan providers in this ZIP** separately to collect enrichment. Saving does not start a scan.
+
+The structured address, last test time and per-provider results are saved in the owner-only `CONFIG_PATH.address.json` file, surviving page refreshes and restarts. Changing the configured provider or choosing **Forget address** removes it. Older saved addresses remain available but show as not tested until Save & test is used. The address is sent only to the listed address-required provider families, including competitors in the same ZIP. It stays out of public setup configuration, Lineuparr state, source caches, logs, snapshots and exports. Treat the scraper UI as private: anyone with UI access can view the saved address or request a lookup. No Google key, hosted intermediary, account login or automatic Google-page scraping is used. The old Nominatim endpoint remains for compatibility but the page no longer calls it. See `THIRD_PARTY_NOTICES.md` for screenshot attribution and optional catalog licenses.
 
 ### Dispatcharr match review
 
@@ -229,8 +243,11 @@ Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/gro
 | `GET /api/setup/providers?postalCode=...` | Find Gracenote lineups for an area |
 | `POST /api/setup/provider` | Save the selected provider and queue a fresh guide |
 | `GET /lineuparr` | Review the current lineup and export Lineuparr JSON |
-| `GET /api/lineuparr/provider-address/config` | Read Nominatim availability and active-lineup constraints for an address-gated provider source |
-| `POST /api/lineuparr/provider-address/search` | Search for complete provider addresses in the active lineup postal code |
+| `GET /api/lineuparr/provider-address/config` | Read ZIP-wide address requirements, saved address and previous provider-test results |
+| `POST /api/lineuparr/provider-address/config` | Save & test `{fingerprint,addressText}`; legacy structured `{fingerprint,address}` saves without a verification claim |
+| `DELETE /api/lineuparr/provider-address/config` | Forget the address and test results for `{fingerprint}` |
+| `GET /lineuparr/address-help.png` | Embedded cropped Google Maps instructional screenshot |
+| `POST /api/lineuparr/provider-address/search` | Legacy Nominatim search; not used by the current UI |
 | `GET /api/lineuparr/draft` | Current builder draft with aliases, provenance, and duplicate suggestions |
 | `GET /api/lineuparr/alias-index` | Read configured-ZIP scan progress and attributed alias evidence |
 | `POST /api/lineuparr/alias-index/run` | Scan or refresh all providers in the configured ZIP; ranked scan actions are rejected |
@@ -284,5 +301,13 @@ guide.tmpl       XMLTV output template (embedded at build time)
 ```
 
 ---
+
+### Provider scan safety and refreshes
+
+Provider numbers are never cross-provider join keys. Even within a provider source, a number requires corroborating normalized identity; a generic PDF for another headend cannot rename a station just because its number matches. Terminal HD and broadcast DT can normalize for identity matching, but DT2/DT3 remain distinct.
+
+After updating, run **Scan providers in this ZIP** once. Unsafe legacy number-only joins and older derived EPG evidence are excluded from drafts until refreshed. Evidence files remain available for audit; published JSON snapshots change only when you export again.
+
+Meaningful aliases counts distinct safe names beyond each indexed station's baseline, including provider and weekday EPG evidence. Aliases for current lineup excludes names already in the selected Gracenote lineup. These are unique station/name counts, not raw fact totals. A failed scan start stays visible rather than being replaced by the previous scan's status.
 
 <sub>Portions of this project were developed with the assistance of generative AI ([Claude](https://claude.ai)).</sub>

@@ -19,7 +19,12 @@ func (s *Service) SnapshotForPostal(country, postalCode string) Snapshot {
 	snapshot := Snapshot{Summary: s.summaryLocked(current), Job: s.job}
 	if record := s.index.PostalScans[postalScanKey(country, postalCode)]; record != nil {
 		copy := *record
-		copy.Sources = append([]EvidenceSourceRecord(nil), record.Sources...)
+		copy.Sources = nil
+		for _, source := range record.Sources {
+			if !excludedEnrichmentSource(source.ID) {
+				copy.Sources = append(copy.Sources, source)
+			}
+		}
 		snapshot.PostalScan = &copy
 	}
 	return snapshot
@@ -35,24 +40,37 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 
 	conflictingNames := make(map[string]bool)
 	for stationID, station := range s.index.Stations {
-		safeCallSigns := 0
+		safeAliases := map[string]bool{}
 		for _, name := range station.Names {
+			if !s.allowedEnrichmentOrigins(name.LineupKeys) {
+				continue
+			}
 			switch name.Kind {
 			case NameCallSign, NameEventCallSign:
 				if name.Conflict {
 					conflictingNames[name.Normalized] = true
 					continue
 				}
-				safeCallSigns++
-				if baseline, ok := current[stationID]; ok && !baseline[name.Normalized] {
-					summary.CurrentLineupAliases++
-				}
+				safeAliases[name.Normalized] = true
 			case NameAffiliateName, NameAffiliateCallSign:
 				summary.AffiliateNames++
 			}
 		}
-		if safeCallSigns > 1 {
-			summary.MeaningfulAliases += safeCallSigns - 1
+		for _, fact := range station.Facts {
+			key := normalizeName(fact.Value)
+			if fact.Kind == FactAlias && usableFact(fact) && s.allowedEnrichmentOrigins(fact.LineupKeys) && !ignoredName(key) {
+				safeAliases[key] = true
+			}
+		}
+		if len(safeAliases) > 1 {
+			summary.MeaningfulAliases += len(safeAliases) - 1
+		}
+		if baseline, ok := current[stationID]; ok {
+			for key := range safeAliases {
+				if !baseline[key] {
+					summary.CurrentLineupAliases++
+				}
+			}
 		}
 	}
 	summary.Conflicts = len(conflictingNames)
@@ -74,7 +92,7 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 			continue
 		}
 		for _, name := range station.Names {
-			if !isCallSignKind(name.Kind) || name.Conflict {
+			if !isCallSignKind(name.Kind) || name.Conflict || !s.allowedEnrichmentOrigins(name.LineupKeys) {
 				continue
 			}
 			result[stationID] = append(result[stationID], AliasCandidate{
@@ -82,7 +100,7 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 			})
 		}
 		for _, fact := range station.Facts {
-			if fact.Kind != FactAlias {
+			if fact.Kind != FactAlias || !usableFact(fact) || !s.allowedEnrichmentOrigins(fact.LineupKeys) {
 				continue
 			}
 			result[stationID] = append(result[stationID], AliasCandidate{
@@ -130,10 +148,12 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 		preferredCategories := make(map[string][]StationFact)
 		identities := make([]string, 0, len(station.Names))
 		for _, name := range station.Names {
-			identities = append(identities, name.Value)
+			if s.allowedEnrichmentOrigins(name.LineupKeys) {
+				identities = append(identities, name.Value)
+			}
 		}
 		for _, fact := range station.Facts {
-			if fact.Kind != FactCategory {
+			if fact.Kind != FactCategory || !usableFact(fact) || !s.allowedEnrichmentOrigins(fact.LineupKeys) {
 				continue
 			}
 			categoryValue := fact.Value
@@ -182,6 +202,43 @@ func (s *Service) categoriesForStations(stationIDs []string, preferredSourceID s
 		}
 	}
 	return result
+}
+
+// Old number-only joins may have been made against a different headend PDF.
+// Preserve their evidence on disk, but quarantine it from current drafts. Old
+// EPG-carried categories also need a fresh scan through the corrected adapters.
+func usableFact(fact StationFact) bool {
+	if excludedEnrichmentSource(fact.SourceID) {
+		return false
+	}
+	for _, part := range strings.Split(fact.Method, ";") {
+		if strings.TrimSpace(part) == "exact provider channel number" {
+			return false
+		}
+	}
+	if (strings.Contains(fact.Method, "pair-level identity (") || strings.Contains(fact.Method, "category carried from")) && !strings.Contains(fact.Method, "identity-policy-v2") {
+		return false
+	}
+	return true
+}
+
+func excludedEnrichmentSource(id string) bool {
+	return id == "afn-official-guide" || id == "glorystar-official-lineup"
+}
+
+// Historical observations remain on disk but excluded-provider-only names
+// no longer enrich drafts. Unknown legacy origins are preserved.
+func (s *Service) allowedEnrichmentOrigins(keys []string) bool {
+	if len(keys) == 0 {
+		return true
+	}
+	for _, key := range keys {
+		record := s.index.Lineups[key]
+		if record == nil || !ExcludedEnrichmentProvider(record.ProviderName) {
+			return true
+		}
+	}
+	return false
 }
 
 // SortedStationIDs is useful to downstream consumers that need deterministic

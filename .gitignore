@@ -1,6 +1,8 @@
 *.exe
 .env
 config.json
+*.address.json
+.provider-address-*.tmp
 *.xmltv
 !testdata/xmlguide_golden.xmltv
 tmdb_cache.json

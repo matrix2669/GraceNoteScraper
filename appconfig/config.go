@@ -281,6 +281,11 @@ func (s *Store) Save(config Config) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("closing configuration: %w", err)
 	}
+	if !s.configured || s.config.Fingerprint() != config.Fingerprint() || s.config.Gracenote.ProviderName != config.Gracenote.ProviderName {
+		if err := os.Remove(s.addressPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return errors.New("unable to clear previous provider service address")
+		}
+	}
 	if err := os.Rename(tmpName, s.path); err != nil {
 		return fmt.Errorf("replacing configuration: %w", err)
 	}

@@ -97,6 +97,11 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func (s *Service) Start(request RunRequest) (JobView, error) {
+	if request.ValidateSource != nil {
+		if err := request.ValidateSource(); err != nil {
+			return JobView{}, err
+		}
+	}
 	if strings.ToLower(strings.TrimSpace(request.Action)) != "postal" || request.BatchSize != 0 || len(request.Ranks) != 0 {
 		return JobView{}, errors.New("only configured-postal scans are supported; ranked-market scanning is not enabled")
 	}
@@ -104,6 +109,19 @@ func (s *Service) Start(request RunRequest) (JobView, error) {
 		return JobView{}, errors.New("postal scan requires country and postal code")
 	}
 	return s.startPostal(request)
+}
+
+// ProviderLineups resolves the same variants used by a postal scan, without
+// starting a job or retaining address information.
+func (s *Service) ProviderLineups(ctx context.Context, country, postalCode, language string) ([]web.Provider, error) {
+	response, err := s.providers.FindProviders(ctx, country, postalCode, language)
+	if err != nil {
+		return nil, err
+	}
+	if response == nil {
+		return nil, errors.New("provider lookup returned no response")
+	}
+	return uniquePostalProviders(response.Providers), nil
 }
 
 func (s *Service) startPostal(request RunRequest) (JobView, error) {
@@ -250,7 +268,11 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		if s.evidence != nil {
 			var evidenceErr error
 			serviceAddress := ProviderAddress{}
-			if sameProviderFamily(provider.Name, request.AddressProvider) {
+			addressAllowed := sameProviderFamily(provider.Name, request.AddressProvider)
+			for _, approved := range request.AddressProviders {
+				addressAllowed = addressAllowed || sameProviderFamily(provider.Name, approved)
+			}
+			if addressAllowed {
 				serviceAddress = request.ProviderAddress
 			}
 			evidence, evidenceErr = s.evidence.FetchProviderEvidence(ctx, ProviderEvidenceRequest{
@@ -464,6 +486,9 @@ func uniqueProviders(providers []web.Provider) []web.Provider {
 func uniquePostalProviders(providers []web.Provider) []web.Provider {
 	byVariant := make(map[string]web.Provider)
 	for _, provider := range providers {
+		if ExcludedEnrichmentProvider(provider.Name) {
+			continue
+		}
 		provider.LineupID = strings.TrimSpace(provider.LineupID)
 		provider.HeadendID = strings.TrimSpace(provider.HeadendID)
 		provider.Device = strings.TrimSpace(provider.Device)
@@ -489,6 +514,13 @@ func uniquePostalProviders(providers []web.Provider) []web.Provider {
 		return result[i].Name < result[j].Name
 	})
 	return result
+}
+
+// ExcludedEnrichmentProvider affects enrichment only, never setup discovery or
+// the selected provider's XMLTV guide.
+func ExcludedEnrichmentProvider(name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	return strings.Contains(name, "glorystar") || strings.Contains(name, "armed forces") || name == "afn" || strings.HasPrefix(name, "afn ")
 }
 
 func lineupPreferences(lineup *LineupRecord) web.Preferences {
@@ -708,6 +740,7 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 	aliases := 0
 	categories := 0
 	for _, fact := range facts {
+		fact.Method = appendMethod(fact.Method, "identity-policy-v2")
 		stationID := strings.TrimSpace(fact.StationID)
 		value := strings.TrimSpace(fact.Value)
 		kind := strings.TrimSpace(fact.Kind)
@@ -738,7 +771,14 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 			if current.Kind != kind || current.Normalized != normalized || current.SourceID != fact.SourceID {
 				continue
 			}
+			if !usableFact(*current) {
+				current.LineupKeys = nil
+			}
 			current.LineupKeys = appendUniqueString(current.LineupKeys, lineupKey)
+			current.Method = fact.Method
+			current.RawValue = fact.RawValue
+			current.MatchMethod = fact.MatchMethod
+			current.MatchConfidence = fact.MatchConfidence
 			sort.Strings(current.LineupKeys)
 			found = true
 			break

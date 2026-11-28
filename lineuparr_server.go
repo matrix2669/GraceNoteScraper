@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -22,9 +23,10 @@ import (
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 	"github.com/daniel-widrick/GraceNoteScraper/lineupindex"
 	"github.com/daniel-widrick/GraceNoteScraper/providersource"
+	"github.com/daniel-widrick/GraceNoteScraper/web"
 )
 
-//go:embed lineuparr.html
+//go:embed lineuparr.html assets/google-maps-address-help.png
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
@@ -35,6 +37,9 @@ type lineuparrServer struct {
 	marketIndex     *lineupindex.Service
 	addressSearcher providerAddressSearcher
 	aliasQueue      *aliasJobQueue
+	addressTester   providerAddressTester
+	addressMu       sync.Mutex
+	nextAddressTest time.Time
 }
 
 type providerAddressSearcher interface {
@@ -47,14 +52,43 @@ type aliasIndexResponse struct {
 }
 
 type providerAddressConfigResponse struct {
-	Required       bool   `json:"required"`
-	Enabled        bool   `json:"enabled"`
-	ProviderID     string `json:"providerId,omitempty"`
-	ProviderLabel  string `json:"providerLabel,omitempty"`
-	PostalCode     string `json:"postalCode,omitempty"`
-	CountryCode    string `json:"countryCode,omitempty"`
-	AttributionURL string `json:"attributionUrl,omitempty"`
-	Message        string `json:"message,omitempty"`
+	Fingerprint    string                        `json:"fingerprint"`
+	Address        *lineupindex.ProviderAddress  `json:"address,omitempty"`
+	Required       bool                          `json:"required"`
+	Enabled        bool                          `json:"enabled"`
+	ProviderID     string                        `json:"providerId,omitempty"`
+	ProviderLabel  string                        `json:"providerLabel,omitempty"`
+	PostalCode     string                        `json:"postalCode,omitempty"`
+	CountryCode    string                        `json:"countryCode,omitempty"`
+	AttributionURL string                        `json:"attributionUrl,omitempty"`
+	Message        string                        `json:"message,omitempty"`
+	Checks         []providersource.AddressCheck `json:"checks,omitempty"`
+	TestedAt       string                        `json:"testedAt,omitempty"`
+}
+
+// Include the active provider even if the discovery service omits it. Address
+// requirements are a ZIP-wide preflight, not a property of just the active row.
+func (s *lineuparrServer) addressProviders(ctx context.Context, config appconfig.Config) ([]string, error) {
+	providers := []web.Provider{{Name: config.Gracenote.ProviderName, Location: config.Gracenote.Location}}
+	if s.marketIndex != nil {
+		lookup, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		found, err := s.marketIndex.ProviderLineups(lookup, config.Gracenote.Country, config.Gracenote.PostalCode, config.Gracenote.Language)
+		if err != nil {
+			return nil, errors.New("Unable to check provider address requirements. Please retry.")
+		}
+		providers = append(providers, found...)
+	}
+	var names []string
+	seen := map[string]bool{}
+	for _, provider := range providers {
+		source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(provider.Name, provider.Location, config.Gracenote.PostalCode)
+		if ok && source.LocationMode == "address" && !seen[provider.Name] {
+			seen[provider.Name] = true
+			names = append(names, provider.Name)
+		}
+	}
+	return names, nil
 }
 
 func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +118,10 @@ func (s *lineuparrServer) handlePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost || r.Method == http.MethodDelete {
+		s.handleProviderAddressSave(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -99,22 +137,34 @@ func (s *lineuparrServer) handleProviderAddressConfig(w http.ResponseWriter, r *
 		return
 	}
 	response := providerAddressConfigResponse{
+		Fingerprint: config.Fingerprint(),
 		PostalCode:  config.Gracenote.PostalCode,
 		CountryCode: autocompleteCountryCode(config.Gracenote.Country),
 	}
+	if raw, err := s.store.Address(config.Fingerprint()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	} else if len(raw) > 0 {
+		var address savedProviderAddress
+		if json.Unmarshal(raw, &address) == nil {
+			response.Address = &address.ProviderAddress
+			response.Checks = address.Checks
+			response.TestedAt = address.TestedAt
+		}
+	}
+	names, err := s.addressProviders(r.Context(), config)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	response.Required = len(names) > 0
+	response.ProviderLabel = strings.Join(names, ", ")
 	if source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode); ok {
 		response.ProviderID = source.ID
-		response.ProviderLabel = source.Label
-		response.Required = source.LocationMode == "address"
 	}
 	if response.Required {
-		response.Enabled = s.addressSearcher != nil
-		response.AttributionURL = "https://www.openstreetmap.org/copyright"
-		if response.Enabled {
-			response.Message = "Search once, then select a complete OpenStreetMap address that matches the active lineup postal code. The address is sent to the configured geocoder but is not persisted by GraceNoteScraper."
-		} else {
-			response.Message = "Address search is disabled. Set NOMINATIM_URL to a public, hosted, or self-managed Nominatim endpoint."
-		}
+		response.Enabled = true
+		response.Message = "Copy the full address from Google Maps, then Save & test. The address is saved privately on this server and removed when you change providers."
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeLineuparrJSON(w, http.StatusOK, response)
@@ -138,9 +188,13 @@ func (s *lineuparrServer) handleProviderAddressSearch(w http.ResponseWriter, r *
 		http.Error(w, "Choose a provider at /setup first", http.StatusConflict)
 		return
 	}
-	source, ok := lineuparrbuilder.ProviderGuideSourceForLineup(config.Gracenote.ProviderName, config.Gracenote.Location, config.Gracenote.PostalCode)
-	if !ok || source.LocationMode != "address" {
-		http.Error(w, "The active provider source does not require a street address", http.StatusConflict)
+	names, err := s.addressProviders(r.Context(), config)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	if len(names) == 0 {
+		http.Error(w, "No provider source in this ZIP requires a street address", http.StatusConflict)
 		return
 	}
 	var body struct {
@@ -178,6 +232,53 @@ func autocompleteCountryCode(country string) string {
 	default:
 		return ""
 	}
+}
+
+func (s *lineuparrServer) handleProviderAddressSave(w http.ResponseWriter, r *http.Request) {
+	if !s.addressMu.TryLock() {
+		http.Error(w, "An address operation is in progress; please wait and retry.", http.StatusConflict)
+		return
+	}
+	defer s.addressMu.Unlock()
+	if s.store == nil {
+		http.Error(w, "Choose a provider first", http.StatusConflict)
+		return
+	}
+	if !requireJSONContentType(w, r) {
+		return
+	}
+	var body struct {
+		Fingerprint string                      `json:"fingerprint"`
+		Address     lineupindex.ProviderAddress `json:"address"`
+		AddressText string                      `json:"addressText"`
+	}
+	if !decodeLineuparrRequest(w, r, &body) {
+		return
+	}
+	config, configured, _ := s.store.Get()
+	if !configured || body.Fingerprint != config.Fingerprint() {
+		http.Error(w, "Provider changed; reload the page", http.StatusConflict)
+		return
+	}
+	if r.Method != http.MethodDelete && body.AddressText != "" {
+		s.testPastedAddress(w, r, body.Fingerprint, body.AddressText)
+		return
+	}
+	var raw json.RawMessage
+	if r.Method != http.MethodDelete {
+		address, err := validateEphemeralProviderAddress(body.Address, config.Gracenote.PostalCode)
+		if err != nil || address.FormattedAddress == "" || address.StreetAddress == "" || !strings.EqualFold(address.CountryCode, autocompleteCountryCode(config.Gracenote.Country)) {
+			http.Error(w, "Select a complete address in the configured country and ZIP", http.StatusBadRequest)
+			return
+		}
+		raw, _ = json.Marshal(address)
+	}
+	if err := s.store.SaveAddress(body.Fingerprint, raw); err != nil {
+		http.Error(w, "Unable to save service address; reload and retry", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": len(raw) > 0})
 }
 
 func (s *lineuparrServer) handleDraft(w http.ResponseWriter, r *http.Request) {
@@ -528,7 +629,12 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 		added := false
 		for _, candidate := range candidates[inputs[index].StationID] {
 			normalized := normalizeAlias(candidate.Value)
-			if normalized == "" || known[normalized] {
+			if normalized == "" {
+				continue
+			}
+			// Keep each provider's corroborating attribution even if its name
+			// is already known. The builder deduplicates exported alias values.
+			if known[normalized] && candidate.SourceID == "" {
 				continue
 			}
 			known[normalized] = true
@@ -659,7 +765,8 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 	}
 	var body struct {
 		lineupindex.RunRequest
-		ProviderAddress lineupindex.ProviderAddress `json:"providerAddress,omitempty"`
+		SourceFingerprint string                      `json:"sourceFingerprint,omitempty"`
+		ProviderAddress   lineupindex.ProviderAddress `json:"providerAddress,omitempty"`
 	}
 	if !decodeLineuparrRequest(w, r, &body) {
 		return
@@ -676,15 +783,59 @@ func (s *lineuparrServer) handleAliasIndexRun(w http.ResponseWriter, r *http.Req
 			return
 		}
 		request.Country = config.Gracenote.Country
+		if body.SourceFingerprint != "" && body.SourceFingerprint != config.Fingerprint() {
+			http.Error(w, "Provider changed; reload the page", http.StatusConflict)
+			return
+		}
 		request.PostalCode = config.Gracenote.PostalCode
 		request.Language = config.Gracenote.Language
-		request.AddressProvider = config.Gracenote.ProviderName
+		request.AddressProvider = "" // HTTP requests use only the ZIP-wide approved families below.
 		providerAddress, err := validateEphemeralProviderAddress(body.ProviderAddress, config.Gracenote.PostalCode)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if providerAddress.FormattedAddress == "" {
+			raw, loadErr := s.store.Address(config.Fingerprint())
+			if loadErr != nil {
+				http.Error(w, loadErr.Error(), http.StatusInternalServerError)
+				return
+			}
+			if len(raw) > 0 && json.Unmarshal(raw, &providerAddress) != nil {
+				http.Error(w, "Saved address is invalid; select it again", http.StatusBadRequest)
+				return
+			}
+		}
+		names, lookupErr := s.addressProviders(r.Context(), config)
+		if lookupErr != nil {
+			http.Error(w, lookupErr.Error(), http.StatusBadGateway)
+			return
+		}
+		if len(names) > 0 && (providerAddress.FormattedAddress == "" || providerAddress.StreetAddress == "") {
+			http.Error(w, "Select and save a service address above the scan controls before scanning providers in this ZIP", http.StatusBadRequest)
+			return
+		}
+		request.AddressProviders = names
 		request.ProviderAddress = providerAddress
+		request.ValidateSource = func() error {
+			current, configured, _ := s.store.Get()
+			if !configured || current.Fingerprint() != config.Fingerprint() {
+				return errors.New("Provider changed; request a new provider scan")
+			}
+			if body.ProviderAddress.FormattedAddress == "" && len(names) > 0 {
+				raw, err := s.store.Address(config.Fingerprint())
+				var saved lineupindex.ProviderAddress
+				if err != nil || json.Unmarshal(raw, &saved) != nil || saved != providerAddress {
+					return errors.New("Saved address changed or was removed; request a new provider scan")
+				}
+			}
+			return nil
+		}
+		current, _, _ := s.store.Get()
+		if current.Fingerprint() != config.Fingerprint() {
+			http.Error(w, "Provider changed; reload the page", http.StatusConflict)
+			return
+		}
 
 	}
 	if s.aliasQueue != nil {

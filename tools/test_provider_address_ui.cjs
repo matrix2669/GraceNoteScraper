@@ -1,0 +1,57 @@
+// Run with node tools/test_provider_address_ui.cjs. No browser or external API.
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const html = fs.readFileSync('lineuparr.html','utf8');
+const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+new vm.Script(script);
+function declaration(name) {
+ const start = script.search(new RegExp(`    (?:async )?function ${name}\\(`));
+ assert.ok(start >= 0, name);
+ const rest = script.slice(start);
+ const next = rest.slice(1).search(/\n    (?:async )?function /);
+ return next < 0 ? rest : rest.slice(0,next+1);
+}
+const controls = {postalScan:{},providerAddressForget:{},providerAddressQuery:{value:'1 Example Street'},providerAddressSearch:{},providerAddressPasted:{},providerAddressResults:{replaceChildren(){}}};
+const context = vm.createContext({els:controls, Object,String,JSON, addressSaving:false,scanStarting:false,scanRequestError:'',selectedProviderAddress:null,providerAddressConfig:{required:true,fingerprint:'source'},document:{getElementById(){return {open:false}}},setMarketMessage(text){context.message=text},setProviderAddressStatus(text){context.addressMessage=text},loadAliasIndex:async()=>{},initProviderAddress:async()=>{}});
+context.renderAddressChecks=()=>{};
+controls.providerAddress = {classList:{toggle(name,value){context.collapsed=value}}};
+controls.providerAddressSaved = {};
+context.showMessage=()=>{};
+context.encodeURIComponent=encodeURIComponent;
+context.window={open:(url)=>{context.opened=url}};
+for (const name of ['addressFields','renderSavedAddress','saveProviderAddress','startAliasScan','openProviderAddressMaps']) vm.runInContext(declaration(name),context);
+(async()=>{
+ let payload;
+ context.api=async(path,options)=>{payload=JSON.parse(options.body);return {formattedAddress:'1 Test Street, City, NY 11743',checks:[]}};
+ await context.saveProviderAddress('1 Test Street, City, NY 11743');
+ assert.equal(payload.address,undefined);
+ assert.equal(payload.addressText,'1 Test Street, City, NY 11743');
+ assert.equal(payload.fingerprint,'source');
+ assert.ok(context.selectedProviderAddress);
+ assert.equal(context.collapsed,true);
+ assert.equal(controls.providerAddressSaved.textContent,'1 Test Street, City, NY 11743');
+ context.providerAddressConfig.postalCode='11743';
+ context.openProviderAddressMaps();
+ assert.equal(new URL(context.opened).searchParams.get('query'),'1 Example Street, 11743');
+ await context.startAliasScan('postal');
+ assert.equal(payload.action,'postal');
+ assert.equal(payload.sourceFingerprint,'source');
+ assert.equal(payload.providerAddress,undefined);
+ await context.saveProviderAddress(null);
+ assert.equal(context.collapsed,false);
+ assert.equal(controls.providerAddressForget.hidden,true);
+ context.selectedProviderAddress={formattedAddress:'Saved'};
+ context.renderSavedAddress();
+ context.api=async()=>{throw new Error('Forget failed')};
+ await context.saveProviderAddress(null);
+ assert.equal(context.collapsed,true);
+ context.api=async()=>{throw new Error('New actionable failure')};
+ await context.startAliasScan('postal');
+ assert.equal(context.scanRequestError,'New actionable failure');
+ assert.equal(context.scanStarting,false);
+ assert.ok(script.includes("if (scanRequestError) setMarketMessage(scanRequestError, 'error')"));
+ assert.ok(html.indexOf('id="alias-panel"') < html.indexOf('id="provider-address"'));
+ assert.ok(html.indexOf('id="provider-address"') < html.indexOf('id="postal-scan"'));
+ console.log('Provider address UI regression checks passed');
+})().catch(error=>{console.error(error);process.exitCode=1});
