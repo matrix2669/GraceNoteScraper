@@ -292,7 +292,12 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 	opts := newScrapeOptions(pref)
 	opts.ObserveChannel = func(ch web.JSONChannel, converted guide.Channel) {
 		lineupKey := converted.PlacementID
-		if lineupKey == "" {
+		if strings.TrimSpace(converted.ID) != "" && strings.TrimSpace(converted.ChannelNo) != "" {
+			// Separate provider placements without changing the raw ID carried
+			// to the builder; its persistent guard owns any decision-key split.
+			encoded, _ := json.Marshal([]string{strings.TrimSpace(converted.ID), strings.TrimSpace(converted.ChannelNo)})
+			lineupKey = string(encoded)
+		} else if lineupKey == "" {
 			lineupKey = strings.Join([]string{converted.ID, converted.ChannelNo, converted.CallSign}, "|")
 		}
 		if existing, exists := lineupMap[lineupKey]; exists {
@@ -327,7 +332,10 @@ func runScrape(pref web.Preferences, tmdbClient *tmdb.Client, baseURL string, ch
 		if lineupChannels[i].ChannelNo != lineupChannels[j].ChannelNo {
 			return channelNumberLess(lineupChannels[i].ChannelNo, lineupChannels[j].ChannelNo)
 		}
-		return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+		if lineupChannels[i].PlacementID != lineupChannels[j].PlacementID {
+			return lineupChannels[i].PlacementID < lineupChannels[j].PlacementID
+		}
+		return lineupChannels[i].ID < lineupChannels[j].ID
 	})
 
 	logoClient := tvlogo.NewClient(pref.Country, "tvlogo_cache.json")
@@ -1477,6 +1485,11 @@ func main() {
 	}
 	aliasQueue := newAliasJobQueue(guideStatus, marketService)
 	lineuparrHandlers := &lineuparrServer{
+		tmdbConfigured: tmdbClient != nil,
+		tmdbEnriching: func() bool {
+			status := guideStatus.snapshotValue()
+			return status.Running
+		},
 		store: configStore, state: state, builder: lineuparrBuilder, marketIndex: marketService,
 		addressSearcher: addressSearcher, aliasQueue: aliasQueue,
 		beforeMarketScan: func() error {
@@ -1488,8 +1501,9 @@ func main() {
 			}
 			return nil
 		},
-		addressTester: providersource.NewService(),
-		exportDir:     util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
+		tmdbCachedEvidence: tmdbClient.CachedCategoryEvidence,
+		addressTester:      providersource.NewService(),
+		exportDir:          util.GetEnv("LINEUPARR_EXPORT_DIR", filepath.Join(filepath.Dir(lineuparrStatePath), "lineuparr_exports")),
 	}
 	if aliasQueue != nil {
 		go aliasQueue.Run(ctx)
@@ -1521,6 +1535,8 @@ func main() {
 	mux.HandleFunc("/lineuparr/address-help.png", lineuparrHandlers.handleAddressHelpImage)
 	mux.HandleFunc("/api/lineuparr/provider-address/search", lineuparrHandlers.handleProviderAddressSearch)
 	mux.HandleFunc("/api/lineuparr/draft", lineuparrHandlers.handleDraft)
+	mux.HandleFunc("/api/lineuparr/tmdb-categories", lineuparrHandlers.handleTMDBCategories)
+	mux.HandleFunc("/api/lineuparr/approve-categories", lineuparrHandlers.handleApproveCategories)
 	mux.HandleFunc("/api/lineuparr/channel", lineuparrHandlers.handleChannel)
 	mux.HandleFunc("/api/lineuparr/categories", lineuparrHandlers.handleCategories)
 	mux.HandleFunc("/api/lineuparr/channel-programs", lineuparrHandlers.handleChannelPrograms)
@@ -1532,6 +1548,8 @@ func main() {
 	mux.HandleFunc("/api/lineuparr/alias-index/run", lineuparrHandlers.handleAliasIndexRun)
 	mux.HandleFunc("/api/lineuparr/alias-index/stop", lineuparrHandlers.handleAliasIndexStop)
 	mux.HandleFunc("/api/lineuparr/publish", lineuparrHandlers.handlePublish)
+	mux.HandleFunc("/api/lineuparr/export-summary", lineuparrHandlers.handleExportSummary)
+	mux.HandleFunc("/api/lineuparr/workflow", lineuparrHandlers.handleWorkflow)
 	mux.HandleFunc(lineuparrPublishedPrefix, lineuparrHandlers.handlePublishedExport)
 	mux.HandleFunc("/api/lineuparr/alias", lineuparrHandlers.handleAlias)
 	mux.HandleFunc("/api/lineuparr/dispatcharr/config", dispatcharrHandlers.handleConfig)
@@ -1685,6 +1703,11 @@ func enrichProgramThumbnailsWhile(client *tmdb.Client, programs []guide.Program,
 		}
 		if entry.OrigLanguage != "" {
 			programs[i].OrigLanguage = entry.OrigLanguage
+		}
+		if entry.GenresCaptured {
+			programs[i].TMDBGenreIDs = append([]int(nil), entry.GenreIDs...)
+			programs[i].TMDBMediaType = entry.MediaType
+			programs[i].TMDBGenresCaptured = true
 		}
 		if entry.TMDBID != 0 {
 			tmdbEpNum := fmt.Sprintf("%d", entry.TMDBID)

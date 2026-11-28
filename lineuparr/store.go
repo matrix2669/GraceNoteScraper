@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 type StateStore struct {
@@ -63,6 +64,10 @@ func (s *StateStore) Snapshot(fingerprint string) map[string]ChannelOverride {
 			override.Included = &included
 		}
 		override.SuppressedAliases = append([]string(nil), override.SuppressedAliases...)
+		if override.CategoryReview != nil {
+			copy := *override.CategoryReview
+			override.CategoryReview = &copy
+		}
 		result[id] = override
 	}
 	return result
@@ -81,6 +86,15 @@ func (s *StateStore) MatchDecisionSnapshot(fingerprint string) map[string]MatchD
 	return result
 }
 
+func (s *StateStore) WorkflowProgress(fingerprint string) WorkflowProgress {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.state.SourceFingerprint != fingerprint {
+		return WorkflowProgress{}
+	}
+	return s.state.Workflow
+}
+
 func (s *StateStore) Update(fingerprint, channelID string, update ChannelUpdate) error {
 	if fingerprint == "" || channelID == "" {
 		return errors.New("source fingerprint and channel ID are required")
@@ -95,8 +109,17 @@ func (s *StateStore) Update(fingerprint, channelID string, update ChannelUpdate)
 	}
 	if update.Category != nil {
 		override.Category = *update.Category
+		if override.CategoryReview != nil {
+			copy := *override.CategoryReview
+			copy.Chosen = *update.Category
+			override.CategoryReview = &copy
+		} else if update.Review != nil {
+			copy := *update.Review
+			override.CategoryReview = &copy
+		}
 	}
 	s.state.Channels[channelID] = override
+	s.clearCustomizationLocked()
 	return s.saveLocked()
 }
 
@@ -116,6 +139,7 @@ func (s *StateStore) SetIncluded(fingerprint string, channelIDs []string, includ
 		override.Included = &value
 		s.state.Channels[channelID] = override
 	}
+	s.clearCustomizationLocked()
 	return s.saveLocked()
 }
 
@@ -134,6 +158,7 @@ func (s *StateStore) SetCategory(fingerprint string, channelIDs []string, catego
 		override.Category = category
 		s.state.Channels[channelID] = override
 	}
+	s.clearCustomizationLocked()
 	return s.saveLocked()
 }
 
@@ -152,6 +177,7 @@ func (s *StateStore) RestoreAll(fingerprint string) error {
 		}
 		s.state.Channels[channelID] = override
 	}
+	s.clearCustomizationLocked()
 	return s.saveLocked()
 }
 
@@ -246,15 +272,48 @@ func (s *StateStore) ClearMatchDecisions(fingerprint string, keys []string) erro
 	return s.saveLocked()
 }
 
+func (s *StateStore) SetTMDBDisposition(fingerprint, disposition string, completedAt time.Time) error {
+	if fingerprint == "" {
+		return errors.New("source fingerprint is required")
+	}
+	if disposition != "complete" && disposition != "skipped" {
+		return errors.New("TMDB disposition must be complete or skipped")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSourceLocked(fingerprint)
+	s.state.Workflow.TMDBDisposition = disposition
+	s.state.Workflow.TMDBCompletedAt = completedAt.UTC()
+	return s.saveLocked()
+}
+
+func (s *StateStore) CompleteCustomization(fingerprint, signature string, completedAt time.Time) error {
+	if fingerprint == "" || signature == "" {
+		return errors.New("source fingerprint and customization signature are required")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSourceLocked(fingerprint)
+	s.state.Workflow.CustomizationSignature = signature
+	s.state.Workflow.CustomizationCompletedAt = completedAt.UTC()
+	return s.saveLocked()
+}
+
+func (s *StateStore) clearCustomizationLocked() {
+	s.state.Workflow.CustomizationSignature = ""
+	s.state.Workflow.CustomizationCompletedAt = time.Time{}
+}
+
 func (s *StateStore) ensureSourceLocked(fingerprint string) {
 	if s.state.SourceFingerprint == fingerprint {
 		return
 	}
 	s.state = State{
-		Version:           CurrentStateVersion,
-		SourceFingerprint: fingerprint,
-		Channels:          make(map[string]ChannelOverride),
-		MatchDecisions:    make(map[string]MatchDecision),
+		PlacementCollisions: s.state.PlacementCollisions,
+		Version:             CurrentStateVersion,
+		SourceFingerprint:   fingerprint,
+		Channels:            make(map[string]ChannelOverride),
+		MatchDecisions:      make(map[string]MatchDecision),
 	}
 }
 

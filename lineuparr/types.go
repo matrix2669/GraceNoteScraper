@@ -19,17 +19,18 @@ type LineupContext struct {
 // at the same Gracenote station ID; keeping them separate is what lets the user
 // decide whether an SD/HD pair should remain in the export.
 type InputChannel struct {
-	Key              string
-	StationID        string
-	PlacementID      string
-	Number           string
-	CallSign         string
-	Affiliate        string
-	EventCallSigns   []string
-	PreferredName    *AttributedAlias
-	CategoryHint     *AttributedCategory
-	CategoryConflict bool
-	ExternalAliases  []AttributedAlias
+	AmbiguousLegacyPlacement bool
+	Key                      string
+	StationID                string
+	PlacementID              string
+	Number                   string
+	CallSign                 string
+	Affiliate                string
+	EventCallSigns           []string
+	PreferredName            *AttributedAlias
+	CategoryHint             *AttributedCategory
+	CategoryConflict         bool
+	ExternalAliases          []AttributedAlias
 }
 
 type AttributedAlias struct {
@@ -39,10 +40,11 @@ type AttributedAlias struct {
 }
 
 type AttributedCategory struct {
-	Value  string
-	Source string
-	Label  string
-	Method string
+	Priority int
+	Value    string
+	Source   string
+	Label    string
+	Method   string
 }
 
 type AliasEvidence struct {
@@ -58,6 +60,9 @@ type IdentifierEvidence struct {
 }
 
 type DraftChannel struct {
+	CategoryPriority        int                  `json:"categoryPriority"`
+	NeedsCategoryReview     bool                 `json:"needsCategoryReview"`
+	CategoryReview          *CategoryReview      `json:"categoryReview,omitempty"`
 	ID                      string               `json:"id"`
 	StationID               string               `json:"stationId,omitempty"`
 	PlacementID             string               `json:"placementId,omitempty"`
@@ -125,35 +130,52 @@ type SourceMatch struct {
 }
 
 type Draft struct {
-	SourceFingerprint    string                `json:"sourceFingerprint"`
-	GeneratedAt          time.Time             `json:"generatedAt"`
-	Package              string                `json:"package"`
-	ProviderName         string                `json:"providerName"`
-	PostalCode           string                `json:"postalCode"`
-	LineupID             string                `json:"lineupId"`
-	CountryCode          string                `json:"countryCode"`
-	Channels             []DraftChannel        `json:"channels"`
-	DuplicateSuggestions []DuplicateSuggestion `json:"duplicateSuggestions"`
-	DuplicateGroups      []DuplicateGroup      `json:"duplicateGroups"`
-	Sources              []SourceStatus        `json:"sources"`
-	Categories           []string              `json:"categories"`
-	Total                int                   `json:"total"`
-	Included             int                   `json:"included"`
-	Excluded             int                   `json:"excluded"`
-	AliasCount           int                   `json:"aliasCount"`
-	Categorized          int                   `json:"categorized"`
-	Uncategorized        int                   `json:"uncategorized"`
+	SourceFingerprint      string                `json:"sourceFingerprint"`
+	GeneratedAt            time.Time             `json:"generatedAt"`
+	Package                string                `json:"package"`
+	ProviderName           string                `json:"providerName"`
+	PostalCode             string                `json:"postalCode"`
+	LineupID               string                `json:"lineupId"`
+	CountryCode            string                `json:"countryCode"`
+	Channels               []DraftChannel        `json:"channels"`
+	DuplicateSuggestions   []DuplicateSuggestion `json:"duplicateSuggestions"`
+	DuplicateGroups        []DuplicateGroup      `json:"duplicateGroups"`
+	Sources                []SourceStatus        `json:"sources"`
+	Categories             []string              `json:"categories"`
+	Total                  int                   `json:"total"`
+	Included               int                   `json:"included"`
+	Excluded               int                   `json:"excluded"`
+	AliasCount             int                   `json:"aliasCount"`
+	Categorized            int                   `json:"categorized"`
+	Uncategorized          int                   `json:"uncategorized"`
+	CustomizationSignature string                `json:"customizationSignature"`
+	ExportSignatures       ExportSignatures      `json:"exportSignatures"`
+}
+
+type ExportSignatures struct {
+	Included   string                         `json:"included"`
+	Aliases    string                         `json:"aliases"`
+	Categories string                         `json:"categories"`
+	Rows       map[string]ExportRowSignatures `json:"rows,omitempty"`
+}
+
+type ExportRowSignatures struct {
+	Count      int      `json:"count"`
+	Aliases    []string `json:"aliases"`
+	Categories []string `json:"categories"`
 }
 
 type ChannelUpdate struct {
-	Included *bool   `json:"included,omitempty"`
-	Category *string `json:"category,omitempty"`
+	Review   *CategoryReview `json:"-"`
+	Included *bool           `json:"included,omitempty"`
+	Category *string         `json:"category,omitempty"`
 }
 
 type ChannelOverride struct {
-	Included          *bool    `json:"included,omitempty"`
-	Category          string   `json:"category,omitempty"`
-	SuppressedAliases []string `json:"suppressedAliases,omitempty"`
+	CategoryReview    *CategoryReview `json:"categoryReview,omitempty"`
+	Included          *bool           `json:"included,omitempty"`
+	Category          string          `json:"category,omitempty"`
+	SuppressedAliases []string        `json:"suppressedAliases,omitempty"`
 }
 
 type MatchDecision struct {
@@ -177,10 +199,20 @@ type MatchDecision struct {
 }
 
 type State struct {
-	Version           int                        `json:"version"`
-	SourceFingerprint string                     `json:"sourceFingerprint"`
-	Channels          map[string]ChannelOverride `json:"channels,omitempty"`
-	MatchDecisions    map[string]MatchDecision   `json:"matchDecisions,omitempty"`
+	PlacementCollisions map[string]map[string]bool `json:"placementCollisions,omitempty"`
+	TMDBCategoryScan    TMDBCategoryScan           `json:"tmdbCategoryScan,omitempty"`
+	Version             int                        `json:"version"`
+	SourceFingerprint   string                     `json:"sourceFingerprint"`
+	Channels            map[string]ChannelOverride `json:"channels,omitempty"`
+	MatchDecisions      map[string]MatchDecision   `json:"matchDecisions,omitempty"`
+	Workflow            WorkflowProgress           `json:"workflow,omitempty"`
+}
+
+type WorkflowProgress struct {
+	TMDBDisposition          string    `json:"tmdbDisposition,omitempty"`
+	TMDBCompletedAt          time.Time `json:"tmdbCompletedAt,omitempty,omitzero"`
+	CustomizationSignature   string    `json:"customizationSignature,omitempty"`
+	CustomizationCompletedAt time.Time `json:"customizationCompletedAt,omitempty,omitzero"`
 }
 
 type ExportFile struct {

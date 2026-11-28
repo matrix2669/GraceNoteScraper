@@ -1,5 +1,52 @@
 # GraceNote XMLTV Scraper
 
+### Experimental category evidence and review
+
+Category evidence uses ordinal priorities: manual choices and maintained exact
+channel identities (1), clear official evidence (2), supported weekday schedule
+or TMDB original-language inference (3), and weak provider or optional TMDB
+genre inference (4). Priority
+is not an accuracy percentage. A manual choice is an unconditional override even
+when an automatic exact identity is also priority 1. Provisional categories are
+marked for review and may be confirmed or changed; the original proposal is
+retained separately from the manual choice.
+
+The schedule experiment uses fourteen calendar days in the selected lineup's
+known timezone, Monday-Friday only. It requires at least eight usable weekdays,
+80% usable weekday coverage and twenty programmes. Movies require more than
+50% movie airtime and mean programme length greater than sixty minutes. News,
+Sports and Family use conservative provisional 80% content shares; news and
+sports require a 15-point separation. Missing tags do not imply Entertainment,
+Faith or Music. These provisional thresholds need continued reviewed-sample
+validation, not claims of calibrated accuracy.
+
+Sports airtime describes programming, not whether the service is a permanent
+network. An exact retained identity naming MLB Extra Innings, NBA League Pass,
+NHL Center Ice, NFL RedZone, or another explicit event product classifies that
+channel as priority-1 `PPV & Events` before the schedule profile is considered.
+The rule uses the full attributable package/feed identity; team names, league
+abbreviations, and sports airtime alone do not qualify. A maintained permanent
+network identity such as MLB Network remains `Sports` even if an event-like
+alias is present.
+
+TMDB original-language evidence may provisionally identify an unknown service
+as `International` when, across the same fourteen-day weekday window, usable
+language data covers at least 50% of airtime on at least eight weekdays and at
+least eight distinct matched titles, and more than 60% of that covered airtime
+is from non-English original-language titles. The title-diversity guard prevents
+single-title shopping and infomercial schedules from qualifying. This remains
+priority 3 and requires review because a title's production language does not
+prove the channel's audio language.
+
+TMDB remains optional. Add `TMDB_TOKEN` to the container environment and restart
+to enable enrichment. New lookups retain genre IDs and original language
+separately from Gracenote categories. Existing cache entries without those
+fields remain valid metadata but cannot supply that evidence until refreshed.
+The Lineuparr TMDB panel can scan
+the retained programme data without additional TMDB requests. Genre results are
+priority 4 and qualifying original-language profiles are priority 3; both need
+review. Title-search matches are not exact station evidence.
+
 Generate XMLTV guide data from GraceNote/TMS listings for use with Jellyfin, Plex, Emby, TVHeadend, and other DVR/IPTV software.
 
 ## Features
@@ -8,9 +55,9 @@ Once an address is saved, its section shows only the provider, saved address and
 
 After Confirm or Deny, a review group with a minimum displayed match score below 95% opens other qualifying targets, when available. This applies to similar as well as fuzzy matches. Confirming an alternative keeps the popup open for additional SD/HD or duplicate lineup targets; it never implicitly denies other targets. Close explicitly when finished; outside clicks do not dismiss this action popup.
 
-Duplicate review presents whole connected groups of verified SD/HD pairs and exact repeated positions. Checked means Keep. Lower-quality removals are suggested, but all equivalent HD or exact duplicate positions start checked for a manual choice; a lower channel number does not prove better quality. At least one included position per group must remain. Exact repeats require the same nonempty Gracenote station ID and callsign; names alone never create these groups.
+Duplicate review presents whole connected groups of verified SD/HD pairs and exact repeated positions. Checked means Keep. Exactly one position starts checked in each group: the strongest recognized quality, then the lowest numeric channel number, with lexical channel number and stable ID fallbacks. You can check additional positions before applying the review, and at least one included position per group must remain. Exact repeats require the same nonempty Gracenote station ID and callsign; names alone never create these groups.
 
-Channel programme popups close when clicking outside their box. Popups requiring choices, such as export and duplicate review, retain explicit controls. SD suggestions accept multiple HD positions only when those positions share one nonempty Gracenote station ID; the review link prefers an included position, then the lowest channel number. HD positions themselves are not removed by this rule.
+Channel programme popups close when clicking outside their box. Popups requiring choices, such as export and duplicate review, retain explicit controls. SD suggestions accept multiple HD positions only when those positions share one nonempty Gracenote station ID; the review prefers the strongest quality and then the lowest channel number. Alternate HD or exact-repeat positions start unchecked and will be removed if you apply the review without checking them.
 
 - Scrapes 14 days of GraceNote/TMS program listings and outputs standard XMLTV format
 - Enriches programs with TMDB poster images, ratings, descriptions, and release dates
@@ -122,7 +169,7 @@ Run server mode once to save a provider through `/setup`, or provide complete le
 | `CONFIG_PATH` | Saved non-secret setup configuration | `config.json` |
 | `MARKET_INDEX_PATH` | Persistent lineup evidence (legacy setting name retained) | `market_index.json` |
 | `LINEUP_SNAPSHOT_DIR` | Runtime-generated identity/category JSON for every successfully scanned lineup; blank stores it beside `MARKET_INDEX_PATH` | `lineup_snapshots` beside market index |
-| `LINEUPARR_STATE_PATH` | Saved channel inclusion and category choices for the current lineup | `lineuparr_state.json` |
+| `LINEUPARR_STATE_PATH` | Saved channel choices, match decisions, and source-scoped Lineuparr workflow progress | `lineuparr_state.json` |
 | `LINEUPARR_CACHE_DIR` | Cache for public Lineuparr and iptv-org enrichment sources | `lineuparr_source_cache` |
 | `LINEUPARR_EXPORT_DIR` | Persistent last-exported JSON snapshots, keyed by export filename | `lineuparr_exports` beside `LINEUPARR_STATE_PATH` |
 | `LINEUPARR_CATALOG_URLS` | Optional comma-separated Lineuparr JSON URLs, or `default` to enable the legacy mapped catalogs | disabled |
@@ -192,11 +239,26 @@ Source matched counts represent selected-lineup channels with attributable alias
 
 ## Lineuparr JSON Builder
 
-Click **Export JSON** and choose **Download JSON** or **Copy URL**. Either option publishes a snapshot of your current included channels, categories, and aliases. Cancelling the dialog does not publish anything. The download and URL serve the same saved JSON. Copy URL leaves you on the builder page and shows a selectable URL if automatic clipboard access is unavailable.
+Category review also supports row checkboxes, **Select all shown**, and **Approve selected**. Filter the pending rows by proposed category, then sort each priority group by channel number, channel name, or category. **Select all shown** applies only to the current filtered result so hidden rows are not approved accidentally. A batch accepts each selected channel's own proposed category in one save; it does not assign a shared category. Save individual corrections first. Excluded or already-reviewed channels are not eligible, and stale selections are rejected without partially approving the batch.
 
-When an Internal base URL is saved in Setup, **Copy Docker-network URL** is also available. It publishes the same snapshot using the configured internal hostname and listening port; it does not create a different lineup or change image URLs. Use this link only from containers sharing the scraper's Docker network. Downloads still use the browser-accessible address. If optional internal-link settings are unavailable, normal downloads and browser URLs remain usable.
+Use the separate collapsible **Category review** section for included channels with provisional assignments. Pending rows are separated into priority 3 and priority 4 groups for quality evaluation. Each row leads with channel number and callsign, adds the best available descriptive name, links to the selected guide's upcoming-programme popup when the LineupARR builder feature is composed, and displays its proposed category and expandable source evidence. Choose **Confirm** to accept it, or select another category and choose **Save correction**. Successful saves remove the row and reduce the remaining count; manual choices and review history persist. The Channels section retains ordinary channel editing without inline confirmation buttons.
 
-The URL serves the **last explicitly exported version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; reopen Export and choose either option to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while exporting the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; export again to create the descriptive URL.
+TMDB category evidence is a separate collapsible section before **Category review**. **Scan TMDB enrichment data** reuses retained programme genre IDs, original-language values, or older cached genre names when the programme already has the same TMDB movie/series identity. This is a local metadata scan, not a guide rebuild or a TMDB download. You do not need to clear the cache or reset your lineup; manual category choices remain unchanged. For older provider scans that did not retain Gracenote's response-level timezone, the first category scan performs one lightweight provider-discovery lookup and repairs the saved timezone without downloading guide grids. Programme matches without usable evidence await normal enrichment. Genre proposals remain priority 4. A predominantly non-English profile may propose priority-3 `International` only with more than 60% non-English covered weekday airtime, at least 50% coverage, eight covered weekdays and eight distinct matched titles. All TMDB proposals require review.
+
+The workflow places Enrichment sources, Alias discovery, Major market enrichment,
+TMDB category evidence, Category review, Channels, Dispatcharr matching, and
+Export JSON in that order when those features are available. Enrichment sources
+remains collapsed by default in the combined application.
+
+The page presents Local Alias Discovery, Major Market Alias Discovery, TMDB Category Enrichment, Channel Category Review, Lineup Customization, Dispatcharr Stream Matching, and lineup-file generation as seven numbered steps. The next incomplete step opens automatically; every section remains manually accessible and no incomplete step blocks generation. Enrichment sources remains above the workflow and starts collapsed.
+
+Local discovery is complete after a normal configured-ZIP scan even if an optional source failed. A stopped scan remains incomplete. Major-market discovery is complete after one normal market scan enriches at least one provider. TMDB can be skipped when no token is configured; a later token reopens that step. Once TMDB category evidence has been scanned, later guide refreshes do not revoke completion, although a manual rescan remains available. Category review completes when no included channels need confirmation. Lineup customization has an explicit completion button and becomes incomplete after a channel inclusion or category choice changes. Dispatcharr has no skip action, but it remains advisory like every earlier step.
+
+Step 7 is always visible and cannot be collapsed. **Generate Lineup File** publishes without downloading. Afterward it becomes **Re-generate Lineup File** and a separate **Download Lineup File** action appears. The creation time plus browser and configured Docker-network URLs appear as link-styled text; clicking either URL copies it without navigating. Reading or downloading the saved file never publishes edits.
+
+If included channels, aliases, or categories change after generation, the saved snapshot and its URLs remain available and Step 7 names each changed dimension in red. Re-generate the file to replace the snapshot and clear the notice.
+
+The URL serves the **last explicitly generated version**, using the download's descriptive filename: `/lineuparr/exports/US_Optimum-of-Woodbury-Digital-11743_lineup.json`, for example. Editing channels, refreshing enrichment, or fetching the URL does not change it; use Re-generate Lineup File to update that filename's snapshot. A different provider name or ZIP creates a different filename and URL, while generating the same filename replaces its previous snapshot. Previously exported filenames remain available until removed from `LINEUPARR_EXPORT_DIR`. Keep this directory on persistent storage so snapshots survive container replacement and remain readable during guide rebuilds. Older fingerprint URLs are no longer supported; generate again to create the descriptive URL.
 
 Use a scraper hostname and port that the Lineuparr host can reach. A compatible Lineuparr URL-import action can fetch the JSON using its normal lineup filename from the `Content-Disposition` header. The URL grants read access to the exported lineup to anyone who can reach the scraper. It contains no provider credentials or stream URLs. The existing `/api/lineuparr/export` endpoint remains a direct download of the live draft for older clients; it does not update the published snapshot.
 
@@ -206,7 +268,7 @@ Generated files are designed for Lineuparr's **Exact** match sensitivity (95%). 
 
 Aliases derived directly from Gracenote include callsigns, station IDs, lineup-position IDs, number-plus-callsign names, safe affiliate names, and event callsigns. The corresponding Gracenote station ID is exported as `epg_ids`. Runtime evidence is primary; configured optional sources may add attributable aliases and EPG identifiers. The builder applies only unique identity matches from:
 
-Both detailed and compact channel rows lead with the callsign and append the best distinct name from attributable affiliate, official-provider, or catalog evidence; punctuation-only, identifier, and channel-number duplicates are suppressed. The channel list opens with only included positions visible and can be sorted by channel number or name; excluded positions remain available through the visibility filter. Clicking the name opens the next 24 current or upcoming programmes from the selected guide to help identify an unfamiliar channel. **Batch categorize** can select every currently visible filtered row and apply one category atomically.
+Both detailed and compact channel rows lead with the callsign and append the best distinct name from attributable affiliate, official-provider, or catalog evidence; punctuation-only, identifier, and channel-number duplicates are suppressed. The channel list opens with only included positions visible and can be sorted by channel number or name; excluded positions remain available through the visibility filter. Clicking the name opens the next 24 current or upcoming programmes from the selected guide to help identify an unfamiliar channel. The same descriptive-name and programme-popup behavior is exposed to composed LineupARR review sections. **Batch categorize** can select every currently visible filtered row and apply one category atomically.
 
 The same GN brand mark shown in the page header is served as the SVG favicon for the guide, setup, and Lineuparr pages.
 
@@ -215,11 +277,13 @@ The same GN brand mark shown in the page header is served as the SVG favicon for
 - The optional public-domain [iptv-org channel database](https://github.com/iptv-org/database), restricted to the active lineup country and active channel records, enabled with `LINEUPARR_IPTV_ORG_URL`.
 - Optional reviewed exact-ID network catalogs generated from [PrismCast](https://github.com/hjdhjd/prismcast) and [Stream Link Manager for Channels](https://github.com/babsonnexus/stream-link-manager-for-channels), enabled with `LINEUPARR_REFERENCE_CATALOGS=on`.
 
-The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves; explicit PEG/public-access identities and broadcast callsigns with affiliate evidence resolve to `Local & Public`, while ordinary network rows wait for a more specific source. One unambiguous category from the selected provider's exact official source takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
+The master taxonomy is `Local & Public`, `News & Weather`, `Sports`, `Movies`, `Entertainment`, `Kids & Family`, `Music`, `Faith`, `International`, `PPV & Events`, and `Other`. Adult channels map to `Other`; explicit pay-per-view, league-package, seasonal, team-event, and event feeds map to `PPV & Events`. Provider labels are resolved by canonical name, maintained aliases, and then conservative fuzzy alias matching. Fuzzy matches must clear both a confidence threshold and a winning margin, retain the original provider label and score, and are not applied when ambiguous. Broad provider group headings such as Optimum's `Networks` are not category evidence by themselves. Explicit PEG/public-access identities resolve to `Local & Public`; an FCC-style station callsign needs a recognized affiliate or a broadcast suffix such as `DT`, `TV`, `LP`, or a numbered digital subchannel. A callsign-like network brand alone is not local evidence.
+
+A separate maintained exact-identity catalog supplies priority-1 categories for reviewed major networks and callsigns. It includes national entertainment services such as USA, TNT, TBS, Syfy, E!, Freeform, BBC America, COZI, ION, Antenna TV and Rewind TV; major news, sports, kids, music and faith services; broadcast-network identities such as ABC, CBS, NBC, Fox, CW and PBS; premium movie brands such as HBO, Cinemax, Showtime, The Movie Channel, Starz and MGM+; and reviewed adult, international and local identities. Matching is exact after punctuation/whitespace normalization and an optional terminal HD or SD marker—never a substring or fuzzy channel-name match. Language/market identity outranks local distribution: reviewed Spanish-language station identities such as WLTV and WAMI are `International` even though they are terrestrial local stations. This lets stable network identity outrank misleading programme-format evidence, such as a movie-heavy Freeform schedule or an international movie service, while preventing a similar-looking unknown name from being assigned automatically. One unambiguous category from the selected provider's exact official source otherwise takes precedence over broader classifications copied from competing lineups; if the selected source has no category, competing official sources must agree. Conflicts within the selected source or with an enabled exact-ID network catalog remain `Uncategorized` rather than being forced into `Other`.
 
 User categories take precedence. For channels that remain unresolved, a conservative Gracenote schedule profile may assign a master category when one useful program filter covers at least 70% of scheduled minutes, at least eight programs and six guide-hours are present, and family programming belongs to a clearly child-oriented network.
 
-The optional SD-duplicate action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD`, `SD`, or unnumbered broadcast `DT` suffix and have one unique strongest variant. It can also bridge different callsign spellings when exactly two positions share the same normalized, nonnumeric alias and both positions have attributable evidence. An explicitly marked SD position still requires the other position to share that alias through the same source. An unmarked lower-quality position may instead pair with an explicitly marked HD/digital position only when both share a non-schedule source or confirmed schedule evidence on one position references the opposite position's actual channel number. A pair such as `WCBS`/`WCBSDT` keeps the `DT` digital/HD position and proposes the otherwise identical base position for removal; `NWSNTSD`/`NEWSNTN` uses the shared exact `NewsNation` identity to propose the explicitly marked SD position; and `I24NWEN`/`I24NEHD` uses the exact normalized `i24 News` identity plus its cross-position evidence to keep the explicitly marked HD position. Quality-suffix and attributable-alias matching require a base of at least three alphanumeric characters where a suffix is interpreted, never strip numbered digital-subchannel suffixes such as `DT2` or `DT3`, reject schedule-only bridges to unrelated or self-referential positions, and suppress ambiguous groups or competing keep candidates. Clicking the action opens every proposed remove/keep pair for review; all safe proposals start selected, individual pairs can be unchecked, and only the confirmed subset is excluded. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export. The `Categorized` and `Needs category` header totals count only channels currently included in the draft.
+The optional SD-duplicate action is conservative: it appears when two provider positions map to the same exact sourced identity and one has a stronger HD, UHD, 4K, or digital marker, or when normalized callsigns differ only by a terminal `HD`, `SD`, or unnumbered broadcast `DT` suffix and have one unique strongest variant. It can also bridge different callsign spellings when exactly two positions share the same normalized, nonnumeric alias and both positions have attributable evidence. An explicitly marked SD position still requires the other position to share that alias through the same source. An unmarked lower-quality position may instead pair with an explicitly marked HD/digital position only when both share a non-schedule source or confirmed schedule evidence on one position references the opposite position's actual channel number. A pair such as `WCBS`/`WCBSDT` keeps the `DT` digital/HD position and proposes the otherwise identical base position for removal; `NWSNTSD`/`NEWSNTN` uses the shared exact `NewsNation` identity to propose the explicitly marked SD position; and `I24NWEN`/`I24NEHD` uses the exact normalized `i24 News` identity plus its cross-position evidence to keep the explicitly marked HD position. Quality-suffix and attributable-alias matching require a base of at least three alphanumeric characters where a suffix is interpreted, never strip numbered digital-subchannel suffixes such as `DT2` or `DT3`, reject schedule-only bridges to unrelated or self-referential positions, and suppress ambiguous groups or competing keep candidates. Clicking the action opens every proposed remove/keep group for review. Exactly one preferred position starts checked, using quality rank and then the lowest channel number; check any additional positions you want to keep, and applying the review excludes only unchecked positions. The affected channels remain individually reversible, and **Restore all** puts every provider position back into the export. The `Categorized` and `Needs category` header totals count only channels currently included in the draft.
 
 Provider-source failures do not interrupt guide generation, invalidate successfully downloaded Gracenote lineups, or prevent a Gracenote-only export. Optional Lineuparr catalog downloads have their own 24-hour cache; official provider adapters run during an on-demand ZIP scan or an explicit Save & test address lookup. Source URLs are server configuration; credentials and stream URLs are never part of the exported JSON.
 
@@ -276,6 +340,8 @@ Only the metadata needed for review—stream ID, name, `tvg_id`, M3U account/gro
 | `POST /api/lineuparr/restore-all` | Restore every provider channel to the export |
 | `GET /api/lineuparr/export` | Download the current Lineuparr-compatible JSON file |
 | `POST /api/lineuparr/publish` | Save the current draft as the published snapshot; requires the draft's `sourceFingerprint`; returns its relative URL and filename |
+| `GET, POST /api/lineuparr/workflow` | Read or update source-scoped TMDB and lineup-customization completion state |
+| `GET /api/lineuparr/export-summary` | Read the last generated file summary and comparison signatures without rebuilding the guide |
 | `GET, HEAD /lineuparr/exports/{filename}` | Read the last explicitly exported JSON by its descriptive download filename, without rebuilding; `?download=1` requests an attachment |
 | `POST /api/lineuparr/alias` | Remove or restore one attributable alias for the active lineup |
 | `GET, POST, DELETE /api/lineuparr/dispatcharr/config` | Read, test/save, or remove the Dispatcharr connection; saved credentials are never returned |

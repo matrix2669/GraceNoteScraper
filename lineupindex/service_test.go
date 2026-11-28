@@ -15,16 +15,22 @@ import (
 )
 
 type fakeProviders struct {
-	mu        sync.Mutex
-	responses map[string][]web.Provider
-	calls     []string
+	mu          sync.Mutex
+	responses   map[string][]web.Provider
+	standardUTC map[string]string
+	daylightUTC map[string]string
+	calls       []string
 }
 
 func (f *fakeProviders) FindProviders(_ context.Context, _, postalCode, _ string) (*web.ProviderResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, postalCode)
-	return &web.ProviderResponse{Providers: append([]web.Provider(nil), f.responses[postalCode]...)}, nil
+	return &web.ProviderResponse{
+		Providers:    append([]web.Provider(nil), f.responses[postalCode]...),
+		StdUTCOffset: f.standardUTC[postalCode],
+		DSTUTCOffset: f.daylightUTC[postalCode],
+	}, nil
 }
 
 type fakeGrids struct {
@@ -84,7 +90,7 @@ func (crossStationCategoryEvidence) FetchProviderEvidence(_ context.Context, req
 	}
 	return ProviderEvidenceResult{
 		Facts: []ProviderFact{{
-			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "exact provider channel number",
+			StationID: "RIGHT", Kind: FactCategory, Value: "Movies", SourceID: "directv-official", SourceLabel: "DIRECTV official lineup", Method: "unique exact provider callsign or name",
 		}},
 		Sources: []EvidenceSourceRecord{{ID: "directv-official", Label: "DIRECTV official lineup", Status: StatusComplete, Matched: 1, Categories: 1}},
 	}, nil
@@ -173,6 +179,44 @@ func waitForPostal(t *testing.T, service *Service, country, postalCode string) S
 	}
 	t.Fatalf("postal scan did not finish; snapshot = %+v", service.SnapshotForPostal(country, postalCode).Job)
 	return Snapshot{}
+}
+
+func TestResolveLineupTimezoneRepairsResponseLevelTimezone(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "market_index.json")
+	provider := testProvider("USA-FL65018-DEFAULT")
+	provider.PostalCode = "33308"
+	providers := &fakeProviders{
+		responses:   map[string][]web.Provider{"33308": {provider}},
+		standardUTC: map[string]string{"33308": "-300"},
+		daylightUTC: map[string]string{"33308": "-240"},
+	}
+	service, err := NewService(ServiceConfig{
+		Path: path, Providers: providers, Grids: &fakeGrids{}, Now: func() time.Time { return time.Date(2026, time.September, 6, 12, 0, 0, 0, time.UTC) },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, _, err := service.prepareLineup(MarketSeed{Country: "USA", PostalCode: "33308"}, provider, true); err != nil {
+		t.Fatal(err)
+	}
+	if location := service.LineupTimezone("USA", "33308", provider.LineupID, provider.Device); location != nil {
+		t.Fatalf("timezone unexpectedly present before repair: %s", location)
+	}
+	location, err := service.ResolveLineupTimezone(context.Background(), "USA", "33308", provider.LineupID, provider.Device, "en-us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if location.String() != "America/New_York" {
+		t.Fatalf("resolved timezone = %q", location)
+	}
+	retained := service.LineupTimezone("USA", "33308", provider.LineupID, provider.Device)
+	if retained == nil || retained.String() != "America/New_York" {
+		t.Fatalf("retained timezone = %v", retained)
+	}
+	lineups, err := service.ProviderLineups(context.Background(), "USA", "33308", "en-us")
+	if err != nil || len(lineups) != 1 || lineups[0].Timezone != "America/New_York" {
+		t.Fatalf("provider lineups = %+v, %v", lineups, err)
+	}
 }
 
 func TestPostalScanEnrichesEveryProviderBeforeCrossLineupReuse(t *testing.T) {
@@ -406,13 +450,11 @@ func TestPostalScanConfirmsCrossStationAliasesWithTwoWeekdayBlocks(t *testing.T)
 		foundRaw = foundRaw || alias.Value == "WCBSHD"
 		foundNormalized = foundNormalized || alias.Value == "WCBS"
 	}
-	// Legacy pair evidence remains on disk for review but does not satisfy
-	// the current read-time identity proof gate.
-	if foundRaw || foundNormalized {
+	if !foundRaw || !foundNormalized {
 		t.Fatalf("cross-station aliases = %+v", aliases)
 	}
 	category, ok := service.CategoriesForStations([]string{"LEFT"})["LEFT"]
-	if ok {
+	if !ok || category.Value != "Movies" {
 		t.Fatalf("cross-station category = %+v, %v", category, ok)
 	}
 	snapshotData, err := os.ReadFile(lineupSnapshotPath(service.snapshotDir, "USA", "11743", "L1"))

@@ -11,7 +11,7 @@ import (
 
 func ExportFromDraft(draft *Draft) ExportFile {
 	categories := make(map[string][]ExportChannel)
-	for _, channel := range draft.Channels {
+	for _, channel := range shareCollapsedPlacementRules(draft.Channels) {
 		if !channel.Included {
 			continue
 		}
@@ -35,6 +35,7 @@ func ExportFromDraft(draft *Draft) ExportFile {
 		})
 	}
 
+	orderCollapsedPlacementRows(categories, draft.Channels)
 	sourceNames := make([]string, 0, len(draft.Sources))
 	for _, source := range draft.Sources {
 		if source.ID == "gracenote" || source.Matched > 0 {
@@ -65,6 +66,10 @@ func ExportFilename(draft *Draft) string {
 		provider += "-" + postal
 	}
 	return country + "_" + provider + "_lineup.json"
+}
+
+func ExportFilenameForSource(country, provider, postal string) string {
+	return ExportFilename(&Draft{CountryCode: countryAlpha2(country), ProviderName: provider, PostalCode: postal})
 }
 
 func exportNumber(value string) any {

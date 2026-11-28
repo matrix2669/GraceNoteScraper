@@ -95,6 +95,9 @@ func TestLineuparrPageAndDraftUseRawProviderPositions(t *testing.T) {
 		"const includedChannels = draft.channels.filter(channel => channel.included)",
 		"includedChannels.filter(channel => channel.category !== 'Uncategorized')",
 		"includedChannels.length - categorized", `id="duplicate-review"`, `Review ${count} duplicate group`,
+		`id="customization-complete"`, `Generate Lineuparr Lineup File`, `Local Alias Discovery`, `Major Market Alias Discovery`,
+		`TMDB Category Enrichment`, `Channel Category Review`, `Dispatcharr Stream Matching`, `Re-generate Lineup File`,
+		`Included channels have changed`, `Channel aliases have changed`, `Channel categories have changed`,
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("page is missing editor behavior %q", expected)
@@ -396,6 +399,57 @@ func TestLineuparrBatchCategoryUpdateIsValidatedAndAtomic(t *testing.T) {
 	}
 }
 
+func TestLineuparrWorkflowProgressIsSourceScopedAndValidatesCustomization(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	config, _, _ := server.store.Get()
+	fingerprint := config.Fingerprint()
+	call := func(method, body string) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(method, "/api/lineuparr/workflow", strings.NewReader(body))
+		if method == http.MethodPost {
+			request.Header.Set("Content-Type", "application/json")
+		}
+		recorder := httptest.NewRecorder()
+		server.handleWorkflow(recorder, request)
+		return recorder
+	}
+
+	if got := call(http.MethodPost, `{"action":"skip-tmdb","sourceFingerprint":"`+fingerprint+`"}`); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), `"tmdbDisposition":"skipped"`) {
+		t.Fatalf("skip TMDB = %d %s", got.Code, got.Body.String())
+	}
+	draftRequest := httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil)
+	draftRecorder := httptest.NewRecorder()
+	server.handleDraft(draftRecorder, draftRequest)
+	var draft lineuparrbuilder.Draft
+	if err := json.Unmarshal(draftRecorder.Body.Bytes(), &draft); err != nil {
+		t.Fatal(err)
+	}
+	if draft.CustomizationSignature == "" || draft.ExportSignatures.Included == "" {
+		t.Fatalf("draft signatures missing: %+v", draft)
+	}
+	if got := call(http.MethodPost, `{"action":"complete-customization","sourceFingerprint":"stale"}`); got.Code != http.StatusConflict {
+		t.Fatalf("stale source customization = %d %s", got.Code, got.Body.String())
+	}
+	if got := call(http.MethodPost, `{"action":"complete-customization","sourceFingerprint":"`+fingerprint+`"}`); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), draft.CustomizationSignature) {
+		t.Fatalf("complete customization = %d %s", got.Code, got.Body.String())
+	}
+	category := "Sports"
+	if err := server.builder.UpdateChannel(fingerprint, "1001", lineuparrbuilder.ChannelUpdate{Category: &category}); err != nil {
+		t.Fatal(err)
+	}
+	if got := call(http.MethodGet, ""); got.Code != http.StatusOK || strings.Contains(got.Body.String(), `"customizationSignature"`) || !strings.Contains(got.Body.String(), `"tmdbDisposition":"skipped"`) {
+		t.Fatalf("workflow invalidation = %d %s", got.Code, got.Body.String())
+	}
+
+	config.Gracenote.LineupID = "USA-SECOND"
+	if err := server.store.Save(config); err != nil {
+		t.Fatal(err)
+	}
+	if got := call(http.MethodGet, ""); got.Code != http.StatusOK || got.Body.String() != "{}\n" {
+		t.Fatalf("provider workflow reset = %d %s", got.Code, got.Body.String())
+	}
+}
+
 func TestLineuparrChannelProgramsUseOnlyActiveGuide(t *testing.T) {
 	server := newLineuparrTestServer(t, true)
 	config, _, _ := server.store.Get()
@@ -495,7 +549,20 @@ func TestLineuparrDuplicatePlacementKeysRemainEditable(t *testing.T) {
 		t.Fatalf("duplicate placement IDs were not made unique: %+v", draft.Channels)
 	}
 
-	payload := `{"channelId":"repeat-2","included":false}`
+	var target string
+	for _, row := range draft.Channels {
+		if row.Number == "3" {
+			target = row.ID
+		}
+	}
+	if !strings.HasPrefix(target, "position:v1:") {
+		t.Fatalf("unstable duplicate key %q", target)
+	}
+	requestBody, err := json.Marshal(map[string]any{"channelId": target, "included": false})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := string(requestBody)
 	request = httptest.NewRequest(http.MethodPost, "/api/lineuparr/channel", strings.NewReader(payload))
 	request.Header.Set("Content-Type", "application/json")
 	recorder = httptest.NewRecorder()

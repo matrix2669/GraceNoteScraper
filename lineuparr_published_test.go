@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
 )
 
 func publishLineuparrForTest(t *testing.T, server *lineuparrServer) string {
@@ -102,6 +104,52 @@ func TestPublishedLineuparrSnapshotSurvivesEditsAndRestart(t *testing.T) {
 	}
 	if got := readLineuparrExport(restarted, http.MethodGet, renamedPath); got.Body.String() != updated.Body.String() {
 		t.Fatal("changing provider replaced the previously exported lineup")
+	}
+}
+
+func TestExportSummaryReadsSavedSnapshotWithoutGuide(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	server.exportDir = t.TempDir()
+	read := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		server.handleExportSummary(w, httptest.NewRequest("GET", "/api/lineuparr/export-summary", nil))
+		return w
+	}
+	if got := read(); got.Code != 200 || !strings.Contains(got.Body.String(), `"exists":false`) {
+		t.Fatal(got.Body.String())
+	}
+	path := publishLineuparrForTest(t, server)
+	first := read()
+	if first.Code != 200 || !strings.Contains(first.Body.String(), path) || !strings.Contains(first.Body.String(), "publishedAt") || !strings.Contains(first.Body.String(), `"signatures"`) || !strings.Contains(first.Body.String(), `"rows"`) {
+		t.Fatal(first.Code, first.Body.String())
+	}
+	server.state = nil
+	server.builder = nil
+	second := read()
+	if second.Body.String() != first.Body.String() {
+		t.Fatal("summary changed or required guide")
+	}
+	if second.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("summary may be stale")
+	}
+}
+
+func TestExportSummaryDerivesComparisonSignaturesFromLegacyRecord(t *testing.T) {
+	server := newLineuparrTestServer(t, true)
+	server.exportDir = t.TempDir()
+	config, _, _ := server.store.Get()
+	filename := lineuparrbuilder.ExportFilenameForSource(config.Gracenote.Country, config.Gracenote.ProviderName, config.Gracenote.PostalCode)
+	legacy := publishedLineuparr{
+		Version: 1, Filename: filename,
+		Data: json.RawMessage(`{"categories":{"News":[{"name":"NEWS","number":2,"aliases":["News HD"]}]}}`),
+	}
+	if err := savePublishedLineuparr(server.exportDir, legacy); err != nil {
+		t.Fatal(err)
+	}
+	w := httptest.NewRecorder()
+	server.handleExportSummary(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/export-summary", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"included"`) || !strings.Contains(w.Body.String(), `"aliases"`) || !strings.Contains(w.Body.String(), `"categories"`) || !strings.Contains(w.Body.String(), `"rows"`) {
+		t.Fatalf("legacy summary = %d %s", w.Code, w.Body.String())
 	}
 }
 

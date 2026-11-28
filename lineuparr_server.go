@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/daniel-widrick/GraceNoteScraper/appconfig"
+	"github.com/daniel-widrick/GraceNoteScraper/channelcategory"
 	"github.com/daniel-widrick/GraceNoteScraper/geocode"
 	"github.com/daniel-widrick/GraceNoteScraper/guide"
 	lineuparrbuilder "github.com/daniel-widrick/GraceNoteScraper/lineuparr"
@@ -30,17 +31,20 @@ import (
 var lineuparrFS embed.FS
 
 type lineuparrServer struct {
-	beforeMarketScan func() error
-	exportDir        string
-	store            *appconfig.Store
-	state            *GuideState
-	builder          *lineuparrbuilder.Service
-	marketIndex      *lineupindex.Service
-	addressSearcher  providerAddressSearcher
-	aliasQueue       *aliasJobQueue
-	addressTester    providerAddressTester
-	addressMu        sync.Mutex
-	nextAddressTest  time.Time
+	tmdbConfigured     bool
+	tmdbEnriching      func() bool
+	beforeMarketScan   func() error
+	exportDir          string
+	store              *appconfig.Store
+	state              *GuideState
+	builder            *lineuparrbuilder.Service
+	marketIndex        *lineupindex.Service
+	addressSearcher    providerAddressSearcher
+	aliasQueue         *aliasJobQueue
+	addressTester      providerAddressTester
+	addressMu          sync.Mutex
+	nextAddressTest    time.Time
+	tmdbCachedEvidence func(string, bool, int) ([]int, []string, bool)
 }
 
 type providerAddressSearcher interface {
@@ -328,6 +332,18 @@ func (s *lineuparrServer) handleChannel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "channel does not belong to the active lineup", http.StatusNotFound)
 		return
 	}
+	if body.Category != nil {
+		draft, _, _, ready := s.buildDraft(w, r)
+		if !ready {
+			return
+		}
+		for _, channel := range draft.Channels {
+			if channel.ID == body.ChannelID {
+				body.Review = lineuparrbuilder.ReviewCategory(channel, *body.Category)
+				break
+			}
+		}
+	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
 		return s.builder.UpdateChannel(config.Fingerprint(), body.ChannelID, body.ChannelUpdate)
 	})
@@ -339,7 +355,7 @@ func (s *lineuparrServer) handleChannel(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "The active provider changed; reload the builder before saving", http.StatusConflict)
 		return
 	}
-	writeLineuparrJSON(w, http.StatusOK, map[string]bool{"saved": true})
+	writeLineuparrJSON(w, http.StatusOK, map[string]any{"saved": true, "categoryReview": body.Review})
 }
 
 func (s *lineuparrServer) handleCategories(w http.ResponseWriter, r *http.Request) {
@@ -392,8 +408,18 @@ func (s *lineuparrServer) handleCategories(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "select at least one channel", http.StatusBadRequest)
 		return
 	}
+	draft, _, _, ready := s.buildDraft(w, r)
+	if !ready {
+		return
+	}
+	selected := make([]lineuparrbuilder.DraftChannel, 0, len(channelIDs))
+	for _, channel := range draft.Channels {
+		if seen[channel.ID] {
+			selected = append(selected, channel)
+		}
+	}
 	current, err := s.store.WhileCurrent(config.Fingerprint(), func() error {
-		return s.builder.UpdateChannelsCategory(config.Fingerprint(), channelIDs, body.Category)
+		return s.builder.UpdateReviewedCategories(config.Fingerprint(), selected, body.Category)
 	})
 	if err != nil {
 		http.Error(w, "Unable to save channel categories: "+err.Error(), http.StatusBadRequest)
@@ -673,12 +699,16 @@ func (s *lineuparrServer) applyMarketAliases(country, postalCode, preferredSourc
 				label = strings.Join(category.SourceLabels, ", ")
 			}
 			providerCategory := &lineuparrbuilder.AttributedCategory{
-				Value: category.Value, Source: sourceID, Label: label,
+				Priority: category.Priority,
+				Value:    category.Value, Source: sourceID, Label: label,
 				Method: strings.Join(category.Methods, "; "),
+			}
+			if existing := inputs[index].CategoryHint; existing != nil && existing.Priority > 0 && existing.Priority < providerCategory.Priority {
+				continue
 			}
 			if inputs[index].CategoryConflict {
 				providerConflicts[sourceID]++
-			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
+			} else if existing := inputs[index].CategoryHint; existing != nil && existing.Priority == providerCategory.Priority && existing.Source != "gracenote-schedule" && !strings.EqualFold(strings.TrimSpace(existing.Value), strings.TrimSpace(providerCategory.Value)) {
 				inputs[index].CategoryHint = nil
 				inputs[index].CategoryConflict = true
 				providerConflicts[sourceID]++
@@ -940,20 +970,33 @@ func (s *lineuparrServer) activeInputs(w http.ResponseWriter) (appconfig.Config,
 	if len(channels) == 0 {
 		channels = g.Channels
 	}
-	categoryHints := scheduleCategoryHints(g)
+	categoryHints := s.weekdayCategoryHints(g, config)
+	tmdbCategories := s.builder.TMDBCategoryScan(config.Fingerprint()).Categories
 	inputs := make([]lineuparrbuilder.InputChannel, 0, len(channels))
-	seenKeys := make(map[string]int)
 	for _, channel := range channels {
 		input := lineupInput(channel)
 		input.CategoryHint = categoryHints[channel.ID]
-		baseKey := strings.TrimSpace(input.Key)
-		if count := seenKeys[baseKey]; count > 0 {
-			input.Key = fmt.Sprintf("%s-%d", baseKey, count+1)
+		if hint, ok := tmdbCategories[channel.ID]; ok && preferTMDBCategoryHint(input.CategoryHint, hint) {
+			copy := hint
+			input.CategoryHint = &copy
 		}
-		seenKeys[baseKey]++
 		inputs = append(inputs, input)
 	}
+	if err := s.builder.StabilizePlacementKeys(config.Fingerprint(), inputs); err != nil {
+		http.Error(w, "Unable to save ambiguous LineupARR placement keys", http.StatusInternalServerError)
+		return appconfig.Config{}, nil, false
+	}
 	return config, inputs, true
+}
+
+func preferTMDBCategoryHint(existing *lineuparrbuilder.AttributedCategory, candidate lineuparrbuilder.AttributedCategory) bool {
+	if existing == nil {
+		return true
+	}
+	if candidate.Priority > 0 && (existing.Priority == 0 || candidate.Priority < existing.Priority) {
+		return true
+	}
+	return candidate.Priority == existing.Priority && candidate.Source == "tmdb-language-schedule" && candidate.Value == channelcategory.International
 }
 
 const (

@@ -83,6 +83,12 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		Matched: len(channels),
 		Message: "Authoritative lineup membership, channel numbers, callsigns, station IDs, and affiliate names",
 	}}
+	for _, input := range inputs {
+		if input.AmbiguousLegacyPlacement {
+			statuses[0].Message += ". Shared legacy placement IDs are held for review; earlier saved choices were not copied."
+			break
+		}
+	}
 	statuses = append(statuses, lineup.AdditionalSources...)
 
 	for _, source := range s.fetchSources(ctx, lineup) {
@@ -133,6 +139,7 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		channel.draft.Category = hint.Value
 		channel.draft.CategorySource = hint.Source
 		channel.draft.CategoryMethod = hint.Method
+		channel.draft.CategoryPriority = hint.Priority
 		channel.matchedSourceSet[hint.Source] = true
 		categoryHintMatches[hint.Source]++
 		categoryHintLabels[hint.Source] = hint.Label
@@ -147,9 +154,16 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 		if label == "" {
 			label = source
 		}
+		message := "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence"
+		switch source {
+		case "tmdb-language-schedule":
+			message = "Applied provisionally only when TMDB original_language covers at least 50% of weekday airtime across at least eight days and eight distinct titles, with more than 60% non-English airtime; exact identities and user categories take precedence"
+		case "tmdb-schedule":
+			message = "Applied provisionally from optional TMDB search-result genres when stronger exact or schedule evidence is unavailable; exact identities and user categories take precedence"
+		}
 		statuses = append(statuses, SourceStatus{
 			ID: source, Label: label, Status: "derived", Matched: categoryHintMatches[source],
-			Message: "Applied only when one Gracenote programme filter covers at least 70% of scheduled minutes; exact catalog and user categories take precedence",
+			Message: message,
 		})
 	}
 	channelByID := make(map[string]*channelWork, len(channels))
@@ -199,6 +213,10 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 	resultChannels := make([]DraftChannel, 0, len(channels))
 	for _, channel := range channels {
 		finalizeChannel(channel)
+		if channel.draft.Category != uncategorized && channel.draft.CategoryPriority == 0 {
+			channel.draft.CategoryPriority = 2
+		}
+		channel.draft.NeedsCategoryReview = channel.draft.Category != uncategorized && channel.draft.CategoryPriority >= 3
 		if override, ok := overrides[channel.draft.ID]; ok {
 			if override.Included != nil {
 				channel.draft.Included = *override.Included
@@ -207,6 +225,9 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 				channel.draft.Category = category
 				channel.draft.CategorySource = "user"
 				channel.draft.CategoryMethod = "user edit"
+				channel.draft.CategoryPriority = 1
+				channel.draft.NeedsCategoryReview = false
+				channel.draft.CategoryReview = override.CategoryReview
 			}
 			applyAliasSuppressions(&channel.draft, override.SuppressedAliases)
 		}
@@ -259,6 +280,9 @@ func (s *Service) Build(ctx context.Context, lineup LineupContext, inputs []Inpu
 			draft.Excluded++
 		}
 		draft.AliasCount += len(channel.Aliases)
+	}
+	if err := AttachDraftSignatures(draft); err != nil {
+		return nil, fmt.Errorf("signing Lineuparr draft: %w", err)
 	}
 	return draft, nil
 }
@@ -446,6 +470,18 @@ func sourceMatchForChannel(statusID string, ids, providerIDs map[string]bool, ch
 		methods = appendUniqueStringFold(methods, channel.CategoryMethod)
 	}
 	return matched, aliases, epgIDs, methods
+}
+
+func (s *Service) WorkflowProgress(fingerprint string) WorkflowProgress {
+	return s.store.WorkflowProgress(fingerprint)
+}
+
+func (s *Service) SetTMDBDisposition(fingerprint, disposition string, completedAt time.Time) error {
+	return s.store.SetTMDBDisposition(fingerprint, disposition, completedAt)
+}
+
+func (s *Service) CompleteCustomization(fingerprint, signature string, completedAt time.Time) error {
+	return s.store.CompleteCustomization(fingerprint, signature, completedAt)
 }
 
 func (s *Service) UpdateChannel(fingerprint, channelID string, update ChannelUpdate) error {
@@ -806,10 +842,19 @@ func newChannelWork(input InputChannel) *channelWork {
 		epgIDs:           make(map[string]*aliasWork),
 		matchedSourceSet: map[string]bool{"gracenote": true},
 	}
-	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, input.EventCallSigns...); ok {
+	categoryIdentities := append([]string(nil), input.EventCallSigns...)
+	for _, alias := range input.ExternalAliases {
+		categoryIdentities = append(categoryIdentities, alias.Value)
+	}
+	if input.PreferredName != nil {
+		categoryIdentities = append(categoryIdentities, input.PreferredName.Value)
+	}
+	if category, ok := channelcategory.ResolveIdentity(input.CallSign, input.Affiliate, categoryIdentities...); ok {
 		channel.draft.Category = category.Category
-		channel.draft.CategorySource = "gracenote"
+		channel.draft.CategorySource = categoryIdentitySource(input, category.MatchedAlias)
 		channel.draft.CategoryMethod = category.Method
+		channel.draft.CategoryPriority = category.Priority
+		channel.matchedSourceSet[channel.draft.CategorySource] = true
 	}
 	channel.addAlias(input.CallSign, "gracenote", "channel callsign")
 	channel.addAlias(input.StationID, "gracenote", "station ID")
@@ -837,6 +882,18 @@ func newChannelWork(input InputChannel) *channelWork {
 		channel.addEPGID(input.StationID, "gracenote", "station ID")
 	}
 	return channel
+}
+
+func categoryIdentitySource(input InputChannel, matchedAlias string) string {
+	for _, alias := range input.ExternalAliases {
+		if strings.EqualFold(strings.TrimSpace(alias.Value), strings.TrimSpace(matchedAlias)) {
+			return alias.Source
+		}
+	}
+	if input.PreferredName != nil && strings.EqualFold(strings.TrimSpace(input.PreferredName.Value), strings.TrimSpace(matchedAlias)) {
+		return input.PreferredName.Source
+	}
+	return "gracenote"
 }
 
 func (c *channelWork) addAlias(value, source, method string) {

@@ -19,6 +19,47 @@ import (
 
 const lineuparrPublishedPrefix = "/lineuparr/exports/"
 
+// Read only the current lineup's saved snapshot; no draft rebuild or scrape.
+func (s *lineuparrServer) handleExportSummary(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET")
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	config, configured, _ := s.store.Get()
+	if !configured || s.exportDir == "" {
+		writeLineuparrJSON(w, 200, map[string]any{"exists": false})
+		return
+	}
+	filename := lineuparrbuilder.ExportFilenameForSource(config.Gracenote.Country, config.Gracenote.ProviderName, config.Gracenote.PostalCode)
+	if !publishedLineuparrFilename.MatchString(filename) {
+		http.Error(w, "Invalid export filename", 400)
+		return
+	}
+	data, err := os.ReadFile(filepath.Join(s.exportDir, filename))
+	if errors.Is(err, os.ErrNotExist) {
+		writeLineuparrJSON(w, 200, map[string]any{"exists": false})
+		return
+	}
+	var record publishedLineuparr
+	if err != nil || json.Unmarshal(data, &record) != nil || record.Version != 1 || record.Filename != filename || !json.Valid(record.Data) {
+		http.Error(w, "The saved export could not be read", 500)
+		return
+	}
+	current, _, _ := s.store.Get()
+	if current.Fingerprint() != config.Fingerprint() {
+		http.Error(w, "Provider changed; reload", 409)
+		return
+	}
+	signatures, err := lineuparrbuilder.SignExportJSON(record.Data)
+	if err != nil {
+		http.Error(w, "The saved export could not be compared", http.StatusInternalServerError)
+		return
+	}
+	writeLineuparrJSON(w, 200, map[string]any{"exists": true, "filename": filename, "publishedAt": record.PublishedAt, "path": lineuparrPublishedPrefix + url.PathEscape(filename), "signatures": signatures})
+}
+
 var publishedLineuparrFilename = regexp.MustCompile(`^[A-Z]{2}_[\pL\pN-]+_lineup\.json$`)
 
 // One atomic record per export filename keeps the last explicit export independent of
@@ -81,7 +122,7 @@ func (s *lineuparrServer) handlePublish(w http.ResponseWriter, r *http.Request) 
 	}
 	writeLineuparrJSON(w, http.StatusOK, map[string]any{
 		"path":     lineuparrPublishedPrefix + url.PathEscape(record.Filename),
-		"filename": record.Filename, "publishedAt": record.PublishedAt,
+		"filename": record.Filename, "publishedAt": record.PublishedAt, "signatures": draft.ExportSignatures,
 	})
 }
 
