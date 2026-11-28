@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-const SupplementalRevision = "supplemental-retrieval-v2"
+const SupplementalRevision = "supplemental-retrieval-v3"
 
 type SupplementalLabel struct{ Value, Evidence string }
 type SupplementalTarget struct {
@@ -96,6 +96,7 @@ func supplementalNews12Region(text string) bool {
 // or attributed abbreviation anchors each proposal; arbitrary token overlap does
 // not. Rank is a retrieval ordering tier, never a confidence or primary score.
 func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream, primary []Candidate) ([]SupplementalCandidate, bool) {
+	prefixes, complete := discoverSupplementalPrefixes(targets, streams)
 	scored := map[string]bool{}
 	for _, c := range primary {
 		scored[c.ChannelID+"\x00"+c.StreamHash] = true
@@ -106,18 +107,31 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 		spanish        bool
 		event          bool
 		feed, internal FeedIdentity
+		prefix         string
+		raw            string
+		presentation   string
+		plain          string
+		explicitEast   bool
+		mayWrap        bool
 	}
 	index := make([]indexed, 0, len(streams))
 	for _, s := range streams {
 		feed := StreamFeed(s.Name, nil)
-		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed)})
+		index = append(index, indexed{s, supplementalText(s.Name), strings.Contains(strings.ToLower(s.Name), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), feed, internalFeedLabel(s.Name, feed), "", s.Name, supplementalPresentationKey(s.Name, ""), supplementalPresentationKeyWithEast(s.Name, "", false), ParseStationFeedLabel(s.Name).Region == "east", strings.Contains(s.Name, "(")})
+		if p, ok := prefixes[s.Fingerprint]; ok {
+			f := StreamFeed(p.residual, nil)
+			index = append(index, indexed{s, supplementalText(p.residual), strings.Contains(strings.ToLower(p.residual), "cinemáx"), supplementalEvent.MatchString(s.Name) || supplementalHeader.MatchString(s.Name), f, internalFeedLabel(p.residual, f), p.label, p.residual, supplementalPresentationKey(p.residual, ""), supplementalPresentationKeyWithEast(p.residual, "", false), ParseStationFeedLabel(p.residual).Region == "east", strings.Contains(p.residual, "(")})
+		}
 	}
 	out := []SupplementalCandidate{}
+	seen := map[string]bool{}
 	for _, t := range targets {
 		type termLabel struct {
-			term, value, evidence string
-			spanish               bool
-			feed                  FeedIdentity
+			term, value, evidence, presentation, plain string
+			spanish                                    bool
+			explicitEast                               bool
+			feed                                       FeedIdentity
+			scheduleReview                             bool
 		}
 		labels := []termLabel{}
 		for _, label := range t.Labels {
@@ -126,9 +140,17 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 			for _, r := range term {
 				hasLetter = hasLetter || unicode.IsLetter(r)
 			}
-			if len(term) >= 3 && hasLetter {
-				labels = append(labels, termLabel{term, label.Value, label.Evidence, strings.Contains(strings.ToLower(label.Value), "cinemáx"), StreamFeedForTarget(label.Value, nil, t.Feed)})
+			if (len(term) >= 3 || supplementalShortLabelAllowed(label.Value)) && hasLetter {
+				labels = append(labels, termLabel{term, label.Value, label.Evidence, supplementalPresentationKey(label.Value, t.CallSign), supplementalPresentationKeyWithEast(label.Value, t.CallSign, false), strings.Contains(strings.ToLower(label.Value), "cinemáx"), ParseStationFeedLabel(label.Value).Region == "east", StreamFeedForTarget(label.Value, nil, t.Feed), false})
 			}
+		}
+		// A captured schedule comparison supports a review-only lead for this
+		// exact station/callsign, not an asserted BBC station or feed identity.
+		// It is not a primary alias and cannot enter the export without a choice.
+		if t.Country == "US" && t.StationID == "89690" && strings.EqualFold(t.CallSign, "BBCNAHD") {
+			const value = "BBC News"
+			const evidence = "REVIEW LEAD ONLY: reported programme schedule overlap with station 89542 (provider-attributed BBC News), guide observed 2026-11-16; station/feed identity and overlap have not been independently verified"
+			labels = append(labels, termLabel{supplementalText(value), value, evidence, supplementalPresentationKey(value, t.CallSign), supplementalPresentationKeyWithEast(value, t.CallSign, false), false, false, FeedIdentity{}, true})
 		}
 		for _, item := range index {
 			s, text := item.stream, item.text
@@ -137,8 +159,19 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 			}
 			streamFeed := targetFeed(item.feed, item.internal, t.Feed)
 			rank, reason, evidence, descriptor := 0, "", "", ""
+			streamKey, streamPlain := item.presentation, item.plain
+			if item.mayWrap {
+				streamKey = supplementalPresentationKey(item.raw, t.CallSign)
+				streamPlain = supplementalPresentationKeyWithEast(item.raw, t.CallSign, false)
+			}
 			for _, label := range labels {
+				if item.prefix != "" && strings.TrimSpace(label.evidence) == "" {
+					continue
+				}
 				term := label.term
+				if label.scheduleReview && text != "bbc news" {
+					continue
+				}
 				if item.spanish != label.spanish {
 					continue
 				}
@@ -153,8 +186,10 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 				}
 				current := 0
 				why := ""
-				if text == term {
+				if len(term) >= 3 && text == term {
 					current, why = 1, "complete attributed service label"
+				} else if strings.TrimSpace(label.evidence) != "" && streamPlain != "" && (streamPlain == label.plain || ((t.Feed.Region == "east" || label.explicitEast || item.explicitEast) && streamKey == label.presentation)) {
+					current, why = 1, "complete attributed service label (presentation equivalent)"
 				} else if text == "showtime extrem" && term == "showtime extreme" {
 					current, why = 3, "truncated attributed service label; verify raw identity"
 				}
@@ -169,6 +204,9 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 				if current == 0 && strings.HasSuffix(term, " tv") && len(term) > 5 && text == strings.ToLower(supplementalAffiliate(t.CallSign))+" "+strings.TrimSuffix(term, " tv") && supplementalAffiliate(t.CallSign) != "" {
 					current, why = 3, "attributed network label without terminal TV; verify affiliate/subchannel"
 				}
+				if current > 0 && label.scheduleReview {
+					current, why = 3, "schedule-corroborated review lead; station and feed identity unverified"
+				}
 				if current > 0 && (rank == 0 || current < rank) {
 					rank, reason, evidence, descriptor = current, why, label.evidence, label.value
 				}
@@ -176,6 +214,14 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 			if rank == 0 {
 				continue
 			}
+			if item.prefix != "" {
+				reason += "; " + prefixReason(item.prefix)
+			}
+			key := t.ID + "\x00" + s.Fingerprint
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
 			if t.Feed.Region == "unknown" {
 				reason += "; target feed unresolved"
 			} else if t.Feed.Region != "" {
@@ -207,7 +253,7 @@ func RetrieveSupplemental(targets []SupplementalTarget, streams []IdentityStream
 		}
 		return a.Stream.ID < b.Stream.ID
 	})
-	return out, true
+	return out, complete
 }
 
 func supplementalAffiliate(raw string) string {
