@@ -106,7 +106,7 @@ func DefaultCatalogURLs(country, providerName string) []string {
 	switch strings.ToUpper(strings.TrimSpace(country)) {
 	case "USA", "US":
 		switch {
-		case strings.Contains(provider, "verizon") || strings.Contains(provider, "fios"):
+		case strings.Contains(provider, "verizon") && !strings.Contains(provider, "frontier"):
 			names = append(names, "US_Verizon-FIOS-All-11743_lineup.json")
 		case strings.Contains(provider, "directv"):
 			names = append(names, "US_DirecTV-Premier_lineup.json")

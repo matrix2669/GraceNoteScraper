@@ -481,11 +481,11 @@ func TestPostalScanConfirmsCrossStationAliasesWithTwoWeekdayBlocks(t *testing.T)
 		foundRaw = foundRaw || alias.Value == "WCBSHD"
 		foundNormalized = foundNormalized || alias.Value == "WCBS"
 	}
-	if !foundRaw || !foundNormalized {
+	if !foundRaw || foundNormalized {
 		t.Fatalf("cross-station aliases = %+v", aliases)
 	}
 	category, ok := service.CategoriesForStations([]string{"LEFT"})["LEFT"]
-	if !ok || category.Value != "Movies" {
+	if ok {
 		t.Fatalf("cross-station category = %+v, %v", category, ok)
 	}
 	snapshotData, err := os.ReadFile(lineupSnapshotPath(service.snapshotDir, "USA", "11743", "L1"))
@@ -496,7 +496,7 @@ func TestPostalScanConfirmsCrossStationAliasesWithTwoWeekdayBlocks(t *testing.T)
 	if err := json.Unmarshal(snapshotData, &lineupSnapshot); err != nil {
 		t.Fatal(err)
 	}
-	if len(lineupSnapshot.Channels) != 1 || lineupSnapshot.Channels[0].Category != "Movies" {
+	if len(lineupSnapshot.Channels) != 1 || lineupSnapshot.Channels[0].Category != "" {
 		t.Fatalf("rewritten lineup snapshot = %+v", lineupSnapshot.Channels)
 	}
 	data, err := os.ReadFile(service.path)

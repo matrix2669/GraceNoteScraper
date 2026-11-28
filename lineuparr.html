@@ -1565,6 +1565,11 @@
       return group.channels[0]?.id || '';
     }
 
+    function duplicateInitialKeeps(group) {
+      const reviewed = group.channels.filter(channel => channel.inclusionChoice === true).map(channel => channel.id);
+      return new Set(reviewed.length ? reviewed : [duplicateDefaultKeepID(group)]);
+    }
+
     function renderSources() {
       els.sources.replaceChildren();
       for (const source of draft.sources) {
@@ -2151,10 +2156,11 @@
         const box = document.createElement('fieldset');
         const title = document.createElement('legend'); title.textContent = `${group.channels[0].name} · ${group.channels.length} positions`;
         const defaultKeepID = duplicateDefaultKeepID(group);
+        const initialKeeps = duplicateInitialKeeps(group);
         box.append(title);
         for (const channel of group.channels) {
           const row = document.createElement('label'); row.className = 'duplicate-review-row';
-          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = channel.id === defaultKeepID;
+          const input = document.createElement('input'); input.type = 'checkbox'; input.value = channel.id; input.checked = initialKeeps.has(channel.id);
           input.addEventListener('change', updateDuplicateReviewCount);
           const copy = document.createElement('div'); copy.className = 'duplicate-review-copy';
           const name = document.createElement('div'); name.className = 'duplicate-review-name'; name.textContent = `Keep ${channel.number || '—'} · ${channel.name}`;

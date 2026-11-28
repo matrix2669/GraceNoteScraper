@@ -78,6 +78,8 @@ func (s *Service) summaryLocked(current map[string]map[string]bool) IndexSummary
 	return summary
 }
 
+// AliasesForStations is an audit projection of retained observations. Active
+// builders use EvidenceForLineup; station storage alone does not confer eligibility.
 func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCandidate {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -106,6 +108,7 @@ func (s *Service) AliasesForStations(stationIDs []string) map[string][]AliasCand
 			}
 			result[stationID] = append(result[stationID], AliasCandidate{
 				StationID: stationID, Value: fact.Value, Kind: FactAlias,
+				SourceRevision: fact.SourceRevision, EvidencePolicy: identityViewPolicy(fact), PeerStationID: identityPeer(fact, stationID), SourceRowID: fact.SourceRowID, RootSourceID: fact.RootSourceID, RootSourceStationID: fact.RootSourceStationID, RootSourceLineupKey: fact.RootSourceLineupKey, StationBound: fact.StationBound,
 				LineupKeys: append([]string(nil), fact.LineupKeys...), SourceID: fact.SourceID,
 				SourceLabel: fact.SourceLabel, SourceURL: fact.SourceURL, Method: fact.Method,
 			})
@@ -440,6 +443,9 @@ func sameStationFact(existing []StationFact, candidate StationFact) bool {
 }
 
 func relationEligible(s *Service, relation ProviderCategoryRelation) bool {
+	if relation.quarantineReason != "" {
+		return false
+	}
 	// number-policy-provider-alias-v3 is an alias-admission marker. It is
 	// valid on the separately persisted category relation after alignment, but
 	// usableFact quite correctly rejects that marker on a StationFact category.
@@ -495,6 +501,9 @@ func factProviderRoots(s *Service, fact StationFact) []string {
 // Preserve their evidence on disk, but quarantine it from current drafts. Old
 // EPG-carried categories also need a fresh scan through the corrected adapters.
 func usableFact(fact StationFact) bool {
+	if fact.quarantineReason != "" {
+		return false
+	}
 	if strings.Contains(fact.Method, "number-policy-provider-alias-v3") {
 		if fact.Kind != FactAlias || !strings.Contains(fact.Method, ProviderSourceAlignmentV1) {
 			return false

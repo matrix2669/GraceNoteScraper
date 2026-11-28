@@ -518,18 +518,18 @@ func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *tes
 	source := "gracenote-weekday-epg-usa-11743"
 	suggestions := findDuplicateSuggestions([]DraftChannel{
 		{
-			ID: "newsnation-sd", Number: "82", Name: "NWSNTSD", OriginalName: "NWSNTSD", CallSign: "NWSNTSD", NameSource: "gracenote",
+			ID: "newsnation-sd", StationID: "news-sd", ServiceEvidence: []ServiceIdentityEvidence{{Value: "NewsNation", SourceID: "gracenote-weekday-epg-fixture", PeerStationID: "news-hd", Policy: "provider-identity-v1"}}, Number: "82", Name: "NWSNTSD", OriginalName: "NWSNTSD", CallSign: "NWSNTSD", NameSource: "gracenote",
 			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
 		},
 		{
-			ID: "newsnation", Number: "686", Name: "NEWSNTN", OriginalName: "NEWSNTN", CallSign: "NEWSNTN", NameSource: "gracenote",
+			ID: "newsnation", StationID: "news-hd", Number: "686", Name: "NEWSNTN", OriginalName: "NEWSNTN", CallSign: "NEWSNTN", NameSource: "gracenote",
 			AliasEvidence: []AliasEvidence{{Value: "NewsNation", Sources: []string{source}, Methods: []string{"pair-level identity"}}},
 		},
 	})
 	if len(suggestions) != 1 || suggestions[0].RemoveID != "newsnation-sd" || suggestions[0].KeepID != "newsnation" {
 		t.Fatalf("attributed-alias duplicate suggestions = %+v", suggestions)
 	}
-	if !strings.Contains(suggestions[0].Reason, "explicitly SD") || !strings.Contains(suggestions[0].Reason, "NewsNation") {
+	if !strings.Contains(suggestions[0].Reason, "Verified same service") {
 		t.Fatalf("attributed-alias duplicate reason = %q", suggestions[0].Reason)
 	}
 }
@@ -537,18 +537,18 @@ func TestDuplicateSuggestionRecognizesSharedAttributedAliasWithExplicitSD(t *tes
 func TestDuplicateSuggestionRecognizesAttributedAliasWithExplicitHD(t *testing.T) {
 	suggestions := findDuplicateSuggestions([]DraftChannel{
 		{
-			ID: "i24-unmarked", Number: "14", Name: "I24NWEN", OriginalName: "I24NWEN", CallSign: "I24NWEN", NameSource: "gracenote",
+			ID: "i24-unmarked", StationID: "i24-sd", ServiceEvidence: []ServiceIdentityEvidence{{Value: "i24 News", SourceID: "gracenote-weekday-epg-fixture", PeerStationID: "i24-hd", Policy: "provider-identity-v1"}}, Number: "14", Name: "I24NWEN", OriginalName: "I24NWEN", CallSign: "I24NWEN", NameSource: "gracenote",
 			AliasEvidence: []AliasEvidence{{Value: "i24 News", Sources: []string{"directv-official-lineup"}, Methods: []string{"exact provider identity"}}},
 		},
 		{
-			ID: "i24-hd", Number: "697", Name: "I24NEHD", OriginalName: "I24NEHD", CallSign: "I24NEHD", NameSource: "gracenote",
+			ID: "i24-hd", StationID: "i24-hd", Number: "697", Name: "I24NEHD", OriginalName: "I24NEHD", CallSign: "I24NEHD", NameSource: "gracenote",
 			AliasEvidence: []AliasEvidence{{Value: "i24NEWS", Sources: []string{"gracenote-weekday-epg-usa-11743"}, Methods: []string{"pair-level identity (identity-name:I24NEWS, provider-position:optimum|14)"}}},
 		},
 	})
 	if len(suggestions) != 1 || suggestions[0].RemoveID != "i24-unmarked" || suggestions[0].KeepID != "i24-hd" {
 		t.Fatalf("attributed-alias HD duplicate suggestions = %+v", suggestions)
 	}
-	if !strings.Contains(suggestions[0].Reason, "unique stronger quality rank") || !strings.Contains(suggestions[0].Reason, "i24 News") {
+	if !strings.Contains(suggestions[0].Reason, "Verified same service") {
 		t.Fatalf("attributed-alias HD duplicate reason = %q", suggestions[0].Reason)
 	}
 }

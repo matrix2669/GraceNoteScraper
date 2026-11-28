@@ -44,6 +44,9 @@ func duplicateReviewGroups(channels []DraftChannel, suggestions []DuplicateSugge
 		}
 		sort.Slice(ids, func(i, j int) bool {
 			a, b := byID[ids[i]], byID[ids[j]]
+			if reviewedKeep(a) != reviewedKeep(b) {
+				return reviewedKeep(a)
+			}
 			if a.Included != b.Included {
 				return a.Included
 			}

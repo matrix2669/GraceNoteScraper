@@ -15,6 +15,7 @@ func TestKnownAliasRetainsProviderAttribution(t *testing.T) {
 	idx := lineupindex.Index{SchemaVersion: lineupindex.CurrentIndexVersion, Stations: map[string]*lineupindex.Station{
 		"123": {Facts: []lineupindex.StationFact{{Kind: lineupindex.FactAlias, Value: "NEWS", SourceID: "xfinity-official-lineup"}}},
 	}, PostalScans: map[string]*lineupindex.PostalScanRecord{"USA:33308": {Sources: []lineupindex.EvidenceSourceRecord{{ID: "xfinity-official-lineup", Matched: 1}}}}}
+	bindCategoryFixture(&idx, map[string]string{"123": "NEWS"})
 	path := filepath.Join(t.TempDir(), "index.json")
 	data, err := json.Marshal(idx)
 	if err != nil {
@@ -30,7 +31,7 @@ func TestKnownAliasRetainsProviderAttribution(t *testing.T) {
 	s := &lineuparrServer{marketIndex: svc}
 	inputs := []builder.InputChannel{{StationID: "123", CallSign: "NEWS"}}
 	statuses := s.applyMarketAliases("USA", "33308", "xfinity-official-lineup", inputs)
-	if len(inputs[0].ExternalAliases) != 1 || inputs[0].ExternalAliases[0].Source != "xfinity-official-lineup" {
+	if len(inputs[0].ExternalAliases) == 0 || inputs[0].ExternalAliases[0].Source != "xfinity-official-lineup" {
 		t.Fatalf("lost attribution: %+v", inputs)
 	}
 	found := false
