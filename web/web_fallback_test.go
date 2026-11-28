@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -99,6 +100,42 @@ func TestGetDataByTimeFallsBackToCachedRawGrid(t *testing.T) {
 	}
 	if len(grid.Channels) != 1 || grid.Channels[0].Events[0].Program.Title != "Morning Business" {
 		t.Fatalf("unexpected cached grid: %#v", grid)
+	}
+}
+
+func TestGetDataByTimeCancellationOnFinalAttemptSkipsCachedGrid(t *testing.T) {
+	useTempGridCache(t)
+	originalDelays := gridRetryDelays
+	gridRetryDelays = make([]time.Duration, gridMaxAttempts-1)
+	t.Cleanup(func() { gridRetryDelays = originalDelays })
+
+	prefs := testPreferences()
+	gridTime := time.Date(2026, 7, 25, 6, 0, 0, 0, time.UTC).Unix()
+	if err := saveGridCache(gridTime, prefs.Source(), &GridResponse{}); err != nil {
+		t.Fatalf("saveGridCache: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	attempts := 0
+	client := &Client{
+		Client: &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			attempts++
+			if attempts == gridMaxAttempts {
+				cancel()
+				return nil, req.Context().Err()
+			}
+			return nil, errors.New("upstream unavailable")
+		})},
+		pref: prefs,
+	}
+
+	grid, err := client.GetDataByTimeContext(ctx, gridTime)
+	if attempts != gridMaxAttempts {
+		t.Fatalf("attempts = %d, want %d", attempts, gridMaxAttempts)
+	}
+	if grid != nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("grid = %#v, err = %v; want nil grid and context.Canceled", grid, err)
 	}
 }
 

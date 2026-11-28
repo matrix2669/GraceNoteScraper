@@ -131,6 +131,10 @@ func (c *Client) GetDataByTimeContext(ctx context.Context, t int64) (*GridRespon
 		}
 	}
 
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	fallback, age, err := loadGridCache(t, c.Source())
 	if err == nil {
 		log.Printf("Gracenote grid time=%d exhausted %d attempts; using cached raw grid (%s old)", t, gridMaxAttempts, age.Round(time.Second))
