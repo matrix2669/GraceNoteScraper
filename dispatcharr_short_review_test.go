@@ -31,7 +31,7 @@ func TestShortReviewSaveReloadUndoDoesNotEraseUnrelatedNames(t *testing.T) {
 		req := httptest.NewRequest("POST", "/", strings.NewReader(string(body)))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
-		s.handleDecision(w, req)
+		s.handleDecision(w, withTestReviewOperation(s, req))
 		if w.Code != 200 {
 			t.Fatal(w.Code, w.Body.String())
 		}
@@ -56,7 +56,7 @@ func TestShortReviewSaveReloadUndoDoesNotEraseUnrelatedNames(t *testing.T) {
 	req := httptest.NewRequest("DELETE", "/", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	s.handleDecision(w, req)
+	s.handleDecision(w, withTestReviewOperation(s, req))
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
 	}

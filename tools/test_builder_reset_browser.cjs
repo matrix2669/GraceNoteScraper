@@ -6,13 +6,13 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   const page=await browser.newPage();await page.route('**/*',r=>r.abort());
   const html=fs.readFileSync('lineuparr.html','utf8');
   await page.setContent(html.replace(/<script>[\s\S]*?<\/script>/g,''));
-  const code=html.slice(html.indexOf('    async function api('),html.indexOf('    function setProviderAddressStatus')) + html.slice(html.indexOf('    async function loadDraft('),html.indexOf('    function renderAll('));
+  const code=require('./review_fixture_helpers.cjs')(html)+html.slice(html.indexOf('    async function api('),html.indexOf('    function setProviderAddressStatus')) + html.slice(html.indexOf('    async function loadDraft('),html.indexOf('    function renderAll('));
   await page.evaluate(code=>{
    window.draft={sourceFingerprint:'source',resetGeneration:4};window.dispatchBusy=false;window.saving=false;window.pendingDecisions=new Set();
    window.matchReview={};window.matchReviewLimit=200;window.matchInputSignature='old';window.posts=[];window.failure=false;
    window.message='';window.showMessage=text=>message=text;
    for(const n of ['invalidateDispatchReview','closeMatchAlternatives','setDispatchControls','scheduleWorkflowRefresh'])window[n]=()=>{};
-   window.dispatchReviewEpoch=0;window.dispatchConfig={configured:false};window.renders=0;window.renderAll=()=>renders++;window.loadMatchReview=async()=>{};
+   window.dispatchReviewEpoch=0;window.decisionRevision=0;window.dispatchConfig={configured:false};window.renders=0;window.renderAll=()=>renders++;window.loadMatchReview=async()=>{};
    window.fetch=async(path,options={})=>{
     if(options.method==='POST'){
      posts.push({body:JSON.parse(options.body),generation:options.headers.get('X-Builder-Generation')});

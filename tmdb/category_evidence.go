@@ -15,3 +15,29 @@ func (c *Client) CachedCategoryEvidence(title string, movie bool, expectedID int
 	}
 	return append([]int(nil), entry.GenreIDs...), append([]string(nil), entry.Genres...), true
 }
+
+// CategoryEvidenceRevision changes whenever retained lookup evidence changes.
+func (c *Client) CategoryEvidenceRevision() uint64 {
+	if c == nil || c.cache == nil {
+		return 0
+	}
+	c.cache.mu.Lock()
+	defer c.cache.mu.Unlock()
+	return c.cache.version
+}
+func (c *Client) WhileCategoryEvidenceRevision(revision uint64, action func() error) (bool, error) {
+	if c == nil || c.cache == nil {
+		return revision == 0, func() error {
+			if revision == 0 {
+				return action()
+			}
+			return nil
+		}()
+	}
+	c.cache.mu.Lock()
+	defer c.cache.mu.Unlock()
+	if c.cache.version != revision {
+		return false, nil
+	}
+	return true, action()
+}

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"sync"
+
 	"time"
 	"unicode"
 
@@ -43,7 +43,7 @@ type ServiceConfig struct {
 }
 
 type Service struct {
-	mu              sync.RWMutex
+	mu              revisionMutex
 	path            string
 	snapshotDir     string
 	catalog         SeedCatalog
