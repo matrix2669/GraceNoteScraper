@@ -66,6 +66,9 @@ async function testWorkflowCompletionAndLateReplies() {
   for(const [status,count,expected] of [['refresh-required',0,false],['stale',0,false],['refreshing',0,false],['current',0,true],['current',2,false]]) {
     w.workflowRemote.dispatch={reviewStatus:status,candidateCount:count};assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),expected);
   }
+  // High scores remain unresolved review proposals even if an obsolete optional-only counter says zero.
+  w.workflowRemote.dispatch={reviewStatus:'current',candidateCount:1,requiredCount:0,qualifiedCount:1,candidates:[{reviewKind:'qualified',score:100}]};
+  assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),false);
   w.workflowRemote.dispatch={reviewStatus:'current',candidateCount:0};w.dispatchBusy=true;
   assert.equal(vm.runInContext('workflowStates().find(s=>s.step===6).complete',w),false);
   w.dispatchBusy=false;w.dispatchConnectionError=true;

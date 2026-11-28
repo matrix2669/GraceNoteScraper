@@ -8,16 +8,22 @@ import (
 // FeedIdentity is station-bound evidence, not a suffix guessed from a brand.
 // Family retains every network/subbrand token; quality is not a feed region.
 type FeedIdentity struct {
-	Family   string
-	Region   string
-	Evidence string
+	FamilyAliases []string // Independently attributed aliases of the same exact station/source row.
+	Family        string
+	Region        string
+	Evidence      string
 }
 
 var feedQuality = regexp.MustCompile(`(?i)(?:[\s_-]+(?:HD|SD|FHD|UHD|4K|8K|RAW))+$`)
 var feedSuffix = regexp.MustCompile(`(?i)^(.*?)(?:\s*[-|:]\s*|\s*\(\s*|\s+)(EAST|WEST|PACIFIC)(?:\s+(?:COAST|FEED))?\s*\)?$`)
-var feedPrefix = regexp.MustCompile(`(?i)^(?:US|USA|CA|CAN|UK|GB|AU|AUS)\s*[:|]\s*`)
+var feedPrefix = regexp.MustCompile(`(?i)^(?:US|USA|CA|CAN|UK|GB|AU|AUS|TV|PRIME|RK)\s*[:|]\s*`)
 var familyPunctuation = regexp.MustCompile(`[^a-z0-9]+`)
 var feedToken = regexp.MustCompile(`[A-Za-z0-9]+`)
+
+// Decode only known presentation-only quality glyphs, never network/feed letters.
+func streamQualityText(raw string) string {
+	return strings.NewReplacer("ᴿᴬᵂ", " RAW", "ᴴᴰ", " HD", "ˢᴰ", " SD", "ᶠᴴᴰ", " FHD").Replace(raw)
+}
 
 func feedFamily(raw string) string {
 	raw = strings.TrimSpace(raw)
@@ -62,6 +68,7 @@ func ParseFeedHint(raw string) FeedIdentity {
 // by stripping arbitrary P/H/HD suffixes. Mixed evidence stays unresolved.
 func StreamFeed(raw string, codes map[string]FeedIdentity) FeedIdentity {
 	clean := feedPrefix.ReplaceAllString(strings.TrimSpace(raw), "")
+	clean = streamQualityText(clean)
 	clean = feedQuality.ReplaceAllString(clean, "")
 	label := FeedIdentity{Family: feedFamily(clean)}
 	body := clean

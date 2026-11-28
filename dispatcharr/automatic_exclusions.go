@@ -13,11 +13,16 @@ type AutomaticExclusion struct {
 	Conflict       bool
 }
 type AutomaticResult struct {
-	Rows   []AutomaticExclusion
-	Hidden map[string]bool
+	Rows          []AutomaticExclusion
+	InventoryRows []InventoryFeedExclusion `json:"inventoryRows,omitempty"`
+	Hidden        map[string]bool
 }
 
 func explicitCandidateDecision(c Candidate, decisions []Decision) string {
+	return explicitStreamDecision(c.ChannelID, c.Source, c.StreamHash, c.StreamName, decisions)
+}
+
+func explicitStreamDecision(channelID, source, streamHash, streamName string, decisions []Decision) string {
 	// Only a retained constituent is an explicit override. A lossy group alias
 	// must not extend a confirmation to a newly seen opposing-feed raw name.
 	// Existing explicit confirmations remain conflicts even after authentication
@@ -25,12 +30,12 @@ func explicitCandidateDecision(c Candidate, decisions []Decision) string {
 	// This preserves choices without reusing prior automatic evidence.
 	denied := false
 	for _, d := range decisions {
-		if d.ChannelID == c.ChannelID &&
-			((d.StreamHash != "" && d.StreamHash == c.StreamHash) || (d.StreamName != "" && equalRawStream(d.StreamName, c.StreamName))) {
+		if d.ChannelID == channelID &&
+			((d.StreamHash != "" && d.StreamHash == streamHash) || (d.StreamName != "" && equalRawStream(d.StreamName, streamName))) {
 			if d.Decision == "confirmed" {
 				return "confirmed"
 			}
-			if d.Decision == "denied" && d.Source == c.Source {
+			if d.Decision == "denied" && d.Source == source {
 				denied = true
 			}
 		}
@@ -39,6 +44,18 @@ func explicitCandidateDecision(c Candidate, decisions []Decision) string {
 		return "denied"
 	}
 	return ""
+}
+
+func sameFeedFamily(stream string, target FeedIdentity) bool {
+	if stream == target.Family {
+		return true
+	}
+	for _, alias := range target.FamilyAliases {
+		if stream == alias {
+			return true
+		}
+	}
+	return false
 }
 
 func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]AffiliateTarget, feeds map[string]FeedIdentity, codes map[string]FeedIdentity, decisions []Decision) AutomaticResult {
@@ -59,9 +76,9 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 		if target.Region == "unknown" {
 			row.PendingReview = true
 			row.Reason = "Target feed identity unresolved; manual review required (" + target.Evidence + ")"
-		} else if stream.Region != "" && stream.Family == target.Family && stream.Region != target.Region {
+		} else if stream.Region != "" && sameFeedFamily(stream.Family, target) && stream.Region != target.Region {
 			row.Reason = "Explicit " + stream.Region + " feed conflicts with attributed " + target.Region + " target (" + target.Evidence + ")"
-		} else if stream.Region == "" || stream.Family != target.Family {
+		} else if stream.Region == "" || !sameFeedFamily(stream.Family, target) {
 			row.PendingReview = true
 			row.Reason = "Feed identity unresolved; " + target.Region + " target requires explicit matching feed and service-family evidence (" + target.Evidence + ")"
 		} else {
@@ -92,11 +109,11 @@ func DeriveAutomaticExclusions(candidates []Candidate, targets map[string]Affili
 	manualGroups := map[string]bool{}
 	for _, row := range result.Rows {
 		if row.PendingReview || row.Conflict {
-			manualGroups[row.Candidate.ChannelID+"\x00"+row.Candidate.NormalizedAlias] = true
+			manualGroups[row.Candidate.ChannelID+"\x00"+ReviewIdentity(row.Candidate.StreamName, row.Candidate.NormalizedAlias)] = true
 		}
 	}
 	for _, row := range result.Rows {
-		if !row.PendingReview && !row.Conflict && !manualGroups[row.Candidate.ChannelID+"\x00"+row.Candidate.NormalizedAlias] {
+		if !row.PendingReview && !row.Conflict && !manualGroups[row.Candidate.ChannelID+"\x00"+ReviewIdentity(row.Candidate.StreamName, row.Candidate.NormalizedAlias)] {
 			result.Hidden[row.Candidate.Key] = true
 		}
 	}

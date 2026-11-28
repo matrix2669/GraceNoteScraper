@@ -79,7 +79,9 @@ type dispatcharrMatchSnapshot struct {
 	lineupFingerprint      string
 	digest                 string
 	candidates             []dispatcharr.Candidate
+	identityStreams        []dispatcharr.IdentityStream
 	streamCount            int
+	inventoryDigest        string
 	fetchedAt              time.Time
 	version                string
 	warning                string
@@ -107,6 +109,8 @@ type dispatcharrConfigResponse struct {
 }
 
 type dispatcharrReviewDecision struct {
+	NeedsReview   bool      `json:"needsReview,omitempty"`
+	ReviewWarning string    `json:"reviewWarning,omitempty"`
 	Key           string    `json:"key"`
 	Decision      string    `json:"decision"`
 	ChannelID     string    `json:"channelId"`
@@ -126,6 +130,7 @@ type dispatcharrReviewDecision struct {
 }
 
 type dispatcharrReviewResponse struct {
+	Coverage             dispatcharrCoverage          `json:"coverage"`
 	Automatic            automaticMatchView           `json:"automatic"`
 	ReviewStatus         string                       `json:"reviewStatus"`
 	StreamCount          int                          `json:"streamCount"`
@@ -291,10 +296,10 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			http.Error(w, "match decision does not belong to the active sources", http.StatusNotFound)
 			return
 		}
-		alias := dispatcharr.NormalizeAliasName(existing.StreamName)
+		alias := dispatcharr.ReviewIdentity(existing.StreamName, existing.NormalizedAlias)
 		keys := make([]string, 0)
 		for key, decision := range stored {
-			if decision.Decision == existing.Decision && decision.ChannelID == existing.ChannelID && dispatcharr.NormalizeAliasName(decision.StreamName) == alias {
+			if decision.Decision == existing.Decision && decision.ChannelID == existing.ChannelID && decision.ReviewKind == existing.ReviewKind && dispatcharr.ReviewIdentity(decision.StreamName, decision.NormalizedAlias) == alias {
 				keys = append(keys, key)
 			}
 		}
@@ -352,8 +357,8 @@ func (s *dispatcharrServer) handleDecision(w http.ResponseWriter, r *http.Reques
 			decisionKey = body.Key
 		}
 		decisions = append(decisions, lineuparrbuilder.MatchDecision{
-			MatcherVersion: candidate.MatcherVersion,
-			Key:            decisionKey, Decision: body.Decision,
+			ReviewKind: candidate.ReviewKind, MatcherVersion: candidate.MatcherVersion,
+			Key: decisionKey, Decision: body.Decision,
 			DispatcharrFingerprint: candidate.Source, StreamFingerprint: candidate.StreamHash,
 			StreamKey: candidate.StreamKey, StreamID: candidate.StreamID, M3UAccountID: candidate.M3UAccountID,
 			ChannelID: candidate.ChannelID, ChannelNumber: candidate.ChannelNumber, ChannelName: candidate.ChannelName,
@@ -421,7 +426,12 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		failureMessage := "Unable to fetch Dispatcharr streams. Check the connection and retry Refresh streams."
 		var matches dispatcharr.CandidateSet
 		var version string
+		var identityStreams []dispatcharr.IdentityStream
+		var inventoryDigest string
 		if fetchErr == nil {
+			identityStreams = dispatcharr.ProjectIdentityInventory(streams)
+			inventoryDigest = streamInventoryDigest(streams)
+			s.cache.observe(dispatchConfig.Fingerprint(), streams)
 			matcher := s.matcher
 			if matcher == nil {
 				matcher = dispatcharr.MatchStreamCandidatesWithLineuparr
@@ -466,7 +476,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			}
 			snapshot = dispatcharrMatchSnapshot{
 				guide: currentGuide, dispatcharrFingerprint: dispatchConfig.Fingerprint(), lineupFingerprint: lineupConfig.Fingerprint(),
-				channels: channels, digest: digest, candidates: matches.All, streamCount: len(streams), fetchedAt: time.Now().UTC(), version: version,
+				channels: channels, digest: digest, candidates: matches.All, identityStreams: identityStreams, streamCount: len(streams), inventoryDigest: inventoryDigest, fetchedAt: time.Now().UTC(), version: version,
 			}
 			includedTargets = currentIncluded
 			snapshot.channels = currentChannels
@@ -484,6 +494,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	validSnapshot := (snapshot.guide == nil || snapshot.guide == s.lineup.state.Get()) && snapshot.dispatcharrFingerprint == dispatchConfig.Fingerprint() && snapshot.lineupFingerprint == lineupConfig.Fingerprint() && snapshot.digest == digest && !snapshot.fetchedAt.IsZero()
 	warning := snapshot.warning
+	if validSnapshot && s.inventoryDrift(snapshot) {
+		warning = "Observed Dispatcharr inventory changed. Refresh streams and regenerate JSON; the previous review is stale."
+	}
 	if !validSnapshot {
 		warning = "Refresh required to match streams to the included channels. Press Refresh streams."
 		snapshot.streamCount = 0
@@ -503,25 +516,31 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 			continue
 		}
 		matcherDecisions[key] = dispatcharr.Decision{
-			Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
+			ReviewKind: decision.ReviewKind, Key: key, Decision: decision.Decision, Source: decision.DispatcharrFingerprint,
 			StreamHash: decision.StreamFingerprint, ChannelID: decision.ChannelID, StreamName: decision.StreamName,
 			NormalizedAlias: decision.NormalizedAlias,
 		}
 	}
 	history, confirmed, denied := groupReviewDecisions(stored)
-	if len(history) > dispatcharrReviewLimit {
-		history = history[:dispatcharrReviewLimit]
+	if validSnapshot {
+		annotateUnsupportedConfirmations(history, snapshot.candidates)
+	}
+	if len(history) > dispatcharrReviewMaxLimit {
+		history = history[:dispatcharrReviewMaxLimit]
 	}
 
 	matches := dispatcharr.CandidateSet{}
-	if validSnapshot {
-		matches.All = dispatcharr.FilterSnapshotCandidates(snapshot.candidates, includedTargets, matcherDecisions)
-	}
-
 	automatic := automaticMatchView{Rows: []automaticMatchRow{}}
+	var derived dispatcharr.AutomaticResult
 	if s.lineup.automaticProjection != nil {
-		var derived dispatcharr.AutomaticResult
 		automatic, derived = s.automaticView(draft, lineupConfig, snapshot)
+	}
+	if validSnapshot {
+		classified := append([]dispatcharr.Candidate(nil), snapshot.candidates...)
+		classifyReviewCandidates(classified, automatic)
+		matches.All = dispatcharr.FilterSnapshotCandidates(classified, includedTargets, matcherDecisions)
+	}
+	if s.lineup.automaticProjection != nil {
 		// Legacy group decisions use a lossy normalized alias. An unresolved
 		// new raw constituent must still be available for an explicit decision.
 		present := map[string]bool{}
@@ -530,7 +549,9 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 		}
 		for _, row := range derived.Rows {
 			if row.PendingReview && !row.Conflict && row.ManualDecision == "" && !present[row.Candidate.Key] {
-				matches.All = append(matches.All, row.Candidate)
+				c := row.Candidate
+				c.ReviewKind = reviewCandidateKind(c.Score, true)
+				matches.All = append(matches.All, c)
 				present[row.Candidate.Key] = true
 			}
 		}
@@ -576,7 +597,7 @@ func (s *dispatcharrServer) buildReview(w http.ResponseWriter, r *http.Request, 
 	}
 	return dispatcharrReviewBuild{
 		response: dispatcharrReviewResponse{
-			Automatic: automatic, ReviewStatus: status,
+			Automatic: automatic, ReviewStatus: status, Coverage: s.reviewCoverage(channels, snapshot, validSnapshot),
 			StreamCount: snapshot.streamCount, CandidateCount: len(groups), CandidateStreamCount: len(matches.All), ConfirmedCount: confirmed, DeniedCount: denied,
 			FetchedAt: snapshot.fetchedAt, Cached: !force || snapshot.warning != "", Warning: warning, VisibleLimit: visibleLimit, Candidates: visible, Decisions: history,
 		},
@@ -627,7 +648,8 @@ func groupReviewDecisions(stored map[string]lineuparrbuilder.MatchDecision) ([]d
 		if normalized == "" {
 			normalized = dispatcharr.NormalizeAliasName(decision.StreamName)
 		}
-		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized}, "\x00")
+		normalized = dispatcharr.ReviewIdentity(decision.StreamName, normalized)
+		key := strings.Join([]string{decision.Decision, decision.ChannelID, normalized, decision.ReviewKind}, "\x00")
 		group := groups[key]
 		if group == nil {
 			group = &dispatcharrReviewDecision{
@@ -811,6 +833,17 @@ func (c *dispatcharrStreamCache) get(ctx context.Context, client dispatcharrAPI,
 	c.fetchedAt = time.Now().UTC()
 	c.streams = append([]dispatcharr.Stream(nil), streams...)
 	return streams, c.fetchedAt, false, "", nil
+}
+
+// Observe only metadata returned by an explicit successful fetch. Reads never
+// fetch inventory; retaining this observation fences an older matching snapshot
+// if the subsequent matcher fails or has not completed yet.
+func (c *dispatcharrStreamCache) observe(fingerprint string, streams []dispatcharr.Stream) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.fingerprint = fingerprint
+	c.fetchedAt = time.Now().UTC()
+	c.streams = append([]dispatcharr.Stream(nil), streams...)
 }
 
 func (c *dispatcharrStreamCache) clear() {
