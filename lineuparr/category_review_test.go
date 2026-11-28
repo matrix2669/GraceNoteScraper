@@ -1,10 +1,29 @@
 package lineuparr
 
 import (
+	"context"
 	"path/filepath"
 	"testing"
 	"time"
 )
+
+func TestBuildKeepsProvisionalWinnerVisibleWhenProviderConflictNeedsReview(t *testing.T) {
+	store, err := LoadStateStore(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(store, ServiceOptions{})
+	draft, err := service.Build(context.Background(), LineupContext{SourceFingerprint: "source", ProviderName: "Test"}, []InputChannel{{
+		Key: "unknown", CallSign: "UNKNOWN", CategoryConflict: true,
+		CategoryHint: &AttributedCategory{Value: "News & Weather", Source: "provider", Method: "provider counts: News & Weather = 2; category review: disagreement"},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(draft.Channels) != 1 || draft.Channels[0].Category != "News & Weather" || !draft.Channels[0].NeedsCategoryReview {
+		t.Fatalf("provisional category = %+v", draft.Channels)
+	}
+}
 
 func TestCategoryReviewRetainsOriginalProposal(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -139,6 +140,7 @@ func TestTMDBCategoryScanRepairsLegacyTimezoneAndSavesProposals(t *testing.T) {
 		programs = append(programs, guide.Program{
 			Channel: "100", Start: a.Format("20060102150405 -0700"), Stop: a.Add(time.Hour).Format("20060102150405 -0700"), Title: "Entertainment programme",
 			TMDBGenresCaptured: true, TMDBMediaType: "tv", TMDBGenreIDs: []int{35}, TMDBGenreNames: []string{"Comedy"},
+			OrigLanguage: "en",
 		})
 	}
 	s.state.UpdateForSource(&guide.TVGuide{Programs: programs, LineupChannels: []guide.Channel{{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TEST"}}}, c.Fingerprint())
@@ -180,8 +182,159 @@ func TestTMDBCategoryScanRepairsLegacyTimezoneAndSavesProposals(t *testing.T) {
 	if err := json.Unmarshal(draftRecorder.Body.Bytes(), &draft); err != nil {
 		t.Fatal(err)
 	}
-	if draft.Categorized != 1 || draft.Uncategorized != 0 || len(draft.Channels) != 1 || draft.Channels[0].Category != "Entertainment" || !draft.Channels[0].NeedsCategoryReview {
+	if draft.Categorized != 1 || draft.Uncategorized != 0 || len(draft.Channels) != 1 || draft.Channels[0].Category != "Entertainment" || draft.Channels[0].NeedsCategoryReview {
 		t.Fatalf("refreshed draft = %+v", draft)
+	}
+	if confirmed := s.builder.TMDBCategoryScan(c.Fingerprint()).IndependentCategories["100"]; len(confirmed) != 1 || confirmed[0] != "Entertainment" {
+		t.Fatalf("100 percent independent genre evidence must confirm without changing priority: %v", confirmed)
+	}
+	for _, mutation := range []string{"unclassified overlap", "genre availability removed"} {
+		t.Run(mutation, func(t *testing.T) {
+			changed := append([]guide.Program(nil), programs...)
+			if mutation == "unclassified overlap" {
+				changed = append(changed, guide.Program{Channel: "100", Title: "Unclassified interval", Start: programs[10].Start, Stop: programs[10].Stop})
+			} else {
+				for i := range changed {
+					changed[i].TMDBGenresCaptured = false
+				}
+			}
+			g := &guide.TVGuide{Programs: changed, LineupChannels: []guide.Channel{{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TEST"}}}
+			revision, _ := tmdbGuideRevision(g)
+			if revision == s.builder.TMDBCategoryScan(c.Fingerprint()).Revision {
+				t.Fatal("assessment-relevant change did not invalidate persisted confirmation")
+			}
+			s.state.UpdateForSource(g, c.Fingerprint())
+			w := httptest.NewRecorder()
+			s.handleDraft(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil))
+			var current lineuparrbuilder.Draft
+			if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &current) != nil || len(current.Channels) != 1 {
+				t.Fatalf("draft: %d %s", w.Code, w.Body.String())
+			}
+			if current.Channels[0].Category != "Entertainment" || !current.Channels[0].NeedsCategoryReview {
+				t.Fatalf("stale confirmation must not clear review: %+v", current.Channels[0])
+			}
+		})
+	}
+	t.Run("timezone provenance survives reload and detects later change", func(t *testing.T) {
+		// The initial explicit scan resolved its timezone through discovery;
+		// this index intentionally has no retained lineup record yet.
+		scan := s.builder.TMDBCategoryScan(c.Fingerprint())
+		if scan.Timezone != "America/New_York" || marketIndex.LineupTimezone(c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device) != nil {
+			t.Fatalf("discovered timezone was not saved independently: %+v", scan)
+		}
+		statePath := filepath.Join(t.TempDir(), "lineuparr.json")
+		stateStore, err := lineuparrbuilder.LoadStateStore(statePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		persisted := lineuparrbuilder.NewService(stateStore, lineuparrbuilder.ServiceOptions{})
+		if err := persisted.SaveTMDBCategoryScan(c.Fingerprint(), scan); err != nil {
+			t.Fatal(err)
+		}
+		stateStore, err = lineuparrbuilder.LoadStateStore(statePath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.builder = lineuparrbuilder.NewService(stateStore, lineuparrbuilder.ServiceOptions{})
+		s.state.UpdateForSource(&guide.TVGuide{Programs: programs, LineupChannels: []guide.Channel{{ID: "100", PlacementID: "1001", ChannelNo: "2", CallSign: "TEST"}}}, c.Fingerprint())
+		checkReview := func(want bool) {
+			t.Helper()
+			w := httptest.NewRecorder()
+			s.handleDraft(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/draft", nil))
+			var draft lineuparrbuilder.Draft
+			if w.Code != http.StatusOK || json.Unmarshal(w.Body.Bytes(), &draft) != nil || len(draft.Channels) != 1 || draft.Channels[0].Category != "Entertainment" || draft.Channels[0].NeedsCategoryReview != want {
+				t.Fatalf("timezone-bound review=%v: %d %s", want, w.Code, w.Body.String())
+			}
+		}
+		checkReview(false)
+		if got := s.builder.TMDBCategoryScan(c.Fingerprint()).Timezone; got != scan.Timezone {
+			t.Fatalf("timezone lost after reload: %q", got)
+		}
+		// A legacy saved result without provenance cannot clear review even
+		// though its programme hash and category support are otherwise current.
+		legacy := scan
+		legacy.Timezone = ""
+		if err := s.builder.SaveTMDBCategoryScan(c.Fingerprint(), legacy); err != nil {
+			t.Fatal(err)
+		}
+		checkReview(true)
+		if err := s.builder.SaveTMDBCategoryScan(c.Fingerprint(), scan); err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), "changed-timezone.json")
+		if err := os.WriteFile(path, []byte(`{"schemaVersion":4,"lineups":{"selected":{"country":"USA","postalCode":"11743","lineupId":"USA-TEST","device":"X","timezone":"America/Los_Angeles"}}}`), 0600); err != nil {
+			t.Fatal(err)
+		}
+		s.marketIndex, err = lineupindex.NewService(lineupindex.ServiceConfig{Path: path, Providers: tmdbTimezoneProviders{}, Grids: tmdbUnusedGrid{}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkReview(true)
+		w := httptest.NewRecorder()
+		s.handleTMDBCategories(w, httptest.NewRequest(http.MethodGet, "/api/lineuparr/tmdb-categories", nil))
+		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"state":"ready"`) {
+			t.Fatalf("timezone change did not request a fresh explicit scan: %d %s", w.Code, w.Body.String())
+		}
+	})
+}
+
+func TestRawScheduleConfirmationIndependentOfProposal(t *testing.T) {
+	s := newLineuparrTestServer(t, true)
+	path := filepath.Join(t.TempDir(), "index.json")
+	if err := os.WriteFile(path, []byte(`{"schemaVersion":4,"lineups":{"selected":{"country":"USA","postalCode":"11743","lineupId":"USA-TEST","device":"X","timezone":"America/New_York"}}}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	index, err := lineupindex.NewService(lineupindex.ServiceConfig{
+		Path: path, Providers: tmdbTimezoneProviders{}, Grids: tmdbUnusedGrid{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.marketIndex = index
+	c, _, _ := s.store.Get()
+	if _, err := index.ResolveLineupTimezone(context.Background(), c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device, c.Gracenote.Language); err != nil {
+		t.Fatal(err)
+	}
+	loc := index.LineupTimezone(c.Gracenote.Country, c.Gracenote.PostalCode, c.Gracenote.LineupID, c.Gracenote.Device)
+	start := time.Date(2026, time.September, 7, 0, 0, 0, 0, loc)
+	for _, scenario := range []struct{ name, proposal, confirmed string }{
+		{"different proposal", "Movies", "Entertainment"},
+		{"no proposal", "", "News & Weather"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			var programs []guide.Program
+			for slot := 0; slot < 14*12; slot++ {
+				a := start.Add(time.Duration(slot*2) * time.Hour)
+				filters := []string{"filter-entertainment"}
+				if slot%5 < 3 {
+					filters = append(filters, "filter-movie")
+				}
+				if scenario.proposal == "" {
+					filters = []string{"filter-news", "filter-sports"}
+				}
+				programs = append(programs, guide.Program{Channel: "100", Title: "Programme", Start: a.Format("20060102150405 -0700"), Stop: a.Add(2 * time.Hour).Format("20060102150405 -0700"), RawFilters: filters})
+			}
+			g := &guide.TVGuide{Programs: programs, LineupChannels: []guide.Channel{{ID: "100", PlacementID: "1001", CallSign: "UNBRANDEDTEST"}}}
+			hint := s.weekdayCategoryHints(g, c)["100"]
+			if hint == nil || hint.Value != scenario.proposal || hint.IndependentConfirmation || !containsCategory(hint.IndependentCategories, scenario.confirmed) {
+				t.Fatalf("proposal and target support must remain separate: %+v", hint)
+			}
+			s.state.UpdateForSource(g, c.Fingerprint())
+			_, inputs, ok := s.activeInputs(httptest.NewRecorder())
+			if !ok || len(inputs) != 1 || !inputs[0].IndependentScheduleConfirmed || !containsCategory(inputs[0].IndependentCategories, scenario.confirmed) {
+				t.Fatalf("independent support lost in draft inputs: %+v", inputs)
+			}
+			// Simulate the provider bridge selecting its supported category.
+			inputs[0].CategoryHint = &lineuparrbuilder.AttributedCategory{Value: scenario.confirmed, Priority: 2, Source: "provider", Method: "independent provider majority"}
+			inputs[0].CategoryConflict = true
+			draft, err := s.builder.Build(context.Background(), lineuparrbuilder.LineupContext{SourceFingerprint: c.Fingerprint()}, inputs)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(draft.Channels) != 1 || draft.Channels[0].Category != scenario.confirmed || draft.Channels[0].NeedsCategoryReview {
+				t.Fatalf("selected provider target was not confirmed: %+v", draft)
+			}
+		})
 	}
 }
 

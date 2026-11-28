@@ -361,7 +361,7 @@ func (s *Service) runPostal(ctx context.Context, request RunRequest) {
 		}
 		postalScans = append(postalScans, &postalLineupScan{
 			Lineup: lineup, Provider: provider, Grids: map[string]*web.GridResponse{gridID: grid},
-			Facts: epgIdentityFacts(evidence), Sources: append([]EvidenceSourceRecord(nil), evidence.Sources...),
+			Facts: epgIdentityFacts(evidence), Relations: append([]ProviderCategoryRelation(nil), evidence.CategoryRelations...), Sources: append([]EvidenceSourceRecord(nil), evidence.Sources...),
 		})
 		s.mu.Lock()
 		s.job.CompletedCount++
@@ -851,6 +851,7 @@ func (s *Service) ingestProviderFacts(lineupKey string, facts []ProviderFact) (i
 func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvidenceResult) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.reconcileProviderCategoryRelationsLocked(lineupKey, evidence)
 	if evidence.SnapshotComplete {
 		s.reconcileProviderSnapshotLocked(evidence)
 	}
@@ -893,6 +894,16 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			if current.Kind != kind || current.Normalized != normalized || current.SourceID != fact.SourceID {
 				continue
 			}
+			if strings.TrimSpace(current.SourceRowID) != "" || strings.TrimSpace(fact.SourceRowID) != "" {
+				if strings.TrimSpace(current.SourceRowID) != strings.TrimSpace(fact.SourceRowID) {
+					continue
+				}
+			}
+			if strings.TrimSpace(current.RootSourceLineupKey) != "" || strings.TrimSpace(fact.RootSourceLineupKey) != "" {
+				if strings.TrimSpace(current.RootSourceLineupKey) != strings.TrimSpace(fact.RootSourceLineupKey) || strings.TrimSpace(current.RootSourceStationID) != strings.TrimSpace(fact.RootSourceStationID) {
+					continue
+				}
+			}
 			if !usableFact(*current) {
 				current.LineupKeys = nil
 			}
@@ -903,6 +914,12 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			current.MatchConfidence = fact.MatchConfidence
 			current.StationBound = fact.StationBound
 			current.SourceRevision = strings.TrimSpace(fact.SourceRevision)
+			current.SourceRowID = strings.TrimSpace(fact.SourceRowID)
+			current.RootSourceID = strings.TrimSpace(fact.RootSourceID)
+			current.RootSourceLabel = strings.TrimSpace(fact.RootSourceLabel)
+			current.RootSourceURL = strings.TrimSpace(fact.RootSourceURL)
+			current.RootSourceLineupKey = strings.TrimSpace(fact.RootSourceLineupKey)
+			current.RootSourceStationID = strings.TrimSpace(fact.RootSourceStationID)
 			sort.Strings(current.LineupKeys)
 			found = true
 			break
@@ -915,7 +932,9 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 			MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
 			SourceID:    strings.TrimSpace(fact.SourceID),
 			SourceLabel: strings.TrimSpace(fact.SourceLabel), SourceURL: strings.TrimSpace(fact.SourceURL),
-			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey}, StationBound: fact.StationBound, SourceRevision: strings.TrimSpace(fact.SourceRevision),
+			Method: strings.TrimSpace(fact.Method), LineupKeys: []string{lineupKey}, StationBound: fact.StationBound, SourceRevision: strings.TrimSpace(fact.SourceRevision), SourceRowID: strings.TrimSpace(fact.SourceRowID),
+			RootSourceID: strings.TrimSpace(fact.RootSourceID), RootSourceLabel: strings.TrimSpace(fact.RootSourceLabel), RootSourceURL: strings.TrimSpace(fact.RootSourceURL),
+			RootSourceLineupKey: strings.TrimSpace(fact.RootSourceLineupKey), RootSourceStationID: strings.TrimSpace(fact.RootSourceStationID),
 		})
 		if kind == FactAlias {
 			aliases++
@@ -928,6 +947,165 @@ func (s *Service) ingestProviderEvidence(lineupKey string, evidence ProviderEvid
 		return 0, 0, err
 	}
 	return aliases, categories, nil
+}
+
+// reconcileProviderCategoryRelationsLocked replaces only successful source
+// scopes. A source failure, cancellation, or address-required skip therefore
+// leaves its last-known-good relationships untouched.
+func (s *Service) reconcileProviderCategoryRelationsLocked(lineupKey string, evidence ProviderEvidenceResult) {
+	type scope struct{ sourceID, lineupKey string }
+	successful := make(map[scope]bool)
+	failed := make(map[scope]bool)
+	for _, source := range evidence.Sources {
+		sourceID := strings.TrimSpace(source.ID)
+		status := strings.ToLower(strings.TrimSpace(source.Status))
+		if sourceID == "" {
+			continue
+		}
+		scopeKey := scope{sourceID: sourceID, lineupKey: lineupKey}
+		if status == StatusError {
+			failed[scopeKey] = true
+			continue
+		}
+		if status == StatusComplete || status == "no-matches" || status == "limited" {
+			successful[scopeKey] = true
+		}
+	}
+	for scopeKey := range failed {
+		delete(successful, scopeKey)
+	}
+	if len(successful) == 0 {
+		return
+	}
+	incoming := make(map[scope][]ProviderCategoryRelation)
+	seen := make(map[string]bool)
+	for _, relation := range evidence.CategoryRelations {
+		relation.StationID = strings.TrimSpace(relation.StationID)
+		relation.AliasValue = strings.TrimSpace(relation.AliasValue)
+		relation.AliasNormalized = normalizeName(relation.AliasValue)
+		relation.Category = strings.TrimSpace(relation.Category)
+		relation.RawCategory = strings.TrimSpace(relation.RawCategory)
+		relation.SourceID = strings.TrimSpace(relation.SourceID)
+		relation.SourceRevision = strings.TrimSpace(relation.SourceRevision)
+		relation.SourceRowID = strings.TrimSpace(relation.SourceRowID)
+		relation.SourceLineupKey = strings.TrimSpace(relation.SourceLineupKey)
+		if relation.SourceLineupKey == "" {
+			relation.SourceLineupKey = lineupKey
+		}
+		relation.LineupKeys = []string{lineupKey}
+		if relation.StationID == "" || relation.AliasValue == "" || relation.AliasNormalized == "" || relation.Category == "" || relation.SourceID == "" || relation.SourceRowID == "" {
+			continue
+		}
+		if _, ok := channelcategory.Resolve(relation.Category); !ok {
+			continue
+		}
+		scopeKey := scope{sourceID: relation.SourceID, lineupKey: lineupKey}
+		if !successful[scopeKey] {
+			continue
+		}
+		key := relation.StationID + "\x00" + relation.AliasNormalized + "\x00" + normalizeName(relation.Category) + "\x00" + relation.SourceID + "\x00" + relation.SourceRowID
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		incoming[scopeKey] = append(incoming[scopeKey], relation)
+	}
+	for scopeKey := range successful {
+		// A row can legitimately support several scanned lineups. Trim only this
+		// refreshed scope from dependent facts so another lineup's provenance
+		// remains intact.
+		currentRows := make(map[string]bool)
+		currentAliasRows := make(map[string]bool)
+		for _, relation := range incoming[scopeKey] {
+			binding := strings.TrimSpace(relation.StationID) + "\x00" + relation.SourceRowID
+			currentRows[binding] = true
+			currentAliasRows[binding] = true
+		}
+		for _, fact := range append(append([]ProviderFact(nil), evidence.Facts...), evidence.IdentityFacts...) {
+			if fact.Kind != FactAlias || strings.TrimSpace(fact.SourceRowID) == "" {
+				continue
+			}
+			root := strings.TrimSpace(fact.SourceID)
+			if strings.TrimSpace(fact.RootSourceID) != "" {
+				root = strings.TrimSpace(fact.RootSourceID)
+			}
+			if root == scopeKey.sourceID {
+				currentAliasRows[strings.TrimSpace(fact.StationID)+"\x00"+strings.TrimSpace(fact.SourceRowID)] = true
+			}
+		}
+		// Relation-backed direct facts and EPG-carried copies are dependent on
+		// the source row. Remove only identified rows in this successful scope;
+		// legacy facts without a row identity remain available under their
+		// existing guards and are never guessed into a new relation.
+		for _, station := range s.index.Stations {
+			facts := station.Facts[:0]
+			for _, fact := range station.Facts {
+				root := strings.TrimSpace(fact.SourceID)
+				if strings.TrimSpace(fact.RootSourceID) != "" {
+					root = strings.TrimSpace(fact.RootSourceID)
+				}
+				rowID := strings.TrimSpace(fact.SourceRowID)
+				if root == scopeKey.sourceID && containsString(fact.LineupKeys, scopeKey.lineupKey) {
+					rowMissing := rowID == ""
+					legacyDirectCategory := rowMissing && fact.Kind == FactCategory && strings.TrimSpace(fact.RootSourceID) == ""
+					binding := strings.TrimSpace(fact.RootSourceStationID) + "\x00" + rowID
+					exactBinding := rowID != "" && strings.TrimSpace(fact.RootSourceLineupKey) == scopeKey.lineupKey && strings.TrimSpace(fact.RootSourceStationID) != ""
+					rows := currentRows
+					if fact.Kind == FactAlias {
+						rows = currentAliasRows
+					}
+					legacyIdentified := rowID != "" && strings.TrimSpace(fact.RootSourceLineupKey) == "" && strings.TrimSpace(fact.RootSourceStationID) == "" && !hasRelationRow(rows, rowID)
+					if exactBinding && !rows[binding] {
+						continue
+					}
+					if legacyIdentified || legacyDirectCategory {
+						fact.LineupKeys = removeString(fact.LineupKeys, scopeKey.lineupKey)
+						if len(fact.LineupKeys) == 0 {
+							continue
+						}
+					}
+				}
+				facts = append(facts, fact)
+			}
+			station.Facts = facts
+		}
+		retained := s.index.CategoryRelations[:0]
+		for _, current := range s.index.CategoryRelations {
+			if strings.TrimSpace(current.SourceID) == scopeKey.sourceID && containsString(current.LineupKeys, scopeKey.lineupKey) {
+				continue
+			}
+			retained = append(retained, current)
+		}
+		s.index.CategoryRelations = retained
+		for _, relation := range incoming[scopeKey] {
+			s.index.CategoryRelations = append(s.index.CategoryRelations, relation)
+		}
+	}
+	sort.SliceStable(s.index.CategoryRelations, func(i, j int) bool {
+		left, right := s.index.CategoryRelations[i], s.index.CategoryRelations[j]
+		leftLineup, rightLineup := "", ""
+		if len(left.LineupKeys) > 0 {
+			leftLineup = left.LineupKeys[0]
+		}
+		if len(right.LineupKeys) > 0 {
+			rightLineup = right.LineupKeys[0]
+		}
+		for _, pair := range [][2]string{{left.SourceID, right.SourceID}, {leftLineup, rightLineup}, {left.StationID, right.StationID}, {left.AliasNormalized, right.AliasNormalized}, {left.SourceRowID, right.SourceRowID}} {
+			if pair[0] != pair[1] {
+				return pair[0] < pair[1]
+			}
+		}
+		return left.Category < right.Category
+	})
+}
+
+func hasRelationRow(rows map[string]bool, rowID string) bool {
+	for key := range rows {
+		if strings.HasSuffix(key, "\x00"+rowID) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Service) reconcileProviderSnapshotLocked(evidence ProviderEvidenceResult) {
@@ -963,6 +1141,25 @@ func (s *Service) reconcileProviderSnapshotLocked(evidence ProviderEvidenceResul
 			retained = append(retained, fact)
 		}
 		station.Facts = retained
+	}
+	// Spectrum's station-bound catalog is authoritative across all lineup
+	// scopes. A relation copied into another market must not keep an old row
+	// eligible after a complete catalog revision retires that station/category.
+	if len(authoritative) > 0 {
+		relations := s.index.CategoryRelations[:0]
+		for _, relation := range s.index.CategoryRelations {
+			if strings.TrimSpace(relation.SourceID) != sourceID || !relation.StationBound {
+				relations = append(relations, relation)
+				continue
+			}
+			aliasKey := strings.TrimSpace(relation.StationID) + "\x00" + FactAlias + "\x00" + normalizeName(relation.AliasValue)
+			categoryKey := strings.TrimSpace(relation.StationID) + "\x00" + FactCategory + "\x00" + normalizeName(relation.Category)
+			if strings.TrimSpace(relation.SourceRevision) != revision || !authoritative[aliasKey] || !authoritative[categoryKey] {
+				continue
+			}
+			relations = append(relations, relation)
+		}
+		s.index.CategoryRelations = relations
 	}
 }
 
@@ -1110,6 +1307,16 @@ func containsString(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func removeString(values []string, unwanted string) []string {
+	result := values[:0]
+	for _, value := range values {
+		if value != unwanted {
+			result = append(result, value)
+		}
+	}
+	return result
 }
 
 func appendUniqueInt(values []int, value int) []int {

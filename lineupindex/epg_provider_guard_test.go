@@ -40,3 +40,17 @@ func TestEPGStationBoundFactsCannotBridgeGNIDs(t *testing.T) {
 		t.Fatalf("station-bound facts bridged GNIDs: %+v", pairs)
 	}
 }
+
+func TestEPGStationBoundCategoryRelationsCannotBridgeGNIDs(t *testing.T) {
+	blocks := testEPGBlocks()
+	scans := []*postalLineupScan{
+		testEPGScan("L1", "Spectrum", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{{ChannelID: "A", CallSign: "LOCAL-A"}}}}),
+		testEPGScan("L2", "Xfinity", map[string]*web.GridResponse{blocks[0].ID: {Channels: []web.JSONChannel{{ChannelID: "B", CallSign: "LOCAL-B"}}}}),
+	}
+	scans[0].Relations = []ProviderCategoryRelation{{StationID: "A", AliasValue: "SHARED NETWORK", AliasNormalized: "SHAREDNETWORK", Category: "Sports", SourceID: "spectrum-official-lineup", SourceRowID: "row-1", StationBound: true}}
+	scans[1].Relations = []ProviderCategoryRelation{{StationID: "B", AliasValue: "SHARED NETWORK", AliasNormalized: "SHAREDNETWORK", Category: "Sports", SourceID: "spectrum-official-lineup", SourceRowID: "row-1"}}
+	stations, pairs := buildEPGCandidates(scans, blocks[0].ID)
+	if len(stations["A"].Categories) != 0 || len(pairs) != 0 {
+		t.Fatalf("station-bound category relation bridged GNIDs: stations=%+v pairs=%+v", stations["A"], pairs)
+	}
+}

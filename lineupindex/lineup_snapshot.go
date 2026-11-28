@@ -32,28 +32,52 @@ type LineupSnapshot struct {
 }
 
 type LineupSnapshotChannel struct {
-	PositionID        string               `json:"positionId,omitempty"`
-	StationID         string               `json:"stationId"`
-	Number            string               `json:"number,omitempty"`
-	CallSign          string               `json:"callSign,omitempty"`
-	AffiliateName     string               `json:"affiliateName,omitempty"`
-	AffiliateCallSign string               `json:"affiliateCallSign,omitempty"`
-	EventCallSigns    []string             `json:"eventCallSigns,omitempty"`
-	Aliases           []LineupSnapshotFact `json:"aliases,omitempty"`
-	Category          string               `json:"category,omitempty"`
-	CategoryConflict  bool                 `json:"categoryConflict,omitempty"`
-	CategoryEvidence  []LineupSnapshotFact `json:"categoryEvidence,omitempty"`
+	PositionID        string                   `json:"positionId,omitempty"`
+	StationID         string                   `json:"stationId"`
+	Number            string                   `json:"number,omitempty"`
+	CallSign          string                   `json:"callSign,omitempty"`
+	AffiliateName     string                   `json:"affiliateName,omitempty"`
+	AffiliateCallSign string                   `json:"affiliateCallSign,omitempty"`
+	EventCallSigns    []string                 `json:"eventCallSigns,omitempty"`
+	Aliases           []LineupSnapshotFact     `json:"aliases,omitempty"`
+	Category          string                   `json:"category,omitempty"`
+	CategoryConflict  bool                     `json:"categoryConflict,omitempty"`
+	CategoryEvidence  []LineupSnapshotFact     `json:"categoryEvidence,omitempty"`
+	CategoryRelations []LineupSnapshotRelation `json:"categoryRelations,omitempty"`
 }
 
 type LineupSnapshotFact struct {
-	Value           string  `json:"value"`
-	RawValue        string  `json:"rawValue,omitempty"`
-	SourceID        string  `json:"sourceId"`
-	SourceLabel     string  `json:"sourceLabel"`
-	SourceURL       string  `json:"sourceUrl,omitempty"`
-	Method          string  `json:"method"`
-	MatchMethod     string  `json:"matchMethod,omitempty"`
-	MatchConfidence float64 `json:"matchConfidence,omitempty"`
+	Value               string  `json:"value"`
+	RawValue            string  `json:"rawValue,omitempty"`
+	SourceID            string  `json:"sourceId"`
+	SourceLabel         string  `json:"sourceLabel"`
+	SourceURL           string  `json:"sourceUrl,omitempty"`
+	Method              string  `json:"method"`
+	MatchMethod         string  `json:"matchMethod,omitempty"`
+	MatchConfidence     float64 `json:"matchConfidence,omitempty"`
+	SourceRevision      string  `json:"sourceRevision,omitempty"`
+	SourceRowID         string  `json:"sourceRowId,omitempty"`
+	RootSourceID        string  `json:"rootSourceId,omitempty"`
+	RootSourceLabel     string  `json:"rootSourceLabel,omitempty"`
+	RootSourceURL       string  `json:"rootSourceUrl,omitempty"`
+	RootSourceLineupKey string  `json:"rootSourceLineupKey,omitempty"`
+	RootSourceStationID string  `json:"rootSourceStationId,omitempty"`
+}
+
+type LineupSnapshotRelation struct {
+	AliasValue      string   `json:"aliasValue"`
+	AliasNormalized string   `json:"aliasNormalized"`
+	Category        string   `json:"category"`
+	RawCategory     string   `json:"rawCategory,omitempty"`
+	SourceID        string   `json:"sourceId"`
+	SourceLabel     string   `json:"sourceLabel"`
+	SourceURL       string   `json:"sourceUrl,omitempty"`
+	SourceRevision  string   `json:"sourceRevision,omitempty"`
+	SourceRowID     string   `json:"sourceRowId"`
+	Method          string   `json:"method"`
+	LineupKeys      []string `json:"lineupKeys"`
+	SourceLineupKey string   `json:"sourceLineupKey,omitempty"`
+	StationBound    bool     `json:"stationBound,omitempty"`
 }
 
 func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridResponse, evidence ProviderEvidenceResult) error {
@@ -65,6 +89,13 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 		stationID := strings.TrimSpace(fact.StationID)
 		if stationID != "" {
 			factsByStation[stationID] = append(factsByStation[stationID], fact)
+		}
+	}
+	relationsByStation := make(map[string][]ProviderCategoryRelation)
+	for _, relation := range evidence.CategoryRelations {
+		stationID := strings.TrimSpace(relation.StationID)
+		if stationID != "" {
+			relationsByStation[stationID] = append(relationsByStation[stationID], relation)
 		}
 	}
 	capturedAt := s.now().UTC().Format("2006-01-02T15:04:05Z07:00")
@@ -100,6 +131,9 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 				SourceID: strings.TrimSpace(fact.SourceID), SourceLabel: strings.TrimSpace(fact.SourceLabel),
 				SourceURL: strings.TrimSpace(fact.SourceURL), Method: strings.TrimSpace(fact.Method),
 				MatchMethod: strings.TrimSpace(fact.MatchMethod), MatchConfidence: fact.MatchConfidence,
+				SourceRevision: strings.TrimSpace(fact.SourceRevision), SourceRowID: strings.TrimSpace(fact.SourceRowID),
+				RootSourceID: strings.TrimSpace(fact.RootSourceID), RootSourceLabel: strings.TrimSpace(fact.RootSourceLabel), RootSourceURL: strings.TrimSpace(fact.RootSourceURL),
+				RootSourceLineupKey: strings.TrimSpace(fact.RootSourceLineupKey), RootSourceStationID: strings.TrimSpace(fact.RootSourceStationID),
 			}
 			switch fact.Kind {
 			case FactAlias:
@@ -114,6 +148,15 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 				item.CategoryEvidence = append(item.CategoryEvidence, snapshotFact)
 			}
 		}
+		for _, relation := range relationsByStation[stationID] {
+			item.CategoryRelations = append(item.CategoryRelations, LineupSnapshotRelation{
+				AliasValue: strings.TrimSpace(relation.AliasValue), AliasNormalized: strings.TrimSpace(relation.AliasNormalized),
+				Category: strings.TrimSpace(relation.Category), RawCategory: strings.TrimSpace(relation.RawCategory),
+				SourceID: strings.TrimSpace(relation.SourceID), SourceLabel: strings.TrimSpace(relation.SourceLabel), SourceURL: strings.TrimSpace(relation.SourceURL),
+				SourceRevision: strings.TrimSpace(relation.SourceRevision), SourceRowID: strings.TrimSpace(relation.SourceRowID),
+				Method: strings.TrimSpace(relation.Method), LineupKeys: append([]string(nil), relation.LineupKeys...), SourceLineupKey: strings.TrimSpace(relation.SourceLineupKey), StationBound: relation.StationBound,
+			})
+		}
 		if len(categories) == 1 {
 			for category := range categories {
 				item.Category = category
@@ -127,6 +170,15 @@ func (s *Service) writeLineupSnapshot(lineup LineupRecord, grid *web.GridRespons
 				return item.CategoryEvidence[i].Value < item.CategoryEvidence[j].Value
 			}
 			return item.CategoryEvidence[i].SourceID < item.CategoryEvidence[j].SourceID
+		})
+		sort.Slice(item.CategoryRelations, func(i, j int) bool {
+			if item.CategoryRelations[i].AliasNormalized != item.CategoryRelations[j].AliasNormalized {
+				return item.CategoryRelations[i].AliasNormalized < item.CategoryRelations[j].AliasNormalized
+			}
+			if item.CategoryRelations[i].SourceID != item.CategoryRelations[j].SourceID {
+				return item.CategoryRelations[i].SourceID < item.CategoryRelations[j].SourceID
+			}
+			return item.CategoryRelations[i].SourceRowID < item.CategoryRelations[j].SourceRowID
 		})
 		snapshot.Channels = append(snapshot.Channels, item)
 	}
