@@ -12,7 +12,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
   await page.setContent(html.replace(/<script>[\s\S]*?<\/script>/g,''));
   const code=script.slice(script.indexOf('    const categoryReviewSelection'),script.indexOf('    function renderCategoryReviewReport()'));
   await page.evaluate(code=>{
-   const panel=document.getElementById('category-review-panel');document.querySelector('main').replaceChildren(panel);
+   const panel=document.getElementById('category-review-panel');document.querySelector('main').replaceChildren(panel);panel.open=true;
    window.draft={sourceFingerprint:'fixture',channels:[{id:'a',number:'53',callSign:'FREEFRM',name:'Freeform',category:'Entertainment',categorySource:'provider',categoryPriority:4,categoryMethod:'Long provenance '.repeat(50),included:true,needsCategoryReview:true},{id:'b',number:'104',callSign:'CSPAN2',name:'C-SPAN 2',category:'News & Weather',categorySource:'provider',categoryPriority:3,included:true,needsCategoryReview:true},{id:'c',included:false,needsCategoryReview:true},{id:'d',number:'7',callSign:'HBOHTS',name:'HBO Hits',category:'Movies',categorySource:'tmdb',categoryPriority:3,included:true,needsCategoryReview:true}]};
    window.categories=()=>['Entertainment','News & Weather','Movies'];window.sourceLabel=()=> 'Official provider';
    window.saves=[];window.saveChannel=async(channel,patch)=>{saves.push({id:channel.id,...patch});channel.category=patch.category;channel.needsCategoryReview=false;return true;};
