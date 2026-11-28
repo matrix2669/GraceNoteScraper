@@ -45,6 +45,9 @@ func (s *dispatcharrServer) requestImpact(recovery bool) {
 	}
 	s.impactRequestedKey = key
 	s.impactDirty++
+	if s.canonicalCancel != nil {
+		s.canonicalCancel()
+	}
 	s.impactLifecycle = "queued"
 	if s.impact != nil && s.impact.response.State == "running" {
 		s.impact.cancel()
@@ -57,10 +60,17 @@ func (s *dispatcharrServer) requestImpact(recovery bool) {
 func (s *dispatcharrServer) interruptImpact() {
 	s.impactMu.Lock()
 	job := s.impact
+	canonicalDone := s.canonicalDone
+	if s.canonicalCancel != nil {
+		s.canonicalCancel()
+	}
 	if job != nil && job.cancel != nil {
 		job.cancel()
 	}
 	s.impactMu.Unlock()
+	if canonicalDone != nil {
+		<-canonicalDone
+	}
 	if job != nil && job.done != nil {
 		<-job.done
 	}
@@ -109,6 +119,7 @@ func (s *dispatcharrServer) coordinateImpact(ctx context.Context, signal <-chan 
 		revision := s.impactDirty
 		s.impactLifecycle = "preparing"
 		s.impactMu.Unlock()
+		s.validateCanonicalNames(ctx)
 		for attempt := 0; attempt < 2; attempt++ {
 			// Primary refresh owns its own flag. Background preparation never
 			// reserves refreshMu, so a slow draft cannot reject a user Refresh.
@@ -199,6 +210,12 @@ func (s *dispatcharrServer) beginImpactRefresh() {
 	s.impactRefreshes++
 	s.impactMu.Unlock()
 	s.interruptImpact()
+	s.reviewMu.Lock()
+	if s.canonical != nil {
+		s.snapshot = s.canonical.base
+		s.canonical = nil
+	}
+	s.reviewMu.Unlock()
 }
 func (s *dispatcharrServer) endImpactRefresh() {
 	s.impactMu.Lock()

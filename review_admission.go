@@ -23,6 +23,9 @@ type reviewAdmission struct {
 func (s *dispatcharrServer) derivedRevision() string {
 	s.reviewMu.RLock()
 	token := snapshotIdentity(s.snapshot)
+	if s.canonical != nil {
+		token += ":" + s.canonical.generation
+	}
 	s.reviewMu.RUnlock()
 	conn, connected := s.config.Get()
 	return fmt.Sprintf("%t:%s:%s:%s", connected, conn.Fingerprint(), token, s.inventoryObservationToken())

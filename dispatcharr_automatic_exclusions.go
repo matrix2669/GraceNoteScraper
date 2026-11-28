@@ -229,7 +229,11 @@ func (s *dispatcharrServer) projectAutomaticExclusions(draft *builder.Draft, con
 	s.reviewMu.RLock()
 	snapshot := s.snapshot
 	s.reviewMu.RUnlock()
-	s.projectAutomaticExclusionsFrom(draft, config, snapshot, s.lineup.builder, s.lineup.reviewInputsRevision())
+	actualToken := snapshotIdentity(snapshot)
+	selected, canonicalToken := s.canonicalProjection(draft, config, snapshot)
+	s.projectAutomaticExclusionsFrom(draft, config, selected, s.lineup.builder, s.lineup.reviewInputsRevision())
+	draft.AutomaticLease.SnapshotToken = actualToken
+	draft.AutomaticLease.CanonicalToken = canonicalToken
 }
 func (s *dispatcharrServer) projectAutomaticExclusionsFrom(draft *builder.Draft, config appconfig.Config, snapshot dispatcharrMatchSnapshot, reader builder.ReviewProjection, evidence reviewInputsRevision) {
 	connection, _ := s.config.Get()
@@ -328,6 +332,13 @@ func (s *dispatcharrServer) commitAutomaticDraft(draft *builder.Draft, action fu
 					defer s.reviewMu.RUnlock()
 					s.cache.mu.Lock()
 					defer s.cache.mu.Unlock()
+					canonicalToken := ""
+					if s.canonical != nil {
+						canonicalToken = s.canonical.generation
+					}
+					if canonicalToken != lease.CanonicalToken {
+						return errAutomaticStale
+					}
 					if snapshotIdentity(s.snapshot) != lease.SnapshotToken || s.cache.observationTokenLocked() != lease.InventoryToken {
 						return errAutomaticStale
 					}
